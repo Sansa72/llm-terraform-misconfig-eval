@@ -1,0 +1,32 @@
+The scanner flagged a violation of **CKV_AWS_210** on the resource `aws_batch_job_definition.fail` (lines 8–46). This check enforces that an AWS Batch job definition **must not** run as a privileged container. The finding message “Batch job does not define a privileged container” is a bit misleading; the actual issue is that the job *does* define a privileged container, which is exactly what the policy forbids.
+
+### What’s wrong in this file
+
+In the `fail` resource, the `container_properties` JSON explicitly sets:
+
+```json
+"privileged": true
+```
+
+This grants the container elevated access to the underlying host. A privileged container essentially disables most of the isolation mechanisms that keep the container sandboxed. It can access host devices, modify kernel parameters, load kernel modules, and interact with other processes on the host. In a shared or multi-tenant environment like AWS Batch, this dramatically increases the blast radius of a compromise. If the container is exploited, an attacker could break out to the host and potentially access other jobs, data, or the underlying infrastructure.
+
+The reference policy (CKV_AWS_210) exists to prevent this unnecessary risk. Unless your workload has a very specific, documented need for host-level access (which is rare in batch processing), privileged mode should never be enabled.
+
+### How to fix it
+
+Change the `"privileged"` property to `false`, or remove it entirely. The default value is `false`, so either approach is safe. For example, modify the `container_properties` block in the `fail` resource to:
+
+```json
+"privileged": false,
+```
+
+or simply delete the line. The corrected resource would then match the pattern seen in the `pass` and `pass2` resources, which are already compliant.
+
+### Why the other resources are not flagged
+
+- `aws_batch_job_definition.pass` explicitly sets `"privileged": false`.
+- `aws_batch_job_definition.pass2` omits the `privileged` key, defaulting to `false`.
+- `aws_batch_job_definition.pass3` uses `jsonencode` and also omits the key.
+- The `unknown` resources either lack `container_properties` or use an invalid format, so they are not evaluated by this specific check (though they may trigger other findings).
+
+The fix is straightforward: ensure no Batch job definition in your codebase enables privileged mode unless absolutely required and approved through a security exception process.

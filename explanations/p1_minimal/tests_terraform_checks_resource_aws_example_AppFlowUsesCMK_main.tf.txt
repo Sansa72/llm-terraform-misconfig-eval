@@ -1,0 +1,47 @@
+The scanner flagged a missing encryption configuration in your `aws_appflow_flow` resource. Here’s what you need to know and how to fix it.
+
+## What the finding means
+Check **CKV_AWS_263** requires that every AppFlow flow uses a **Customer Managed Key (CMK)** for encryption.  
+In your Terraform file, the resource `aws_appflow_flow.fail` does not specify a `kms_arn`, so it will default to an AWS-owned key. The `aws_appflow_flow.pass` resource already includes the required `kms_arn` and passes the check.
+
+## Why it matters
+- **Data protection**: AppFlow processes and temporarily stores data at rest. Using a CMK gives you control over the encryption key (rotation, access policies, auditing via CloudTrail).
+- **Compliance**: Many security standards (e.g., PCI DSS, HIPAA) require customer-managed encryption keys for sensitive data flows.
+- **Least privilege**: With a CMK you can restrict which IAM principals can use the key, reducing the risk of unauthorised access.
+
+## How to fix it
+Add the `kms_arn` argument to the `aws_appflow_flow.fail` resource, pointing to a valid KMS key ARN. The `pass` resource already shows the correct pattern:
+
+```hcl
+resource "aws_appflow_flow" "fail" {
+  name = "example"
+
+  kms_arn = aws_kms_key.example.arn   # <-- Add this line
+
+  source_flow_config {
+    # ... existing config
+  }
+  # ... rest of the configuration
+}
+```
+
+Make sure the KMS key exists (e.g., `aws_kms_key.example`) and that its key policy grants the necessary permissions to the AppFlow service principal (`appflow.amazonaws.com`) to use the key for encryption/decryption. A minimal key policy statement would look like:
+
+```hcl
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "appflow.amazonaws.com"
+  },
+  "Action": [
+    "kms:Encrypt",
+    "kms:Decrypt",
+    "kms:ReEncrypt*",
+    "kms:GenerateDataKey*",
+    "kms:DescribeKey"
+  ],
+  "Resource": "*"
+}
+```
+
+After adding the `kms_arn`, the resource will match the `pass` example and the scanner finding will be resolved.

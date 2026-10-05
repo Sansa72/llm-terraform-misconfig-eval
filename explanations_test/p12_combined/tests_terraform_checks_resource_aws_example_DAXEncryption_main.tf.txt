@@ -1,0 +1,91 @@
+## Remediation Briefing: DAX Cluster Security Misconfigurations
+
+The scanner identified five failing checks across three `aws_dax_cluster` resources.  
+All issues relate to missing or explicitly disabled encryption controls.  
+Below is the remediation guidance for each finding, in the order reported.
+
+---
+
+### 1. CKV_AWS_239 on `aws_dax_cluster.enabled` (lines 3–12)
+
+**What is wrong**  
+The cluster does not specify `cluster_endpoint_encryption_type`, so it defaults to `NONE`.  
+This means the DAX endpoint accepts unencrypted connections, leaving data in transit unprotected.
+
+**Evidence**  
+Lines 3–12 define the resource. No `cluster_endpoint_encryption_type` argument is present.  
+The scanner finding states: *Ensure DAX cluster endpoint is using TLS*.
+
+**Required change**  
+Add the argument `cluster_endpoint_encryption_type = "TLS"` to the `aws_dax_cluster.enabled` resource block.  
+This will enforce TLS encryption on the cluster endpoint.
+
+---
+
+### 2. CKV_AWS_239 on `aws_dax_cluster.default` (lines 16–21)
+
+**What is wrong**  
+Same as above: the resource lacks `cluster_endpoint_encryption_type`, defaulting to `NONE` and allowing unencrypted endpoint communication.
+
+**Evidence**  
+Lines 16–21 contain only the required arguments; no endpoint encryption type is set.  
+The finding: *Ensure DAX cluster endpoint is using TLS*.
+
+**Required change**  
+Add `cluster_endpoint_encryption_type = "TLS"` to the `aws_dax_cluster.default` resource block.
+
+---
+
+### 3. CKV_AWS_47 on `aws_dax_cluster.default` (lines 16–21)
+
+**What is wrong**  
+The resource does not include a `server_side_encryption` block.  
+The default for DAX is unencrypted at rest, so the cluster’s data on disk is not encrypted.
+
+**Evidence**  
+Lines 16–21 show no `server_side_encryption` configuration.  
+The finding: *Ensure DAX is encrypted at rest (default is unencrypted)*.
+
+**Required change**  
+Add a `server_side_encryption` block with `enabled = true` inside the `aws_dax_cluster.default` resource.  
+This will enable encryption of data at rest.
+
+---
+
+### 4. CKV_AWS_239 on `aws_dax_cluster.disabled` (lines 23–32)
+
+**What is wrong**  
+The resource omits `cluster_endpoint_encryption_type`, so the endpoint uses no TLS (default `NONE`).  
+Data in transit to and from the cluster is not encrypted.
+
+**Evidence**  
+Lines 23–32 define the resource without an endpoint encryption type argument.  
+The finding: *Ensure DAX cluster endpoint is using TLS*.
+
+**Required change**  
+Add `cluster_endpoint_encryption_type = "TLS"` to the `aws_dax_cluster.disabled` resource block.
+
+---
+
+### 5. CKV_AWS_47 on `aws_dax_cluster.disabled` (lines 23–32)
+
+**What is wrong**  
+The `server_side_encryption` block is present but explicitly sets `enabled = False`.  
+This disables encryption at rest, leaving stored data unprotected.
+
+**Evidence**  
+Lines 28–30: `server_side_encryption { enabled = False }`.  
+The finding: *Ensure DAX is encrypted at rest (default is unencrypted)*.
+
+**Required change**  
+Change the value of `enabled` from `False` to `True` inside the existing `server_side_encryption` block.  
+No other structural change is needed.
+
+---
+
+**Summary of actions**  
+- For all three resources, add `cluster_endpoint_encryption_type = "TLS"`.  
+- For `aws_dax_cluster.default`, add a `server_side_encryption { enabled = true }` block.  
+- For `aws_dax_cluster.disabled`, flip `enabled` to `true` in its existing `server_side_encryption` block.  
+
+These changes will bring all resources into compliance with the flagged checks.

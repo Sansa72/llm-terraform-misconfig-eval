@@ -1,0 +1,74 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_276",
+      "resource": "aws_api_gateway_method_settings.fail",
+      "evidence": [
+        "  settings {\n    data_trace_enabled = true\n  }"
+      ],
+      "risk": "Enabling data trace could expose sensitive information in API Gateway logs.",
+      "remediation": "Set data_trace_enabled to false or remove the data_trace_enabled attribute from the settings block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_225",
+      "resource": "aws_api_gateway_method_settings.fail",
+      "evidence": [
+        "  settings {\n    data_trace_enabled = true\n  }"
+      ],
+      "risk": "Caching is not enabled, which may lead to higher latency and increased load on the backend.",
+      "remediation": "Add caching_enabled = true inside the settings block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_308",
+      "resource": "aws_api_gateway_method_settings.fail",
+      "evidence": [
+        "  settings {\n    data_trace_enabled = true\n  }"
+      ],
+      "risk": "Cache data encryption is not enabled, potentially exposing sensitive data if the cache is compromised.",
+      "remediation": "Add cache_data_encrypted = true inside the settings block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_225",
+      "resource": "aws_api_gateway_method_settings.pass_explicit",
+      "evidence": [
+        "  settings {\n    data_trace_enabled = false\n  }"
+      ],
+      "risk": "Caching is not enabled, which may lead to higher latency and increased load on the backend.",
+      "remediation": "Add caching_enabled = true inside the settings block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_308",
+      "resource": "aws_api_gateway_method_settings.pass_explicit",
+      "evidence": [
+        "  settings {\n    data_trace_enabled = false\n  }"
+      ],
+      "risk": "Cache data encryption is not enabled, potentially exposing sensitive data if the cache is compromised.",
+      "remediation": "Add cache_data_encrypted = true inside the settings block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_225",
+      "resource": "aws_api_gateway_method_settings.pass_implicit",
+      "evidence": [
+        "resource \"aws_api_gateway_method_settings\" \"pass_implicit\" {\n  rest_api_id = aws_api_gateway_rest_api.test.id\n  stage_name  = aws_api_gateway_stage.test.stage_name\n  method_path = \"path1/GET\"\n}"
+      ],
+      "risk": "Caching is not enabled because no settings block is present, which may lead to higher latency and increased load on the backend.",
+      "remediation": "Add a settings block containing caching_enabled = true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_308",
+      "resource": "aws_api_gateway_method_settings.pass_implicit",
+      "evidence": [
+        "resource \"aws_api_gateway_method_settings\" \"pass_implicit\" {\n  rest_api_id = aws_api_gateway_rest_api.test.id\n  stage_name  = aws_api_gateway_stage.test.stage_name\n  method_path = \"path1/GET\"\n}"
+      ],
+      "risk": "Cache data encryption is not enabled because no settings block is present, potentially exposing sensitive data if caching were enabled.",
+      "remediation": "Add a settings block with cache_data_encrypted = true.",
+      "confidence": "high"
+    }
+  ]
+}

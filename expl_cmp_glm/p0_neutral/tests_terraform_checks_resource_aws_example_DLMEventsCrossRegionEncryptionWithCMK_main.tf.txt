@@ -1,0 +1,27 @@
+### 1. What the misconfiguration is
+Two AWS Data Lifecycle Manager (DLM) policies define a `cross_region_copy` action for event-based snapshot sharing without properly securing the encryption configuration:
+* **`aws_dlm_lifecycle_policy.fail`**: The `encryption_configuration` block is completely empty. This means no encryption is explicitly enforced for cross-region copies.
+* **`aws_dlm_lifecycle_policy.fail2`**: The `encryption = true` attribute is set, but the `cmk_arn` attribute is omitted, causing the copy to default to an AWS managed key instead of a Customer Managed Key (CMK).
+
+### 2. Why it matters (security risk / blast radius)
+These policies trigger on `shareSnapshot` events. Because the copied snapshots are either unencrypted or encrypted with an AWS managed key:
+* **Data Exposure**: If left unencrypted (as in `fail`), the snapshot data is stored in plaintext in the destination region. Anyone with access to the destination region's snapshot storage can read the data.
+* **Loss of Cryptographic Control**: Without a CMK (as in `fail2`), you cannot control the key's lifecycle, enforce automatic key rotation, or restrict who can decrypt the snapshot independently of standard EBS snapshot permissions. 
+* **Blast Radius**: The risk extends to all data contained on the source EBS volume at the time the snapshot was created and shared.
+
+### 3. How to fix it safely
+Update the `encryption_configuration` block within the `cross_region_copy` block for both flagged resources to enforce encryption using a CMK. 
+
+Set `encryption = true` and provide a `cmk_arn` referencing a KMS key you own, as demonstrated in the `aws_dlm_lifecycle_policy.pass` resource in your file:
+
+```hcl
+cross_region_copy {
+  encryption_configuration {
+    encryption = true
+    cmk_arn   = aws_kms_key.test.arn
+  }
+  # retain_rule...
+}
+```
+
+Additionally, verify that the IAM role assigned to the DLM policy (`execution_role_arn`) has `kms:Encrypt` and `kms:Decrypt` IAM permissions for the specified CMK in both the source and destination regions, otherwise the policy execution will fail.

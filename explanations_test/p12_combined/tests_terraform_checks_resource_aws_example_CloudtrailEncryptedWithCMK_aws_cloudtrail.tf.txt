@@ -1,0 +1,71 @@
+## Remediation Briefing: CloudTrail Security Misconfigurations
+
+Below are the failing checks in the order they appear in the scanner output. Each entry identifies the check, the resource, the triggering lines, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_252 on `aws_cloudtrail.fail` (lines 1‑5)
+**What is wrong:** The resource does not define an SNS topic for CloudTrail notifications.  
+**Why it matters:** Without an SNS topic, you lose the ability to receive immediate alerts on trail activity, which hampers timely incident response.  
+**Change needed:** Add the `sns_topic_arn` argument, referencing the ARN of an existing SNS topic that will receive CloudTrail log delivery notifications.
+
+---
+
+### 2. CKV_AWS_36 on `aws_cloudtrail.fail` (lines 1‑5)
+**What is wrong:** Log file validation is not enabled.  
+**Why it matters:** Without validation, there is no integrity check on delivered log files, making it impossible to detect tampering or corruption.  
+**Change needed:** Set `enable_log_file_validation = true` in the resource block.
+
+---
+
+### 3. CKV_AWS_67 on `aws_cloudtrail.fail` (lines 1‑5)
+**What is wrong:** The trail is not configured to capture events from all AWS regions.  
+**Why it matters:** A single‑region trail misses activity in other regions, leaving blind spots in your audit coverage.  
+**Change needed:** Add `is_multi_region_trail = true` to ensure the trail logs events from every region.
+
+---
+
+### 4. CKV_AWS_35 on `aws_cloudtrail.fail` (lines 1‑5)
+**What is wrong:** The trail does not specify a KMS customer‑managed key (CMK) for encrypting log files at rest.  
+**Why it matters:** Without a CMK, CloudTrail uses the default S3 server‑side encryption, which does not provide the same level of control, access management, or auditability as a customer‑managed KMS key.  
+**Change needed:** Add `kms_key_id` with the ARN of a KMS CMK that CloudTrail is authorised to use for encryption.
+
+---
+
+### 5. CKV_AWS_252 on `aws_cloudtrail.pass` (lines 7‑12)
+**What is wrong:** The resource does not define an SNS topic for CloudTrail notifications.  
+**Why it matters:** Same as item 1 – no SNS topic means no real‑time alerts on trail activity.  
+**Change needed:** Add `sns_topic_arn` referencing a valid SNS topic ARN.
+
+---
+
+### 6. CKV_AWS_36 on `aws_cloudtrail.pass` (lines 7‑12)
+**What is wrong:** Log file validation is not enabled.  
+**Why it matters:** Same as item 2 – integrity verification of log files is missing.  
+**Change needed:** Set `enable_log_file_validation = true`.
+
+---
+
+### 7. CKV_AWS_67 on `aws_cloudtrail.pass` (lines 7‑12)
+**What is wrong:** The trail is not multi‑region.  
+**Why it matters:** Same as item 3 – events in regions other than the trail’s home region will not be captured.  
+**Change needed:** Add `is_multi_region_trail = true`.
+
+---
+
+### 8. CKV2_AWS_10 on `aws_cloudtrail.fail` (lines 1‑5)
+**What is wrong:** The trail is not integrated with CloudWatch Logs.  
+**Why it matters:** Without CloudWatch Logs integration, you cannot stream CloudTrail events for real‑time monitoring, alerting, or automated response.  
+**Change needed:** Add `cloud_watch_logs_group_arn` (the ARN of a CloudWatch Logs log group) and `cloud_watch_logs_role_arn` (the ARN of an IAM role that grants CloudTrail permission to deliver logs to that group).
+
+---
+
+### 9. CKV2_AWS_10 on `aws_cloudtrail.pass` (lines 7‑12)
+**What is wrong:** The trail is not integrated with CloudWatch Logs.  
+**Why it matters:** Same as item 8 – no streaming to CloudWatch Logs for real‑time analysis.  
+**Change needed:** Add `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` with appropriate values.
+
+---
+
+**Note on CKV_AWS_35 for `aws_cloudtrail.pass`:**  
+The resource already includes `kms_key_id = aws_kms_key.test.arn`, yet the scanner still flags the check. This indicates that the referenced KMS key may not satisfy the requirement for a customer‑managed CMK, or the key policy does not grant CloudTrail the necessary permissions to use it for encryption. Verify that `aws_kms_key.test` is a customer‑managed key (not an AWS‑managed key) and that its key policy includes a statement allowing the CloudTrail service principal (`cloudtrail.amazonaws.com`) to perform `kms:GenerateDataKey*` and `kms:Decrypt` under the appropriate conditions.

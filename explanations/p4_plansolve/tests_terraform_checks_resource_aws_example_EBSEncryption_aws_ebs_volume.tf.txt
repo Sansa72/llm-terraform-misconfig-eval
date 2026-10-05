@@ -1,0 +1,37 @@
+The scanner flagged two distinct requirements for your EBS volumes:  
+- **CKV_AWS_3** – The volume must have encryption enabled at rest.  
+- **CKV_AWS_189** – The volume must be encrypted using a **customer-managed KMS key** (CMK), not the default AWS-managed key.
+
+Here’s what needs to change for each resource:
+
+---
+
+### 1. `aws_ebs_volume.enabled` (lines 3–8)
+**Failing check:** CKV_AWS_189  
+**Current state:** Encryption is enabled (`encrypted = True`), but no `kms_key_id` is set. This means the volume uses the AWS-managed EBS key, not a customer-managed key.  
+**Fix:** Add a `kms_key_id` argument referencing a valid CMK. The value can be a key ARN, key ID, or alias ARN. For example:  
+```hcl
+kms_key_id = aws_kms_key.ebs.arn
+```
+or an existing key’s ARN. This will satisfy the requirement that a customer-managed key is used.
+
+---
+
+### 2. `aws_ebs_volume.default` (lines 12–15)
+**Failing checks:** CKV_AWS_3 and CKV_AWS_189  
+**Current state:** No `encrypted` argument is set, so the volume defaults to unencrypted.  
+**Fix:**  
+- Set `encrypted = true` to enable encryption (resolves CKV_AWS_3).  
+- Add a `kms_key_id` referencing a customer-managed CMK (resolves CKV_AWS_189).  
+The result is the same as the fix for `enabled`, but you must explicitly add both attributes.
+
+---
+
+### 3. `aws_ebs_volume.disabled` (lines 17–22)
+**Failing checks:** CKV_AWS_3 and CKV_AWS_189  
+**Current state:** Encryption is explicitly disabled (`encrypted = False`).  
+**Fix:** Change `encrypted` to `True` and add a `kms_key_id` pointing to a customer-managed CMK. This will satisfy both checks.
+
+---
+
+**Important:** The `kms_key_id` must refer to a key that you manage (a CMK), not the default AWS-managed key. If you don’t already have a suitable CMK, you can create one with `aws_kms_key` and reference it. The key must exist in the same region as the volume.

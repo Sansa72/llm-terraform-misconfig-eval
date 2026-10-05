@@ -1,0 +1,50 @@
+## Remediation Briefing
+
+Below are the required fixes for each scanner finding, in the order they appear. All changes are additive and do not conflict with each other.
+
+---
+
+### 1. CKV_AWS_267 on `aws_comprehend_entity_recognizer.pass` (lines 2–29)
+
+**What is wrong**  
+The entity recognizer’s model is not configured to use a customer managed KMS key (CMK); it will default to an AWS owned key.
+
+**Why it matters**  
+AWS owned keys do not give you control over key rotation, access policies, or audit trails. Using a CMK ensures you retain ownership of the encryption material, can enforce least‑privilege access, and meet compliance requirements that mandate customer‑managed encryption for data at rest.
+
+**Remediation**  
+Add the `model_kms_key_id` argument to the `aws_comprehend_entity_recognizer.pass` resource. Set its value to the ARN of a customer managed KMS key. The resource already references `aws_kms_key.test.id` for volume encryption; you may reuse the same key for model encryption, provided the key policy grants Comprehend the necessary permissions (`kms:GenerateDataKey`, `kms:Decrypt`, and `kms:DescribeKey`). If you prefer separate keys for model and volume, create a new key and reference it instead. The change will cause an in‑place update of the recognizer.
+
+---
+
+### 2. CKV_AWS_268 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What is wrong**  
+The entity recognizer’s volume is not encrypted with a customer managed KMS key; it relies on the default AWS owned key.
+
+**Why it matters**  
+Volume encryption protects the underlying storage used during training and inference. Without a CMK, you lose the ability to control, rotate, or audit the encryption key, which may violate internal security policies or regulatory standards.
+
+**Remediation**  
+Add the `volume_kms_key_id` argument to the `aws_comprehend_entity_recognizer.fail` resource. Point it to a customer managed KMS key ARN. You can use the same key as in the `pass` resource (`aws_kms_key.test.id`) or a different one. Ensure the chosen key’s policy allows Comprehend to call `kms:GenerateDataKey`, `kms:Decrypt`, and `kms:DescribeKey` for volume encryption. This change will trigger an update of the recognizer.
+
+---
+
+### 3. CKV_AWS_267 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What is wrong**  
+The entity recognizer’s model is not encrypted with a customer managed KMS key.
+
+**Why it matters**  
+Same rationale as the first finding: a CMK gives you control over key lifecycle, access, and auditing for the trained model, which is essential for protecting sensitive data and meeting compliance obligations.
+
+**Remediation**  
+Add the `model_kms_key_id` argument to the `aws_comprehend_entity_recognizer.fail` resource, referencing a customer managed KMS key. You can use the same key as for volume encryption or a separate one, as long as the key policy permits Comprehend to use it for model encryption. The required permissions are identical to those for volume encryption. This change will also cause an in‑place update.
+
+---
+
+### Interactions
+
+- The `pass` resource already has `volume_kms_key_id` set; only `model_kms_key_id` is missing.  
+- The `fail` resource lacks both `volume_kms_key_id` and `model_kms_key_id`.  
+- Both resources can share the same KMS key (e.g., `aws_kms_key.test.id`) if the key policy is configured to allow Comprehend to use it for both volume and model encryption. No other dependencies between the fixes exist.

@@ -1,0 +1,12 @@
+**Remediation Briefing: CKV_AWS_106 – Ensure EBS Default Encryption is Enabled**
+
+**Finding:** CKV_AWS_106 on resource `aws_ebs_encryption_by_default.disabled` (lines 16–18)
+
+**What is wrong:**  
+The resource explicitly sets `enabled = false`, which disables default EBS encryption for the AWS account/Region.
+
+**Why it matters:**  
+When default EBS encryption is disabled, any new EBS volume created without an explicit encryption setting will be unencrypted. This can lead to accidental exposure of sensitive data at rest, non‑compliance with security standards, and a false sense of security if teams assume encryption is always on by default.
+
+**Required change:**  
+Modify the `aws_ebs_encryption_by_default.disabled` resource so that the `enabled` argument is set to `true`. This will enable default EBS encryption, ensuring that all newly created volumes are encrypted automatically unless a workload explicitly opts out. No other resources in the supplied file interact with this setting, so the change is isolated.

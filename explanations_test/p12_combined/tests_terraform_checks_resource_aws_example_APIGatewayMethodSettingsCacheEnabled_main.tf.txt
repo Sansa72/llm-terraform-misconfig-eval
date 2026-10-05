@@ -1,0 +1,25 @@
+**Remediation Briefing**
+
+The following issues were identified in the Terraform file against the resource `aws_api_gateway_method_settings.fail` (lines 1–13). The resource `aws_api_gateway_method_settings.pass` (lines 15–27) already demonstrates the correct configuration and is not flagged.
+
+---
+
+### 1. CKV_AWS_225 – Ensure API Gateway method setting caching is enabled
+
+- **Resource:** `aws_api_gateway_method_settings.fail` (lines 1–13)
+- **Triggering lines:** Line 8 (`caching_enabled = false`) inside the `settings` block (lines 7–12).
+- **What is wrong:** The method settings explicitly disable response caching. This means API Gateway will not cache responses for this method, which can increase latency for repeated requests and add unnecessary load on the backend.
+- **Required change:** In the `settings` block of the `fail` resource, set `caching_enabled` to `true`. This will enable API Gateway to store and serve cached responses, improving performance and reducing backend traffic. No other changes are needed for this check.
+
+---
+
+### 2. CKV_AWS_308 – Ensure API Gateway method setting caching is set to encrypted
+
+- **Resource:** `aws_api_gateway_method_settings.fail` (lines 1–13)
+- **Triggering lines:** Line 10 (`cache_data_encrypted = false`) inside the same `settings` block.
+- **What is wrong:** Cache data encryption is disabled. When caching is enabled, cached responses are stored unencrypted at rest, which could expose sensitive data if the underlying storage is compromised.
+- **Required change:** In the `settings` block of the `fail` resource, set `cache_data_encrypted` to `true`. This ensures that any cached data is encrypted at rest. Note that this setting is only meaningful when `caching_enabled` is also `true`; both must be corrected together.
+
+---
+
+Both checks will pass once the `settings` block of `aws_api_gateway_method_settings.fail` is updated to match the configuration already present in the `pass` resource (i.e., `caching_enabled = true` and `cache_data_encrypted = true`).

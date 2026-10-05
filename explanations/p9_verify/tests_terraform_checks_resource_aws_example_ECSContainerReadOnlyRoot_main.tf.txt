@@ -1,0 +1,41 @@
+The scanner flagged three misconfigurations across two ECS task definitions. Below is a consolidated explanation of each issue and how to fix it.
+
+---
+
+### 1. `aws_ecs_task_definition.fail` – CKV_AWS_336 (Read-only root filesystem)
+
+**Problem:**  
+The task definition contains two containers. The first container correctly sets `readonlyRootFilesystem = true`, but the second container omits this property entirely. In ECS, the default value for `readonlyRootFilesystem` is `false`, so the second container’s root filesystem is writable. This violates the requirement that all containers should have a read-only root filesystem to reduce the risk of malicious or accidental file modifications.
+
+**Fix:**  
+Add `readonlyRootFilesystem = true` to the second container definition.
+
+---
+
+### 2. `aws_ecs_task_definition.fail2` – CKV_AWS_336 (Read-only root filesystem)
+
+**Problem:**  
+Both containers in this task definition explicitly set `readonlyRootFilesystem = false`, allowing write access to their root filesystems.
+
+**Fix:**  
+Change `readonlyRootFilesystem` to `true` for both containers.
+
+---
+
+### 3. `aws_ecs_task_definition.fail2` – CKV_AWS_334 (Non-privileged container)
+
+**Problem:**  
+The second container definition includes `privilege = true`. This grants the container elevated privileges on the host, effectively disabling many security controls and increasing the blast radius of a compromise.
+
+**Fix:**  
+Remove the `privilege` attribute or set it to `false` (the default). If the container genuinely requires specific Linux capabilities, grant only the necessary ones via the `linuxParameters` → `capabilities` block instead of full privileged mode.
+
+---
+
+### 4. `aws_ecs_task_definition.fail2` – CKV_AWS_335 (Do not share the host’s process namespace)
+
+**Problem:**  
+The second container definition contains `pidMode = "host"`. Although `pidMode` is a task-level parameter in ECS (not a valid container-level property), its presence here indicates an attempt to share the host’s process namespace. Sharing the host’s PID namespace allows a container to see and potentially interact with processes outside its own, weakening isolation.
+
+**Fix:**  
+Remove the `pidMode` line from the container definition. If you intended to set the task-level `pid_mode`, do so at the resource level (e.g., `pid_mode = "task"`), but never set it to `"host"` unless strictly required and the security implications are fully accepted.

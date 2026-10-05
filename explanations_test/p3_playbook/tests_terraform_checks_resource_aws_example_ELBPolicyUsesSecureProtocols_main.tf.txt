@@ -1,0 +1,54 @@
+## Remediation Briefing: CKV_AWS_213 – Insecure ELB SSL Negotiation Policies
+
+All six findings are for the same check, **CKV_AWS_213**, which requires that Classic Load Balancer (ELB) SSL negotiation policies use only secure protocols (TLS 1.2 or higher). The file already contains three passing resources (`pass`, `pass2`, `pass3`) that demonstrate compliant configurations. The fixes below align with those examples.
+
+---
+
+### 1. `aws_load_balancer_policy.fail` (lines 1–15)
+**What is wrong:** The policy explicitly enables the insecure TLSv1 protocol alongside TLSv1.2.  
+**Why it matters:** TLSv1 is vulnerable to known attacks (e.g., BEAST, POODLE) and no longer meets security standards. Enabling it allows clients to negotiate a weak protocol, undermining encryption.  
+**Change needed:** Modify the `policy_attribute` block for `Protocol-TLSv1` so that its value is `"false"`, or remove that block entirely. The resource `pass2` shows a working example where `Protocol-TLSv1` is set to `false`. This ensures only TLSv1.2 is offered.
+
+---
+
+### 2. `aws_load_balancer_policy.fail2` (lines 17–26)
+**What is wrong:** The policy references the outdated security policy `ELBSecurityPolicy-2016-08`.  
+**Why it matters:** This predefined policy includes insecure protocols (TLSv1.0, TLSv1.1) and weak cipher suites, leaving the load balancer susceptible to downgrade attacks.  
+**Change needed:** Replace the `Reference-Security-Policy` value with a secure, TLS 1.2‑only policy. The resource `pass3` uses `"TLS-1-2-2017-01"` and passes the check. You can also use the full AWS name `"ELBSecurityPolicy-TLS-1-2-2017-01"` or the latest `"ELBSecurityPolicy-TLS-1-2-Ext-2018-06"`.
+
+---
+
+### 3. `aws_load_balancer_policy.fail3` (lines 28–37)
+**What is wrong:** The policy references `ELBSecurityPolicy-TLS-1-1-2017-01`, which includes TLS 1.1.  
+**Why it matters:** TLS 1.1 is deprecated and considered insecure; it does not meet the “secure protocols only” requirement.  
+**Change needed:** Switch the `Reference-Security-Policy` value to a TLS 1.2‑only policy, such as `"ELBSecurityPolicy-TLS-1-2-2017-01"` (or the shorter `"TLS-1-2-2017-01"` as shown in `pass3`).
+
+---
+
+### 4. `aws_load_balancer_policy.fail4` (lines 39–48)
+**What is wrong:** The policy references the outdated `ELBSecurityPolicy-2015-05`.  
+**Why it matters:** This 2015 policy predates the deprecation of TLS 1.0/1.1 and contains weak ciphers, making the connection vulnerable.  
+**Change needed:** Update the `Reference-Security-Policy` value to a secure policy like `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+### 5. `aws_load_balancer_policy.fail5` (lines 50–59)
+**What is wrong:** The policy references the outdated `ELBSecurityPolicy-2015-03`.  
+**Why it matters:** Same risk as fail4—this older policy allows insecure protocols and ciphers.  
+**Change needed:** Replace the value with a secure policy, e.g., `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+### 6. `aws_load_balancer_policy.fail6` (lines 61–70)
+**What is wrong:** The policy references the outdated `ELBSecurityPolicy-2015-02`.  
+**Why it matters:** This is the oldest of the failing reference policies and certainly includes insecure protocols.  
+**Change needed:** Replace the value with a secure policy, e.g., `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+### Interaction Notes
+- All six failing resources are independent; fixing one does not affect the others.
+- The passing resources (`pass`, `pass2`, `pass3`) already demonstrate the two acceptable patterns:  
+  - Explicitly disable insecure protocols (set `Protocol-TLSv1` to `false`).  
+  - Use a secure reference policy (e.g., `"TLS-1-2-2017-01"`).  
+- No cross-resource dependencies exist in the provided file, so each can be remediated in isolation.

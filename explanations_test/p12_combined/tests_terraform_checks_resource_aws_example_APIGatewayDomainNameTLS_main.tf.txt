@@ -1,0 +1,46 @@
+## Remediation Briefing: CKV_AWS_206 – API Gateway Domain Security Policy
+
+All three findings are for the same check ID, **CKV_AWS_206**, which requires that an API Gateway domain name uses a modern security policy. The file contains one resource that already passes (`aws_api_gateway_domain_name.pass` with `security_policy = "TLS_1_2"`), and three that fail. Address each failing resource as described below.
+
+---
+
+### 1. CKV_AWS_206 on `aws_api_gateway_domain_name.fail` (lines 5–8)
+
+**Triggering lines:**  
+Line 6: `security_policy = "TLS_1_0"`
+
+**What is wrong:**  
+The security policy is set to `TLS_1_0`, which is an outdated protocol version. The check flags it because it is not a modern security policy, and using it could weaken transport encryption for the domain.
+
+**Change needed:**  
+Replace the value of `security_policy` with a modern policy that the check accepts. The only value in this file that passes the same check is `"TLS_1_2"` (used by `aws_api_gateway_domain_name.pass`). Set `security_policy = "TLS_1_2"` on this resource.
+
+---
+
+### 2. CKV_AWS_206 on `aws_api_gateway_domain_name.pass2` (lines 15–18)
+
+**Triggering lines:**  
+Line 16: `security_policy = "SecurityPolicy_TLS13_1_3_2025_09"`
+
+**What is wrong:**  
+The scanner has determined that the policy `SecurityPolicy_TLS13_1_3_2025_09` does not satisfy the “modern security policy” requirement. The file does not explain why this specific policy name is rejected, but the finding is clear: it fails the check.
+
+**Change needed:**  
+To make the check pass, change the `security_policy` to a value that is known to pass. Based on the evidence in this file, `"TLS_1_2"` is the only passing value. Update line 16 to `security_policy = "TLS_1_2"`.
+
+---
+
+### 3. CKV_AWS_206 on `aws_api_gateway_domain_name.pass3` (lines 20–23)
+
+**Triggering lines:**  
+Line 21: `security_policy = "SecurityPolicy_TLS13_1_2_2021_06"`
+
+**What is wrong:**  
+The policy `SecurityPolicy_TLS13_1_2_2021_06` is flagged as not being a modern security policy. As with `pass2`, the file does not indicate why this specific name fails, but the check result is unequivocal.
+
+**Change needed:**  
+Set the `security_policy` to a value that passes the check. The only demonstrated passing value in this file is `"TLS_1_2"`. Replace the current value on line 21 with `"TLS_1_2"`.
+
+---
+
+**Note:** After making these changes, all four resources will use `security_policy = "TLS_1_2"`, which is the only policy in the provided file that satisfies CKV_AWS_206. If a different modern policy is desired, verify that it is accepted by the scanner before applying.

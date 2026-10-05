@@ -1,0 +1,105 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.fail",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"fail\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_312",
+      "resource": "aws_elastic_beanstalk_environment.fail",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"fail\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n}"
+      ],
+      "risk": "Enhanced health reporting is not configured, so the environment will use basic health reporting, which provides less detailed metrics and slower issue detection, delaying incident response.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:healthreporting:system\", name \"HealthStreamingEnabled\", and value \"true\" to enable enhanced health reporting.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.fail2",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"fail2\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"SystemType\"\n    value     = \"basic\"\n  }\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_312",
+      "resource": "aws_elastic_beanstalk_environment.fail2",
+      "evidence": [
+        "  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"SystemType\"\n    value     = \"basic\"\n  }"
+      ],
+      "risk": "The health reporting system type is set to \"basic\", which does not provide enhanced health reporting, leading to slower detection of environment issues.",
+      "remediation": "Change the setting value from \"basic\" to \"enhanced\" or add a separate setting with namespace \"aws:elasticbeanstalk:healthreporting:system\", name \"HealthStreamingEnabled\", and value \"true\" to enable enhanced health reporting.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.fail3",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"fail3\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    value     = \"False\"\n  }\n\n  setting {\n    namespace = \"guff\"\n    name      = \"SystemType\"\n    value     = \"basic\"\n  }\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_312",
+      "resource": "aws_elastic_beanstalk_environment.fail3",
+      "evidence": [
+        "  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    value     = \"False\"\n  }",
+        "  setting {\n    namespace = \"guff\"\n    name      = \"SystemType\"\n    value     = \"basic\"\n  }"
+      ],
+      "risk": "HealthStreamingEnabled is explicitly set to \"False\", disabling enhanced health reporting, and the SystemType is set to \"basic\" in a non-standard namespace, which may result in basic health reporting and delayed issue detection.",
+      "remediation": "Change the value of HealthStreamingEnabled to \"true\" and ensure the SystemType setting is in the correct namespace \"aws:elasticbeanstalk:healthreporting:system\" with value \"enhanced\" to enable enhanced health reporting.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.fail4",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"fail4\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    resource  = \"\"\n    value     = \"\"\n  }\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_312",
+      "resource": "aws_elastic_beanstalk_environment.fail4",
+      "evidence": [
+        "  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    resource  = \"\"\n    value     = \"\"\n  }"
+      ],
+      "risk": "HealthStreamingEnabled is set to an empty string, which effectively disables enhanced health reporting, leading to basic health monitoring and slower incident response.",
+      "remediation": "Set the value of HealthStreamingEnabled to \"true\" to enable enhanced health reporting.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.pass",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"pass\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    value     = \"true\"\n  }\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_340",
+      "resource": "aws_elastic_beanstalk_environment.pass2",
+      "evidence": [
+        "resource \"aws_elastic_beanstalk_environment\" \"pass2\" {\n  name                   = \"beany\"\n  application            = var.elastic_beanstalk_application_name\n  description            = var.description\n  tier                   = var.tier\n  solution_stack_name    = var.solution_stack_name\n  wait_for_ready_timeout = var.wait_for_ready_timeout\n  version_label          = var.version_label\n  tags                   = local.tags\n  setting {\n    namespace = \"aws:elasticbeanstalk:healthreporting:system\"\n    name      = \"HealthStreamingEnabled\"\n    value     = true\n  }\n}"
+      ],
+      "risk": "Without managed platform updates enabled, the Elastic Beanstalk environment will not automatically apply platform patches and minor version upgrades, leaving it potentially exposed to known vulnerabilities.",
+      "remediation": "Add a setting block with namespace \"aws:elasticbeanstalk:managedactions:platformupdate\", name \"ManagedActionsEnabled\", and value \"true\" to enable managed platform updates.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+The scanner flagged the following issues across your three `aws_api_gateway_method_settings` resources. Here’s what needs to change and why.
+
+---
+
+### 1. `aws_api_gateway_method_settings.fail` (lines 1–9)
+
+**CKV_AWS_276 – Data Trace must not be enabled**  
+The `settings` block currently has `data_trace_enabled = true`. This sends full request/response data to CloudWatch Logs, which can leak sensitive information (API keys, tokens, PII).  
+**Fix:** Set `data_trace_enabled = false` or remove the line entirely (the default is `false`).
+
+**CKV_AWS_225 – Caching must be enabled**  
+No caching configuration is present, so caching is disabled. Caching improves performance and reduces backend load.  
+**Fix:** Add `caching_enabled = true` inside the `settings` block.
+
+**CKV_AWS_308 – Caching must be encrypted**  
+Even after enabling caching, the cache data is not encrypted by default. Unencrypted caches can expose sensitive data at rest.  
+**Fix:** Add `cache_data_encrypted = true` inside the `settings` block.
+
+---
+
+### 2. `aws_api_gateway_method_settings.pass_explicit` (lines 11–19)
+
+**CKV_AWS_225 – Caching must be enabled**  
+The resource currently has no caching settings, so caching is disabled.  
+**Fix:** Add `caching_enabled = true` inside the `settings` block.
+
+**CKV_AWS_308 – Caching must be encrypted**  
+Without caching enabled, encryption is irrelevant, but the check still requires the setting to be explicitly `true`.  
+**Fix:** Add `cache_data_encrypted = true` inside the `settings` block.
+
+---
+
+### 3. `aws_api_gateway_method_settings.pass_implicit` (lines 21–25)
+
+**CKV_AWS_225 – Caching must be enabled**  
+The resource has no `settings` block at all, so caching is disabled.  
+**Fix:** Add a `settings` block containing `caching_enabled = true`.
+
+**CKV_AWS_308 – Caching must be encrypted**  
+Once caching is enabled, encryption must be turned on.  
+**Fix:** In the same `settings` block, add `cache_data_encrypted = true`.
+
+---
+
+### Summary of required changes
+
+| Resource | Add / Change | Value |
+|----------|--------------|-------|
+| `fail` | `data_trace_enabled` | `false` |
+| `fail` | `caching_enabled` | `true` |
+| `fail` | `cache_data_encrypted` | `true` |
+| `pass_explicit` | `caching_enabled` | `true` |
+| `pass_explicit` | `cache_data_encrypted` | `true` |
+| `pass_implicit` | Add entire `settings` block with `caching_enabled = true` and `cache_data_encrypted = true` | – |
+
+All three resources will then have data tracing disabled, caching enabled, and cache encryption enabled, satisfying the checks.

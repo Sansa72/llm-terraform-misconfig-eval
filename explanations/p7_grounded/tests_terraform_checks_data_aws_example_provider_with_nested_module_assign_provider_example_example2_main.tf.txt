@@ -1,0 +1,42 @@
+The provided Terraform file defines only a minimal S3 bucket resource with a name. The scanner has flagged seven separate checks, all pointing to the same resource block (`aws_s3_bucket.bucket` on lines 1–3). Each finding indicates that a specific security-relevant configuration is absent from that block. Below is a breakdown of what each check expects and what the file actually contains.
+
+---
+
+### 1. CKV2_AWS_61 – Ensure that an S3 bucket has a lifecycle configuration
+- **What the check requires:** A `lifecycle_rule` block inside the `aws_s3_bucket` resource (or a separate `aws_s3_bucket_lifecycle_configuration` resource) that defines rules for transitioning or expiring objects.
+- **What the file shows:** The resource block (lines 1–3) contains only `bucket = "module-bucket"`. There is no `lifecycle_rule` block, no `lifecycle` attribute, and no reference to a lifecycle configuration resource.
+- **Conclusion:** The bucket has no lifecycle configuration, which is why the check failed.
+
+### 2. CKV_AWS_18 – Ensure the S3 bucket has access logging enabled
+- **What the check requires:** A `logging` block within the bucket resource (or a separate `aws_s3_bucket_logging` resource) that specifies a target bucket and optionally a prefix for server access logs.
+- **What the file shows:** The resource block contains only the `bucket` argument. There is no `logging` block.
+- **Conclusion:** Access logging is not enabled for this bucket.
+
+### 3. CKV2_AWS_62 – Ensure S3 buckets should have event notifications enabled
+- **What the check requires:** An `event_notification` configuration (either via a `aws_s3_bucket_notification` resource or inline `notification` blocks in some provider versions) that sends events to a destination (e.g., SNS, SQS, Lambda) on specific bucket events.
+- **What the file shows:** The resource block has no `notification` block, and no separate notification resource is defined in the file.
+- **Conclusion:** Event notifications are not configured.
+
+### 4. CKV2_AWS_6 – Ensure that S3 bucket has a Public Access block
+- **What the check requires:** A `aws_s3_bucket_public_access_block` resource (or the `block_public_access` configuration within the bucket resource, depending on provider version) that explicitly blocks public ACLs, policies, and cross-account access.
+- **What the file shows:** The resource block does not include any public access block settings, and no separate `aws_s3_bucket_public_access_block` resource is present.
+- **Conclusion:** The bucket lacks a public access block configuration.
+
+### 5. CKV_AWS_145 – Ensure that S3 buckets are encrypted with KMS by default
+- **What the check requires:** A `server_side_encryption_configuration` block (or a separate `aws_s3_bucket_server_side_encryption` resource) that specifies `sse_algorithm = "aws:kms"` and optionally a KMS key ARN.
+- **What the file shows:** No encryption configuration is present. The bucket will use default Amazon S3-managed keys (SSE-S3) if default encryption is enabled at the account level, but the check specifically requires KMS-based encryption to be explicitly set on the bucket.
+- **Conclusion:** The bucket is not configured to use KMS encryption by default.
+
+### 6. CKV_AWS_144 – Ensure that S3 bucket has cross-region replication enabled
+- **What the check requires:** A `replication_configuration` block (or a separate `aws_s3_bucket_replication_configuration` resource) that defines a replication rule to copy objects to a bucket in a different region.
+- **What the file shows:** No replication configuration is present.
+- **Conclusion:** Cross-region replication is not enabled.
+
+### 7. CKV_AWS_21 – Ensure all data stored in the S3 bucket have versioning enabled
+- **What the check requires:** A `versioning` block (or a separate `aws_s3_bucket_versioning` resource) with `enabled = true`.
+- **What the file shows:** The resource block has no `versioning` configuration.
+- **Conclusion:** Versioning is not enabled for the bucket.
+
+---
+
+**Summary:** The file at lines 1–3 defines an S3 bucket with only a name. All seven findings are triggered because the resource block lacks the respective configuration blocks or separate resources that the checks mandate. To resolve them, you would need to add the appropriate Terraform configurations (either inline or as companion resources) for lifecycle rules, access logging, event notifications, public access block, KMS default encryption, cross-region replication, and versioning.

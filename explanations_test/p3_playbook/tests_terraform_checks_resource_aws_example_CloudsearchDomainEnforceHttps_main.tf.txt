@@ -1,0 +1,39 @@
+**Remediation Briefing: CloudSearch Domain Security Misconfigurations**
+
+Below are the four failing checks, addressed in the order they appear in the scanner output. Each entry names the check and resource, states the problem, explains the risk, and describes the required change.
+
+---
+
+### 1. CKV_AWS_218 on `aws_cloudsearch_domain.fail` (lines 1–30)
+**Check:** Ensure that CloudSearch is using the latest TLS security policy.  
+**What is wrong:** The domain’s `endpoint_options` block explicitly sets `tls_security_policy` to `"Policy-Min-TLS-1-0-2019-07"`, which allows TLS 1.0.  
+**Why it matters:** TLS 1.0 is obsolete and vulnerable to attacks such as BEAST and POODLE. Using outdated TLS versions weakens encryption and can lead to data exposure or man-in-the-middle attacks.  
+**Change needed:** In the `endpoint_options` block of the `aws_cloudsearch_domain.fail` resource, update the `tls_security_policy` argument to `"Policy-Min-TLS-1-2-2019-07"`. This enforces a minimum of TLS 1.2, aligning with current security best practices.
+
+---
+
+### 2. CKV_AWS_220 on `aws_cloudsearch_domain.fail` (lines 1–30)
+**Check:** Ensure that CloudSearch is using HTTPS.  
+**What is wrong:** The same `endpoint_options` block has `enforce_https` set to `false`, allowing plain HTTP connections to the search endpoint.  
+**Why it matters:** Without HTTPS enforcement, traffic to and from the CloudSearch domain can be intercepted, modified, or eavesdropped on, exposing sensitive data in transit.  
+**Change needed:** In the `endpoint_options` block of the `aws_cloudsearch_domain.fail` resource, change `enforce_https` from `false` to `true`. This ensures all requests to the domain are served over encrypted HTTPS connections.
+
+---
+
+### 3. CKV_AWS_218 on `aws_cloudsearch_domain.fail2` (lines 31–58)
+**Check:** Ensure that CloudSearch is using the latest TLS security policy.  
+**What is wrong:** The `endpoint_options` block is present but empty; no `tls_security_policy` is specified. The provider default is `"Policy-Min-TLS-1-0-2019-07"`, which permits TLS 1.0.  
+**Why it matters:** Relying on the default leaves the domain with weak, outdated TLS configurations that are susceptible to known cryptographic attacks.  
+**Change needed:** Inside the `endpoint_options` block of `aws_cloudsearch_domain.fail2`, explicitly set `tls_security_policy = "Policy-Min-TLS-1-2-2019-07"`. This overrides the insecure default and enforces modern TLS.
+
+---
+
+### 4. CKV_AWS_220 on `aws_cloudsearch_domain.fail2` (lines 31–58)
+**Check:** Ensure that CloudSearch is using HTTPS.  
+**What is wrong:** The `endpoint_options` block does not include `enforce_https`, so it defaults to `false`, permitting unencrypted HTTP access.  
+**Why it matters:** Unencrypted connections expose search queries and results to interception and tampering, violating data protection requirements.  
+**Change needed:** In the same `endpoint_options` block of `aws_cloudsearch_domain.fail2`, add `enforce_https = true`. This will require all communication with the domain to use HTTPS.
+
+---
+
+**Interaction note:** Both failing resources (`fail` and `fail2`) require the same two fixes within their respective `endpoint_options` blocks. The `pass` resource already demonstrates the correct configuration: `enforce_https = true` and `tls_security_policy = "Policy-Min-TLS-1-2-2019-07"`. Apply these identical settings to the `fail` and `fail2` resources to resolve all four findings. No other resource dependencies are affected.

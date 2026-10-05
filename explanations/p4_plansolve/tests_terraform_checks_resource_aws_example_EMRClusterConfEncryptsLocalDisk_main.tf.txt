@@ -1,0 +1,54 @@
+The scanner found several security misconfigurations across three `aws_emr_security_configuration` resources. Each check requires a specific encryption setting in the JSON configuration. Below is a breakdown of what needs to change in each resource to pass all checks.
+
+---
+
+### Resource: `aws_emr_security_configuration.pass` (lines 1–22)
+
+**Failing checks:**
+- **CKV_AWS_351** – In-transit encryption must be enabled.
+- **CKV_AWS_171** – S3 encryption must use SSE-KMS, not SSE-S3.
+
+**What to fix:**
+1. Set `EnableInTransitEncryption` to `true`.
+2. In the `S3EncryptionConfiguration` block, change `EncryptionMode` from `"SSE-S3"` to `"SSE-KMS"` and add an `AwsKmsKey` field with a valid KMS key ARN (you can reuse the same key already specified for local disk encryption).
+
+The local disk encryption configuration is already correct, so no changes are needed there.
+
+---
+
+### Resource: `aws_emr_security_configuration.fail` (lines 24–40)
+
+**Failing checks:**
+- **CKV_AWS_351** – In-transit encryption is disabled.
+- **CKV_AWS_171** – S3 encryption is using SSE-S3 instead of SSE-KMS.
+- **CKV_AWS_350** – EBS (local disk) encryption is not configured.
+- **CKV_AWS_349** – Local disk encryption is not configured.
+
+**What to fix:**
+1. Set `EnableInTransitEncryption` to `true`.
+2. Change the S3 encryption mode to `"SSE-KMS"` and provide a KMS key ARN.
+3. Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` with:
+   - `EnableEbsEncryption: true`
+   - `EncryptionKeyProviderType: "AwsKms"`
+   - `AwsKmsKey` set to a valid KMS key ARN.
+
+---
+
+### Resource: `aws_emr_security_configuration.fail2` (lines 43–54)
+
+**Failing checks:**
+- **CKV_AWS_351** – In-transit encryption is disabled.
+- **CKV_AWS_171** – No S3 encryption configuration (and if present, must be SSE-KMS).
+- **CKV_AWS_350** – EBS encryption is not configured.
+- **CKV_AWS_349** – Local disk encryption is not configured.
+
+**What to fix:**
+1. Set `EnableInTransitEncryption` to `true`.
+2. Set `EnableAtRestEncryption` to `true`.
+3. Add a complete `AtRestEncryptionConfiguration` block containing:
+   - `S3EncryptionConfiguration` with `EncryptionMode: "SSE-KMS"` and a KMS key ARN.
+   - `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption: true`, `EncryptionKeyProviderType: "AwsKms"`, and a KMS key ARN.
+
+---
+
+**General note:** All resources should use the same KMS key ARN (or separate valid ones) for both S3 and local disk encryption. The key must exist in the same region as the EMR cluster and have a policy allowing EMR to use it.

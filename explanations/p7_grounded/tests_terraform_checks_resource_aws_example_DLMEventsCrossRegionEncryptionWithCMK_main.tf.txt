@@ -1,0 +1,66 @@
+The scanner flagged two resources (`aws_dlm_lifecycle_policy.fail` and `aws_dlm_lifecycle_policy.fail2`) for missing encryption settings on cross-region copy actions. Here’s exactly what the findings mean and where the problems are in your code.
+
+---
+
+### 1. Resource `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+
+**Findings:**
+- **CKV_AWS_253** – “Ensure DLM cross region events are encrypted”
+- **CKV_AWS_254** – “Ensure DLM cross region events are encrypted with Customer Managed Key”
+
+**Root cause:** The `cross_region_copy` block inside the `action` block has an **empty** `encryption_configuration` block.
+
+**Evidence in the file (lines 23–25):**
+```terraform
+    action {
+      name = "tf-acc-basic"
+      cross_region_copy {
+        encryption_configuration {}   # <-- empty block
+      }
+    }
+```
+
+**Why it fails:**
+- **CKV_AWS_253** requires that cross-region copies be encrypted. The `encryption_configuration` block is present but empty; the `encrypted` argument is not set to `true`. By default, encryption is disabled, so the check fails.
+- **CKV_AWS_254** requires that a customer-managed KMS key be used for that encryption. Because no `cmk_arn` is specified, the check also fails.
+
+---
+
+### 2. Resource `aws_dlm_lifecycle_policy.fail2` (lines 76–109)
+
+**Finding:**
+- **CKV_AWS_254** – “Ensure DLM cross region events are encrypted with Customer Managed Key”
+
+**Evidence in the file (lines 95–98):**
+```terraform
+        encryption_configuration {
+          encrypted = true
+        }
+```
+Here, encryption is enabled (`encrypted = true`), but **no `cmk_arn` is provided**. The check CKV_AWS_254 specifically requires a customer-managed key ARN, so it fails.
+
+---
+
+### Why the `pass` resource (lines 39–73) is not flagged
+
+The `pass` resource shows the correct configuration (lines 56–59):
+```terraform
+        encryption_configuration {
+          cmk_arn    = aws_kms_key.test.arn
+          encrypted  = true
+        }
+```
+Both `encrypted = true` and a `cmk_arn` are set, satisfying both checks.
+
+---
+
+### What needs to be fixed
+
+For **`aws_dlm_lifecycle_policy.fail`** (lines 2–37):
+- Set `encrypted = true` inside the `encryption_configuration` block (line 25).
+- Add a `cmk_arn` argument pointing to a valid KMS key ARN.
+
+For **`aws_dlm_lifecycle_policy.fail2`** (lines 76–109):
+- Add a `cmk_arn` argument inside the existing `encryption_configuration` block (line 97).
+
+The `aws_dlm_lifecycle_policy.unknown` resource (lines 111–131) is not flagged because it does not contain a cross-region copy action, so the checks do not apply.

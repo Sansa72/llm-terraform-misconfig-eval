@@ -1,0 +1,81 @@
+Both S3 buckets (`aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`) are missing several security controls that the scanner expects. The Terraform definitions only specify the bucket name and, for the first bucket, a provider alias; no additional configuration resources are present.
+
+The following controls are absent for each bucket:
+
+- **Lifecycle configuration** – no `aws_s3_bucket_lifecycle_configuration` resource is attached, so objects will never transition or expire automatically.
+- **Access logging** – no `aws_s3_bucket_logging` resource is defined, meaning server access logs are not being delivered to a target bucket.
+- **Event notifications** – no `aws_s3_bucket_notification` resource is configured, so no events (e.g., to SNS, SQS, or Lambda) are emitted on object operations.
+- **Public access block** – no `aws_s3_bucket_public_access_block` resource is attached, leaving the bucket potentially open to public access if bucket policies or ACLs are misconfigured.
+- **Default encryption with KMS** – no `aws_s3_bucket_server_side_encryption_configuration` resource is present; the bucket does not enforce KMS-managed encryption by default.
+- **Cross-region replication** – no `aws_s3_bucket_replication_configuration` resource is defined, so objects are not automatically replicated to another region.
+- **Versioning** – no `aws_s3_bucket_versioning` resource is attached; versioning is not enabled, which is also a prerequisite for cross-region replication.
+
+To fix these, add the corresponding Terraform resources for each bucket. For example:
+
+```hcl
+resource "aws_s3_bucket_versioning" "bucket_versioning" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket_encryption" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "your-kms-key-arn"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket_public_access_block" {
+  bucket = aws_s3_bucket.bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_logging" "bucket_logging" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = "your-log-bucket"
+  target_prefix = "log/"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "expire-old-objects"
+    status = "Enabled"
+    expiration {
+      days = 90
+    }
+  }
+}
+
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  bucket = aws_s3_bucket.bucket.id
+  topic {
+    topic_arn = "your-sns-topic-arn"
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+
+resource "aws_s3_bucket_replication_configuration" "bucket_replication" {
+  # Requires versioning to be enabled on both source and destination buckets.
+  role   = "your-iam-role-arn"
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "replicate-all"
+    status = "Enabled"
+    destination {
+      bucket        = "arn:aws:s3:::your-destination-bucket"
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+Apply equivalent resources for `bucket_2`. Ensure that cross-region replication is only configured after versioning is enabled on both the source and destination buckets, and that the IAM role has the necessary permissions.

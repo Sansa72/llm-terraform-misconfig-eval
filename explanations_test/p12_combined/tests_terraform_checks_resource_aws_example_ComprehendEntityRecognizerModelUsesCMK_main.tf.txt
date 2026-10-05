@@ -1,0 +1,40 @@
+The following security misconfigurations were identified in the provided Terraform file. Each is addressed in the order reported by the scanner.
+
+---
+
+### 1. CKV_AWS_268 on `aws_comprehend_entity_recognizer.pass` (lines 2-29)
+
+**Trigger:**  
+The resource block at lines 2-29 does not include a `volume_kms_key_id` argument. The check requires that the entity recognizer’s volume be encrypted with a customer-managed KMS key, which is configured via that argument.
+
+**What is wrong:**  
+The volume is not encrypted with a customer-managed KMS key. Without this, data at rest in the recognizer’s volume may not be protected by a key that the organisation controls, potentially violating encryption requirements.
+
+**Change needed:**  
+Add a `volume_kms_key_id` argument to the `aws_comprehend_entity_recognizer.pass` resource, referencing a valid customer-managed KMS key (e.g., `aws_kms_key.test.id` or another key’s ARN/ID). The resource already has `model_kms_key_id` set; only the volume encryption key is missing.
+
+---
+
+### 2. CKV_AWS_268 on `aws_comprehend_entity_recognizer.fail` (lines 40-66)
+
+**Trigger:**  
+The resource block at lines 40-66 does not include a `volume_kms_key_id` argument. The check flags the absence of volume encryption with a customer-managed key.
+
+**What is wrong:**  
+The volume is not encrypted with a customer-managed KMS key. This means data at rest in the volume lacks the protection of a key under the organisation’s control.
+
+**Change needed:**  
+Add a `volume_kms_key_id` argument to the `aws_comprehend_entity_recognizer.fail` resource, pointing to a customer-managed KMS key (e.g., `aws_kms_key.example.arn`). This resource currently has no encryption configuration at all, so the volume key must be supplied.
+
+---
+
+### 3. CKV_AWS_267 on `aws_comprehend_entity_recognizer.fail` (lines 40-66)
+
+**Trigger:**  
+The resource block at lines 40-66 does not include a `model_kms_key_id` argument. The check requires that the model be encrypted with a customer-managed KMS key.
+
+**What is wrong:**  
+The model is not encrypted with a customer-managed KMS key. Without this, the trained model data at rest is not protected by a key the organisation manages.
+
+**Change needed:**  
+Add a `model_kms_key_id` argument to the `aws_comprehend_entity_recognizer.fail` resource, referencing a customer-managed KMS key (e.g., `aws_kms_key.example.arn`). This will ensure the model is encrypted with a CMK, satisfying the check.

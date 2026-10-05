@@ -1,0 +1,44 @@
+The scanner flagged three distinct misconfigurations across two CloudWatch Log Group resources. Here is what the file shows and why each check triggered.
+
+### Resource `aws_cloudwatch_log_group.pass` (lines 1–3)
+```terraform
+resource "aws_cloudwatch_log_group" "pass" {
+  retention_in_days = 3
+}
+```
+
+**1. CKV_AWS_338 – Ensure CloudWatch log groups retains logs for at least 1 year**
+- **Evidence:** Line 2 sets `retention_in_days = 3`.
+- **Problem:** The check requires a retention period of at least 365 days. The configured value (3) is far below that threshold.
+
+**2. CKV_AWS_158 – Ensure that CloudWatch Log Group is encrypted by KMS**
+- **Evidence:** The resource block contains no `kms_key_id` argument.
+- **Problem:** Without `kms_key_id`, the log group uses the default CloudWatch Logs server-side encryption, not a customer-managed KMS key. The check requires explicit KMS encryption.
+
+---
+
+### Resource `aws_cloudwatch_log_group.fail` (line 5)
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {}
+```
+
+**1. CKV_AWS_66 – Ensure that CloudWatch Log Group specifies retention days**
+- **Evidence:** The block is empty; no `retention_in_days` is set.
+- **Problem:** The check requires that a retention period be explicitly defined. The absence of the argument fails this check.
+
+**2. CKV_AWS_338 – Ensure CloudWatch log groups retains logs for at least 1 year**
+- **Evidence:** No `retention_in_days` is present.
+- **Problem:** Although the AWS default (no retention setting) retains logs indefinitely, the check requires an explicit value of 365 or greater. Because the value is not set, the check fails.
+
+**3. CKV_AWS_158 – Ensure that CloudWatch Log Group is encrypted by KMS**
+- **Evidence:** No `kms_key_id` argument is provided.
+- **Problem:** Same as above – explicit KMS encryption is missing.
+
+---
+
+### What needs to change
+- For both resources, add `kms_key_id = "<valid-kms-key-arn>"` to satisfy **CKV_AWS_158**.
+- For `aws_cloudwatch_log_group.pass`, change `retention_in_days` to a value ≥ 365 to satisfy **CKV_AWS_338**.
+- For `aws_cloudwatch_log_group.fail`, add `retention_in_days` with a value ≥ 365 to satisfy both **CKV_AWS_66** and **CKV_AWS_338**.
+
+No other resources or configurations are present in the file, so the remediation is limited to these two blocks.

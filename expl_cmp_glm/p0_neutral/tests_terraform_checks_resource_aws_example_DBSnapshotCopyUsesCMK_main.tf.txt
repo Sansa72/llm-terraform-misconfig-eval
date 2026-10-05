@@ -1,0 +1,18 @@
+**1. Misconfiguration**
+The `aws_db_snapshot_copy.fail` resource is missing the `kms_key_id` argument. *(Note: Checkov's rule description mentions App Flow, but when applied to this RDS resource, the underlying check validates that a Customer Managed Key (CMK) is specified for encryption).*
+
+**2. Why it matters**
+Without an explicit CMK, AWS encrypts the copied RDS snapshot using an AWS-managed default key (`aws/rds`). Using a default key means you cannot manage the key's access policies independently, and you cannot share the encrypted snapshot across different AWS accounts, which limits operational flexibility and strict compliance enforcement for snapshot data.
+
+**3. How to fix safely**
+Add the `kms_key_id` argument to the `aws_db_snapshot_copy.fail` resource, referencing a valid KMS key ID or ARN. You can match the configuration already used in your `pass` resource:
+
+```terraform
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                    = aws_kms_key.example.id
+}
+```
+
+Ensure the IAM principal executing Terraform has `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions on the referenced key.

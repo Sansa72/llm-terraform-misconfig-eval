@@ -1,0 +1,60 @@
+The Terraform configuration defines four CloudFront distributions (`pass`, `fail`, `fail2`, `fail3`), each with a different set of security misconfigurations. Below is a resource-by-resource breakdown of the findings and the required fixes.
+
+### `aws_cloudfront_distribution.pass` (lines 1–44)
+**Issues:**
+- **Distribution disabled** (`enabled = false`). A disabled distribution cannot serve traffic; enable it unless intentionally decommissioned.
+- **No access logging** – add a `logging_config` block with an S3 bucket destination.
+- **Viewer certificate does not enforce TLS 1.2** – the empty `viewer_certificate {}` block defaults to the CloudFront default certificate and does not set a minimum protocol version. Specify `cloudfront_default_certificate = true` (or provide a custom ACM certificate) and set `minimum_protocol_version = "TLSv1.2_2021"`.
+- **No WAF** – attach a WAFv2 web ACL via the `web_acl_id` argument.
+- **No default root object** – set `default_root_object = "index.html"` (or appropriate file).
+- **No custom SSL certificate** – either use `acm_certificate_arn` with a valid certificate or accept the default certificate explicitly.
+- **No response headers policy** – add `response_headers_policy_id` to the `default_cache_behavior` (e.g., a managed policy like `67f7725c-6f97-4210-82d7-5512b31e9d03` for security headers).
+- **WAFv2 not configured with Log4j AMR** – once a WAFv2 web ACL is attached, ensure it includes the AWS Managed Rules rule group for Log4j (e.g., `AWSManagedRulesKnownBadInputsRuleSet`).
+
+**Note:** Origin failover is correctly configured (origin group with `failover_criteria` and members), so no change needed there.
+
+### `aws_cloudfront_distribution.fail` (lines 46–81)
+**Issues:**
+- **No access logging** – add `logging_config`.
+- **Viewer certificate does not enforce TLS 1.2** – the block uses `cloudfront_default_certificate = true` but omits `minimum_protocol_version`. Add `minimum_protocol_version = "TLSv1.2_2021"`.
+- **No WAF** – attach a WAFv2 web ACL.
+- **No origin failover** – only one origin is defined. Add a second origin and an `origin_group` with `failover_criteria` and members.
+- **No custom SSL certificate** – the distribution uses the default certificate. If a custom domain is needed, provide `acm_certificate_arn` and remove `cloudfront_default_certificate`.
+- **No response headers policy** – add `response_headers_policy_id` to `default_cache_behavior`.
+- **WAFv2 not configured with Log4j AMR** – after attaching a WAFv2 web ACL, include the Log4j managed rule group.
+
+**Already compliant:** The distribution is enabled and has a default root object.
+
+### `aws_cloudfront_distribution.fail2` (lines 83–122)
+**Issues:**
+- **Distribution disabled** (`enabled = false`).
+- **No access logging**.
+- **Viewer certificate does not enforce TLS 1.2** – empty `viewer_certificate {}`; set `minimum_protocol_version` and choose a certificate source.
+- **No WAF**.
+- **No default root object**.
+- **Origin failover incomplete** – the `origin_group` exists but lacks a `failover_criteria` block. Add `failover_criteria { status_codes = [...] }` inside the group.
+- **No custom SSL certificate**.
+- **No response headers policy**.
+- **WAFv2 not configured with Log4j AMR**.
+
+### `aws_cloudfront_distribution.fail3` (lines 124–160)
+**Issues:**
+- **Distribution disabled** (`enabled = false`).
+- **No access logging**.
+- **Viewer certificate does not enforce TLS 1.2** – empty `viewer_certificate {}`.
+- **No WAF**.
+- **No default root object**.
+- **Origin failover incomplete** – the `origin_group` has `failover_criteria` but no `member` blocks. Add at least two `member` blocks referencing existing origins.
+- **No custom SSL certificate**.
+- **No response headers policy**.
+- **WAFv2 not configured with Log4j AMR**.
+
+### General Fix Summary
+For every distribution, apply these changes where missing:
+1. Set `enabled = true`.
+2. Add a `logging_config` block pointing to an S3 bucket.
+3. In `viewer_certificate`, set `minimum_protocol_version = "TLSv1.2_2021"` and either use `cloudfront_default_certificate = true` or provide `acm_certificate_arn`.
+4. Attach a WAFv2 web ACL with `web_acl_id` and ensure the ACL includes the AWS Managed Rules for Log4j.
+5. Define `default_root_object`.
+6. Add `response_headers_policy_id` to the default cache behavior.
+7. For origin failover, ensure an `origin_group` exists with both `failover_criteria` and at least two `member` blocks.

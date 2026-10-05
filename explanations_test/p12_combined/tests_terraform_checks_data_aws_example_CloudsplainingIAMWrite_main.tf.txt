@@ -1,0 +1,44 @@
+## Remediation Briefing
+
+All four findings relate to the same IAM policy document: **`data.aws_iam_policy_document.fail`** (lines 34–46).  
+The single statement in this document grants `s3:*` on resource `"*"`. This combination triggers every check.
+
+---
+
+### 1. CKV_AWS_108 – Ensure IAM policies does not allow data exfiltration
+
+- **Resource:** `aws_iam_policy_document.fail` (lines 34–46)  
+- **Triggering lines:** The `actions` list containing `"s3:*"` (line 40) and the `resources` list containing `"*"` (line 43).  
+- **What is wrong:** The policy allows all S3 actions, including read operations (e.g., `s3:GetObject`), on every S3 resource. This permits unrestricted data exfiltration from any bucket.  
+- **Remediation:** Replace the wildcard action with only the specific S3 actions required. If read access is not needed, remove all read‑capable actions. Additionally, replace the wildcard resource with the exact ARN(s) of the intended S3 bucket(s) or object(s).
+
+---
+
+### 2. CKV_AWS_111 – Ensure IAM policies does not allow write access without constraints
+
+- **Resource:** `aws_iam_policy_document.fail` (lines 34–46)  
+- **Triggering lines:** The `actions` list containing `"s3:*"` (line 40) and the `resources` list containing `"*"` (line 43).  
+- **What is wrong:** The policy grants all S3 write actions (e.g., `s3:PutObject`, `s3:DeleteObject`) on every S3 resource without any constraint, enabling uncontrolled modification or deletion of data.  
+- **Remediation:** Restrict the actions to only the necessary write operations (e.g., `s3:PutObject`). Constrain the resource to the specific bucket ARN(s) that require write access. Consider adding condition keys (e.g., `s3:x-amz-acl`) for further restriction.
+
+---
+
+### 3. CKV_AWS_356 – Ensure no IAM policies documents allow “*” as a statement’s resource for restrictable actions
+
+- **Resource:** `aws_iam_policy_document.fail` (lines 34–46)  
+- **Triggering lines:** The `resources = ["*"]` line (line 43) combined with the `actions` that include S3 actions (line 40).  
+- **What is wrong:** The policy uses a wildcard resource `"*"` for S3 actions, which are resource‑restrictable. This grants the actions across all S3 resources in the account.  
+- **Remediation:** Replace the wildcard resource with the specific ARN(s) of the S3 bucket(s) or object(s) the policy is intended to govern. If the policy must apply to multiple resources, list each ARN explicitly.
+
+---
+
+### 4. CKV_AWS_109 – Ensure IAM policies does not allow permissions management / resource exposure without constraints
+
+- **Resource:** `aws_iam_policy_document.fail` (lines 34–46)  
+- **Triggering lines:** The `actions` list containing `"s3:*"` (line 40) and the `resources` list containing `"*"` (line 43).  
+- **What is wrong:** The wildcard S3 action includes permissions‑management operations (e.g., `s3:PutBucketPolicy`, `s3:PutBucketAcl`) that can modify access controls on any S3 resource, potentially exposing data or escalating privileges.  
+- **Remediation:** Remove any permissions‑management actions from the policy. If such actions are required, restrict them to specific resources and add conditions (e.g., `s3:x-amz-acl`) to limit the scope of the permission.
+
+---
+
+**General note:** All four findings are resolved by replacing the overly broad `actions = ["s3:*"]` with a minimal set of required S3 actions, and by replacing `resources = ["*"]` with the exact ARN(s) of the target S3 resources.

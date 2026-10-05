@@ -1,0 +1,38 @@
+The scanner findings point to missing or misconfigured settings across all four DynamoDB table resources. Below is a breakdown of each check, the specific resource it applies to, and exactly what in the file triggers the finding.
+
+### Check CKV_AWS_28: “Ensure Dynamodb point in time recovery (backup) is enabled”
+**What it requires:** A `point_in_time_recovery` block with `enabled = true`.
+
+**Resources flagged:**
+- `aws_dynamodb_table.cmk` (lines 3–20)
+- `aws_dynamodb_table.default` (lines 24–36)
+- `aws_dynamodb_table.encrypted_false` (lines 38–54)
+- `aws_dynamodb_table.encrypted_no_cmk` (lines 56–72)
+
+**Evidence in the file:** None of these resource blocks contain a `point_in_time_recovery` block. The scanner therefore reports the setting as missing (effectively disabled) for all four tables.
+
+### Check CKV_AWS_119: “Ensure DynamoDB Tables are encrypted using a KMS Customer Managed CMK”
+**What it requires:** A `server_side_encryption` block with `enabled = true` and a `kms_key_arn` pointing to a customer-managed KMS key (not the AWS-owned default key).
+
+**Resources flagged:**
+- `aws_dynamodb_table.default` (lines 24–36) – no `server_side_encryption` block at all. The table will use the default AWS-owned CMK, which fails the check.
+- `aws_dynamodb_table.encrypted_false` (lines 38–54) – has a `server_side_encryption` block but with `enabled = false` (line 52). Encryption is explicitly disabled.
+- `aws_dynamodb_table.encrypted_no_cmk` (lines 56–72) – has `server_side_encryption` with `enabled = true` (line 70) but no `kms_key_arn`. This results in the default AWS-owned CMK, which fails the check.
+
+**Resource not flagged:** `aws_dynamodb_table.cmk` (lines 3–20) passes this check because it has `server_side_encryption` with `enabled = true` and a customer-managed KMS key ARN (lines 17–18).
+
+### Check CKV2_AWS_16: “Ensure that Auto Scaling is enabled on your DynamoDB tables”
+**What it requires:** The table must have auto-scaling configured, typically via an `aws_appautoscaling_target` and `aws_appautoscaling_policy` resource, or by using the `billing_mode = "PAY_PER_REQUEST"` setting.
+
+**Resources flagged:**
+- `aws_dynamodb_table.cmk` (lines 3–20) – billing mode is `PROVISIONED` (line 6) and no auto-scaling resources are present in the file.
+- `aws_dynamodb_table.default` (lines 24–36) – billing mode is `PROVISIONED` (line 27) and no auto-scaling resources are present.
+- `aws_dynamodb_table.encrypted_false` (lines 38–54) – billing mode is `PROVISIONED` (line 41) and no auto-scaling resources are present.
+- `aws_dynamodb_table.encrypted_no_cmk` (lines 56–72) – billing mode is `PROVISIONED` (line 59) and no auto-scaling resources are present.
+
+All four tables use `PROVISIONED` capacity mode with fixed `read_capacity` and `write_capacity` values, and the file contains no `aws_appautoscaling_target` or `aws_appautoscaling_policy` resources. This directly triggers the CKV2_AWS_16 finding on every table.
+
+### Summary of required fixes
+- **Point-in-time recovery:** Add a `point_in_time_recovery { enabled = true }` block to each resource.
+- **Customer-managed CMK encryption:** For `aws_dynamodb_table.default`, add a `server_side_encryption` block with `enabled = true` and a valid `kms_key_arn`. For `aws_dynamodb_table.encrypted_false`, change `enabled` to `true` and add a `kms_key_arn`. For `aws_dynamodb_table.encrypted_no_cmk`, add a `kms_key_arn` to the existing block.
+- **Auto Scaling:** Either switch the billing mode to `PAY_PER_REQUEST` or define `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for each table’s read and write capacity.

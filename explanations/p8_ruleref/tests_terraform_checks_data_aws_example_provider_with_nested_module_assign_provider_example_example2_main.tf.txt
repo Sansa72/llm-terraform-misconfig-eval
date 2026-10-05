@@ -1,0 +1,65 @@
+The scanner flagged seven missing security controls on the S3 bucket defined in your Terraform file. The bucket is currently declared with only a name, leaving all security and data management features at their insecure defaults. Below I explain each finding, why it matters, and what you need to add to the configuration to resolve it.
+
+---
+
+### 1. CKV_AWS_21 – Versioning not enabled
+**What’s missing:** The bucket does not have versioning enabled.  
+**Why it matters:** Without versioning, overwrites and deletes are permanent. You lose the ability to recover from accidental deletion, application bugs, or ransomware. Versioning preserves every object version, enabling point‑in‑time recovery.  
+**Fix:** Add an `aws_s3_bucket_versioning` resource attached to this bucket with `versioning_configuration.status = "Enabled"`.
+
+---
+
+### 2. CKV_AWS_18 – Access logging not enabled
+**What’s missing:** Server access logging is not configured.  
+**Why it matters:** Access logs provide an audit trail of who accessed what and when. They are essential for security investigations, compliance, and detecting unauthorised access. Without them, you have no record of requests made to the bucket.  
+**Fix:** Create a target bucket for logs (or use an existing one) and attach an `aws_s3_bucket_logging` resource to this bucket, specifying the target bucket and a log prefix.
+
+---
+
+### 3. CKV2_AWS_6 – Public access block not attached
+**What’s missing:** No public access block configuration is applied.  
+**Why it matters:** By default, S3 buckets and objects can be made public through bucket policies or ACLs. The public access block overrides any such grants, ensuring the bucket and its objects are never publicly accessible – a critical guardrail against data leaks.  
+**Fix:** Add an `aws_s3_bucket_public_access_block` resource that sets all four block options (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`) to `true`.
+
+---
+
+### 4. CKV_AWS_145 – Default encryption not using KMS
+**What’s missing:** The bucket has no default encryption configuration, so objects are stored unencrypted or with AES‑256 (SSE‑S3) at most.  
+**Why it matters:** KMS‑managed keys (SSE‑KMS) provide better control, auditing, and separation of duties. You can define key policies, rotate keys, and track usage via CloudTrail. The policy specifically requires KMS encryption by default.  
+**Fix:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource that sets the default rule to `aws:kms` and references a KMS key ARN (either a customer‑managed key or the `aws/s3` managed key). For example, you can use `aws_kms_key` to create a dedicated key.
+
+---
+
+### 5. CKV2_AWS_61 – No lifecycle configuration
+**What’s missing:** The bucket has no lifecycle rules.  
+**Why it matters:** Lifecycle policies automate data management – transitioning objects to cheaper storage tiers or expiring them after a defined period. This reduces cost, helps meet data retention policies, and prevents accumulation of stale data that could become a security or compliance liability.  
+**Fix:** Add an `aws_s3_bucket_lifecycle_configuration` resource with rules appropriate to your data (e.g., transition to STANDARD_IA after 30 days, expire after 365 days). The exact rules depend on your use case, but the scanner requires at least one lifecycle rule to be present.
+
+---
+
+### 6. CKV2_AWS_62 – Event notifications not enabled
+**What’s missing:** The bucket does not send event notifications (e.g., to SNS, SQS, or Lambda) for object‑level operations.  
+**Why it matters:** Event notifications enable real‑time monitoring and automated response to bucket activity – for example, triggering malware scans on upload, alerting on sensitive data placement, or integrating with SIEM systems. Without them, you lose visibility into object‑level changes.  
+**Fix:** Add an `aws_s3_bucket_notification` resource that defines at least one notification destination (SNS topic, SQS queue, or Lambda function) for events like `s3:ObjectCreated:*` or `s3:ObjectRemoved:*`.
+
+---
+
+### 7. CKV_AWS_144 – Cross‑region replication not enabled
+**What’s missing:** The bucket is not configured to replicate objects to a bucket in another AWS region.  
+**Why it matters:** Cross‑region replication (CRR) provides geographic redundancy for disaster recovery and compliance. If the primary region experiences an outage, data remains available in the replica region. It also helps meet regulatory requirements for data durability.  
+**Fix:** Create a destination bucket in a different region, enable versioning on both buckets, and add an `aws_s3_bucket_replication_configuration` resource that defines a replication rule. The source bucket must have versioning enabled (see finding 1) and an IAM role with appropriate permissions.
+
+---
+
+### Summary of required changes
+Your current Terraform only declares the bucket. To pass all checks, you need to add the following resources (and possibly a target bucket for logging/replication):
+
+- `aws_s3_bucket_versioning`
+- `aws_s3_bucket_logging` (with a target bucket)
+- `aws_s3_bucket_public_access_block`
+- `aws_s3_bucket_server_side_encryption_configuration` (with KMS)
+- `aws_s3_bucket_lifecycle_configuration`
+- `aws_s3_bucket_notification`
+- `aws_s3_bucket_replication_configuration` (with a destination bucket in another region)
+
+Each of these is a separate resource that references the bucket ID. The exact values (lifecycle rules, notification targets, KMS key, replication destination) will depend on your organisation’s policies, but the scanner requires that the configurations exist and are enabled.

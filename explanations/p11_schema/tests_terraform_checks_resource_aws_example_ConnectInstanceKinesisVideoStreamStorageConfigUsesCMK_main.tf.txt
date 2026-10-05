@@ -1,0 +1,34 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_270",
+      "resource": "aws_connect_instance_storage_config.pass",
+      "evidence": [
+        "resource \"aws_connect_instance_storage_config\" \"pass\" {\n  instance_id   = aws_connect_instance.pass.id\n  resource_type = \"MEDIA_STREAMS\"\n\n  storage_config {\n    kinesis_video_stream_config {\n      prefix                 = \"pass\"\n      retention_period_hours = 3\n\n      encryption_config {\n        encryption_type = \"KMS\"\n        key_id          = aws_kms_key.test.arn\n      }\n    }\n    storage_type = \"KINESIS_VIDEO_STREAM\"\n  }\n}"
+      ],
+      "risk": "The resource does not define an S3 storage configuration with a customer-managed key, potentially leaving S3 data unencrypted or encrypted with an AWS-managed key without customer control.",
+      "remediation": "Add an s3_config block inside the storage_config block, including an encryption_config with encryption_type set to KMS and key_id set to a customer-managed KMS key ARN.",
+      "confidence": "medium"
+    },
+    {
+      "check_id": "CKV_AWS_270",
+      "resource": "aws_connect_instance_storage_config.fail",
+      "evidence": [
+        "resource \"aws_connect_instance_storage_config\" \"fail\" {\n  instance_id   = aws_connect_instance.fail.id\n  resource_type = \"MEDIA_STREAMS\"\n\n  storage_config {\n    kinesis_video_stream_config {\n      prefix                 = \"fail\"\n      retention_period_hours = 3\n\n      encryption_config {\n        encryption_type = \"KMS\"\n      }\n    }\n    storage_type = \"KINESIS_VIDEO_STREAM\"\n  }\n}"
+      ],
+      "risk": "The resource does not define an S3 storage configuration with a customer-managed key, potentially leaving S3 data unencrypted or encrypted with an AWS-managed key without customer control.",
+      "remediation": "Add an s3_config block inside the storage_config block, including an encryption_config with encryption_type set to KMS and key_id set to a customer-managed KMS key ARN.",
+      "confidence": "medium"
+    },
+    {
+      "check_id": "CKV_AWS_269",
+      "resource": "aws_connect_instance_storage_config.fail",
+      "evidence": [
+        "encryption_config {\n        encryption_type = \"KMS\"\n      }"
+      ],
+      "risk": "The Kinesis Video Stream storage configuration uses KMS encryption but does not specify a customer-managed key, resulting in the use of an AWS-managed key which provides less control over key rotation and access policies.",
+      "remediation": "Add the key_id attribute to the encryption_config block, referencing the ARN of a customer-managed KMS key.",
+      "confidence": "high"
+    }
+  ]
+}

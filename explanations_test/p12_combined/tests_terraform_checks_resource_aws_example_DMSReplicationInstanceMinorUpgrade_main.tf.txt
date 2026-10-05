@@ -1,0 +1,37 @@
+Here is the remediation briefing for the flagged findings, ordered as they appear in the scanner output.
+
+---
+
+### 1. CKV_AWS_89 on `aws_dms_replication_instance.pass`
+**Resource:** `aws_dms_replication_instance.pass` (lines 1–9)  
+**Trigger:** Line 5 – `publicly_accessible = true`  
+**What is wrong:** The replication instance is configured to be publicly accessible.  
+**Why it matters:** A publicly accessible DMS instance exposes the database migration service to the internet, increasing the attack surface. The check requires that this setting be disabled.  
+**Change needed:** Set `publicly_accessible` to `false` in the `aws_dms_replication_instance.pass` block. No other modifications are required for this check.
+
+---
+
+### 2. CKV_AWS_212 on `aws_dms_replication_instance.fail`
+**Resource:** `aws_dms_replication_instance.fail` (lines 12–20)  
+**Trigger:** Line 18 – `# kms_key_arn = ""` (the `kms_key_arn` argument is commented out and no value is provided)  
+**What is wrong:** The EBS volume attached to the DMS instance is not configured to use a customer-managed KMS key for encryption.  
+**Why it matters:** Without a customer-managed key, the volume may use the default AWS-managed key, which does not meet the policy requirement for CMK-based encryption. The check specifically demands a customer-managed key.  
+**Change needed:** Uncomment the `kms_key_arn` line and supply the ARN of a valid KMS customer-managed key (e.g., `aws_kms_key.example.arn` as used in the `pass` resource, or another appropriate key). Ensure the key exists and the instance has permissions to use it.
+
+---
+
+### 3. CKV_AWS_89 on `aws_dms_replication_instance.fail`
+**Resource:** `aws_dms_replication_instance.fail` (lines 12–20)  
+**Trigger:** Line 15 – `publicly_accessible = true`  
+**What is wrong:** The replication instance is publicly accessible.  
+**Why it matters:** Same rationale as the first finding – public accessibility unnecessarily exposes the DMS instance to the internet.  
+**Change needed:** Change `publicly_accessible` to `false` in the `aws_dms_replication_instance.fail` block.
+
+---
+
+### 4. CKV_AWS_222 on `aws_dms_replication_instance.fail`
+**Resource:** `aws_dms_replication_instance.fail` (lines 12–20)  
+**Trigger:** Line 19 – `auto_minor_version_upgrade = false`  
+**What is wrong:** Automatic minor version upgrades are disabled.  
+**Why it matters:** Without auto minor upgrades, the instance may miss important security patches and bug fixes released by AWS, leaving it vulnerable. The check requires this feature to be enabled.  
+**Change needed:** Set `auto_minor_version_upgrade` to `true` in the `aws_dms_replication_instance.fail` block.

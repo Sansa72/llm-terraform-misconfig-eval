@@ -1,0 +1,20 @@
+Explanation of findings:
+
+The scanner evaluated the Terraform configuration for EBS volume encryption requirements.
+
+1. **aws_ebs_volume.enabled (lines 3-8)**  
+   - Failing check: CKV_AWS_189 (EBS Volume encrypted by KMS using a customer managed Key)  
+   - Reason: The volume has `encrypted = True` (line 7) but no `kms_key_id` argument. CKV_AWS_189 requires encryption with a customer managed key (CMK); without `kms_key_id`, the volume uses the default AWS managed key, which does not satisfy the rule.  
+   - Remediation: Add a `kms_key_id` argument set to the ARN of a customer managed KMS key. Insert `kms_key_id = "<CMK ARN>"` after line 7, before the closing brace.
+
+2. **aws_ebs_volume.default (lines 12-15)**  
+   - Failing checks: CKV_AWS_3 (EBS securely encrypted) and CKV_AWS_189  
+   - Reason: The volume does not set the `encrypted` attribute, so it defaults to `false` (unencrypted). This violates CKV_AWS_3. Because it is unencrypted, it also fails CKV_AWS_189.  
+   - Remediation: Add `encrypted = true` and a `kms_key_id` argument referencing a customer managed CMK. Insert both after line 14, before the closing brace.
+
+3. **aws_ebs_volume.disabled (lines 17-22)**  
+   - Failing checks: CKV_AWS_3 and CKV_AWS_189  
+   - Reason: The volume explicitly sets `encrypted = False` (line 21), disabling encryption. This violates CKV_AWS_3 and consequently CKV_AWS_189.  
+   - Remediation: Change line 21 from `encrypted = False` to `encrypted = True`, and add a `kms_key_id` argument set to a customer managed CMK ARN after line 21.
+
+All changes require a customer managed KMS key to exist in the account; the `kms_key_id` value must be the ARN of that key.

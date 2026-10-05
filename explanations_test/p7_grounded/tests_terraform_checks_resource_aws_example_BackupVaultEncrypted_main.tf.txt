@@ -1,0 +1,27 @@
+The scanner flagged resource `aws_backup_vault.backup` (lines 2–4) with check **CKV_AWS_166**, which requires that an AWS Backup vault be encrypted at rest using a customer-managed KMS key (CMK).
+
+**What the file shows**  
+The resource definition on lines 2–4 is:
+
+```terraform
+resource "aws_backup_vault" "backup" {
+  name = "example_backup_vault"
+}
+```
+
+There is no `kms_key_arn` argument. The file itself provides a passing example (`aws_backup_vault.backup_with_kms_key`) that includes `kms_key_arn = aws_kms_key.example.arn`, demonstrating the expected configuration.
+
+**Why this is a finding**  
+Without an explicit `kms_key_arn`, the backup vault will use the default AWS-managed key for encryption. The check CKV_AWS_166 specifically requires a customer-managed KMS key (CMK) to be supplied. The absence of the argument is the direct trigger for the finding.
+
+**What to do**  
+Add a `kms_key_arn` argument to the `aws_backup_vault.backup` resource, pointing to a valid KMS key ARN. For example:
+
+```terraform
+resource "aws_backup_vault" "backup" {
+  name        = "example_backup_vault"
+  kms_key_arn = aws_kms_key.example.arn
+}
+```
+
+No other misconfiguration is indicated by the scanner or the provided code.

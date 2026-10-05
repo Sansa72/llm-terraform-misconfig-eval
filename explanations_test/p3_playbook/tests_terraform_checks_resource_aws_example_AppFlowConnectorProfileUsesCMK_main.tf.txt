@@ -1,0 +1,13 @@
+**Remediation briefing: CKV_AWS_264 on `aws_appflow_connector_profile.fail`**
+
+- **Check and resource**  
+  CKV_AWS_264 on `aws_appflow_connector_profile.fail` (lines 1–23).
+
+- **What is wrong**  
+  The connector profile does not specify a customer-managed KMS key (CMK) for encryption; it relies on the default AWS-managed key.
+
+- **Why it matters**  
+  Without a CMK, you have no control over key rotation, access policies, or audit logging for the data that AppFlow processes and stores. Using a CMK gives you ownership of encryption, enables compliance with regulatory requirements, and allows you to revoke access independently of the service.
+
+- **How to fix it**  
+  Add a `kms_arn` argument to the `aws_appflow_connector_profile` resource named `"fail"`, set to the ARN of a KMS key that you manage. The `"pass"` resource in the same file already demonstrates the correct pattern: `kms_arn = aws_kms_key.example.arn`. Replicate that approach in the `"fail"` resource, ensuring the key exists and its policy allows AppFlow to use it. No other changes are required, and there are no interactions with other resources that would break if you add the key reference.

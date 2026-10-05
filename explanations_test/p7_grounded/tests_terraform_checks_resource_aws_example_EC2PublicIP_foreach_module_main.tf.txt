@@ -1,0 +1,63 @@
+The scanner flagged several misconfigurations in the `aws_instance` resource defined on lines 12–18. This resource uses `for_each` to create two instances: `poc_modules_foreach["key1"]` and `poc_modules_foreach["key2"]`. The findings are based on the configuration present in that block. Below is a breakdown of each check, what it requires, and why the current code triggers it.
+
+---
+
+### CKV_AWS_79 – Instance Metadata Service Version 1 is enabled
+- **Triggered on**: both `key1` and `key2` instances (lines 12–18)
+- **What the check expects**: `metadata_options` block with `http_tokens = "required"` to enforce IMDSv2 and disable IMDSv1.
+- **What the file shows**: The `aws_instance` resource (lines 12–18) does **not** contain a `metadata_options` block. Because the default is to allow IMDSv1, the check fails.
+- **Evidence**: The entire resource block (lines 12–18) lacks any `metadata_options` configuration.
+
+---
+
+### CKV_AWS_88 – EC2 instance should not have a public IP
+- **Triggered on**: `poc_modules_foreach["key1"]` only (lines 12–18)
+- **What the check expects**: `associate_public_ip_address` should be `false` or not set (default is `false` for non‑default subnets, but the check flags explicit `true`).
+- **What the file shows**: Line 17 sets `associate_public_ip_address = each.value`. The variable `var.public` (lines 5–9) has `"key1": true`. Therefore, the instance with key `"key1"` will receive a public IP. The instance with key `"key2"` (`each.value = false`) is not flagged.
+- **Evidence**: Line 17 (`associate_public_ip_address = each.value`) combined with the variable default on line 7 (`"key1": true`).
+
+---
+
+### CKV_AWS_126 – Detailed monitoring not enabled
+- **Triggered on**: both `key1` and `key2` instances (lines 12–18)
+- **What the check expects**: `monitoring = true` to enable detailed (1‑minute) CloudWatch monitoring.
+- **What the file shows**: The resource block does **not** include a `monitoring` argument. The default is `false`, so detailed monitoring is disabled.
+- **Evidence**: Lines 12–18 contain no `monitoring` attribute.
+
+---
+
+### CKV_AWS_135 – EBS optimization not enabled
+- **Triggered on**: both `key1` and `key2` instances (lines 12–18)
+- **What the check expects**: `ebs_optimized = true` (or, for certain instance types, it is enabled by default, but `t3.micro` does not default to `true`).
+- **What the file shows**: The resource does **not** set `ebs_optimized`. The default is `false`.
+- **Evidence**: Lines 12–18 lack an `ebs_optimized` argument.
+
+---
+
+### CKV_AWS_8 – EBS volumes are not encrypted
+- **Triggered on**: both `key1` and `key2` instances (lines 12–18)
+- **What the check expects**: All EBS volumes attached to the instance should be encrypted. This is typically enforced by setting `encrypted = true` inside a `root_block_device` and/or `ebs_block_device` block, or by ensuring the AMI itself enforces encryption.
+- **What the file shows**: The resource block does **not** define any `root_block_device` or `ebs_block_device` with encryption settings. The default is unencrypted.
+- **Evidence**: Lines 12–18 contain no block device configuration with `encrypted = true`.
+
+---
+
+### CKV2_AWS_41 – No IAM role attached to EC2 instance
+- **Triggered on**: both `key1` and `key2` instances (lines 12–18)
+- **What the check expects**: An IAM instance profile should be attached via `iam_instance_profile`.
+- **What the file shows**: The resource block does **not** include an `iam_instance_profile` argument. No IAM role is associated with the instances.
+- **Evidence**: Lines 12–18 contain no `iam_instance_profile` attribute.
+
+---
+
+### Summary of required changes
+All findings stem from the same resource block (lines 12–18). To resolve them, you would need to add the missing arguments inside that `aws_instance` resource, for example:
+
+- Add `metadata_options { http_tokens = "required" }` to disable IMDSv1.
+- For the `"key1"` instance, either set `associate_public_ip_address = false` or adjust the variable so that no instance gets a public IP (unless a public IP is explicitly required; the check flags it as a risk).
+- Add `monitoring = true`.
+- Add `ebs_optimized = true` (note: `t3.micro` supports EBS optimization, but verify if it meets your requirements).
+- Add `root_block_device { encrypted = true }` (and similarly for any additional `ebs_block_device` blocks) to encrypt EBS volumes.
+- Attach an IAM instance profile via `iam_instance_profile = aws_iam_instance_profile.example.name` (or similar).
+
+The resource block currently spans lines 12–18; all missing arguments would be placed within that block.

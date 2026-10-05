@@ -1,0 +1,11 @@
+**Check: CKV_AWS_333 – Ensure ECS services do not have public IP addresses assigned to them automatically**  
+**Resource:** `aws_ecs_service.fail` (lines 31–46)
+
+**What is wrong:**  
+The `network_configuration` block for this ECS service sets `assign_public_ip = true`, which causes the service’s tasks to receive a public IP address automatically.
+
+**Why it matters:**  
+Automatically assigning public IPs to ECS tasks exposes them directly to the internet. This increases the attack surface, bypasses network-layer security controls (like NAT gateways or egress firewalls), and can lead to unintended data exposure or compromise. Unless the task is intentionally internet-facing (e.g., a public-facing load balancer), tasks should reside in private subnets and route outbound traffic through controlled channels.
+
+**Remediation change:**  
+In the `network_configuration` block of the `aws_ecs_service.fail` resource, change the value of `assign_public_ip` from `true` to `false`. This will ensure that tasks launched by this service receive only private IP addresses. The subnets provided in the `subnets` argument must be private subnets with a route to a NAT gateway or similar egress solution for any required internet access. No other resources in the supplied file are affected by this change.

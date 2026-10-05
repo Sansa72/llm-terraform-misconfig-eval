@@ -1,0 +1,22 @@
+**1. Misconfiguration**
+Both S3 buckets (`aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`) are defined with only their `bucket` name arguments. They are missing supplementary security and operational configurations required by Checkov: public access blocks, default KMS encryption, versioning, access logging, lifecycle policies, cross-region replication, and event notifications. Additionally, the `aws.usw1` provider block has an empty region string (`region = ""`), which will cause deployment failures for `bucket`.
+
+**2. Security Risk / Blast Radius**
+* **Public Exposure:** Without a public access block, bucket ACLs or policies could inadvertently grant public read/write access, leading to data exfiltration or tampering.
+* **Data Loss & Availability:** Missing versioning means accidental deletions or overwrites permanently destroy data. Missing cross-region replication means a regional outage in `usw2` (or `usw1` for `bucket`) results in total data unavailability or loss.
+* **Insufficient Encryption:** Without KMS encryption, data relies on default S3 encryption, preventing the use of strict cryptographic key policies and key-level access auditing.
+* **No Auditability:** Without access logging, unauthorized access, data exfiltration, or permission changes cannot be traced.
+* **Cost & Compliance:** Missing lifecycle rules prevent automated data retention and cost tiering; missing event notifications prevent automated processing or alerting on data changes.
+
+**3. How to Fix**
+You must add the corresponding Terraform resources to configure the missing properties for both buckets, and fix the `usw1` provider region.
+
+* Fix the provider: `region = "us-west-1"` (or appropriate valid region string).
+* Add the following resources for each bucket, linking them via the `bucket` attribute:
+  * `aws_s3_bucket_public_access_block` (set all block rules to `true`).
+  * `aws_s3_bucket_server_side_encryption_configuration` (pointing to an `aws_kms_key`).
+  * `aws_s3_bucket_versioning` (`versioning_configuration { status = "Enabled" }`).
+  * `aws_s3_bucket_logging` (pointing to a separate designated logging bucket).
+  * `aws_s3_bucket_lifecycle_configuration` (with rules for expiration and storage tier transitions).
+  * `aws_s3_bucket_replication_configuration` (pointing to a destination bucket in a different region, requiring versioning and an IAM role).
+  * `aws_s3_bucket_notification` (defining a target like an SNS topic, SQS queue, or Lambda function for event processing).

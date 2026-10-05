@@ -1,0 +1,15 @@
+The scanner flagged a misconfiguration in the `aws_athena_workgroup` resource named `"fail"` (lines 18–29) because it does not define encryption for query results.
+
+**Check ID:** CKV_AWS_159  
+**Finding:** Ensure that Athena Workgroup is encrypted  
+**Affected resource:** `aws_athena_workgroup.fail` (lines 18–29)
+
+**Evidence from the file:**
+
+- The `aws_athena_workgroup.pass` resource (lines 1–16) includes an `encryption_configuration` block inside `result_configuration` (lines 10–13), which satisfies the encryption requirement.
+- The `aws_athena_workgroup.fail` resource (lines 18–29) has a `result_configuration` block (lines 24–26) that **lacks** an `encryption_configuration` block entirely. This is the direct cause of the finding.
+
+**What needs to change:**  
+Add an `encryption_configuration` block inside the `result_configuration` block of the `"fail"` workgroup (around line 25). At minimum, you must specify the `encryption_option` (e.g., `"SSE_S3"` or `"SSE_KMS"`). If you choose `"SSE_KMS"`, you also need to provide a `kms_key_arn`. The `"pass"` resource shows a working example.
+
+The scanner does not provide additional context about the environment or threat model; it only flags the absence of the encryption block. The fix is to add that block to align with the check.

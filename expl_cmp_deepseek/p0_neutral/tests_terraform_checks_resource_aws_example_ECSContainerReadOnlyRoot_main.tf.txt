@@ -1,0 +1,40 @@
+## What Checkov found
+
+| Resource | Finding | Detail in file |
+|---|---|---|
+| `aws_ecs_task_definition.fail` | CKV_AWS_336 | The second container omits `readonlyRootFilesystem`, so it defaults to writable (`false`). |
+| `aws_ecs_task_definition.fail2` | CKV_AWS_336 | Both containers explicitly set `readonlyRootFilesystem = false`. |
+| `aws_ecs_task_definition.fail2` | CKV_AWS_334 | The second container sets `privilege = true`. |
+| `aws_ecs_task_definition.fail2` | CKV_AWS_335 | The second container sets `pidMode = "host"`. |
+
+## Why it matters
+
+- **Writable root filesystem (`readonlyRootFilesystem = false`)**  
+  If a container process is compromised, the attacker can write to the container’s root filesystem: modify application binaries, configuration, or drop persistent malware inside the container. This weakens immutability and complicates incident response.
+
+- **Privileged container (`privilege = true`)**  
+  A privileged container receives elevated Linux capabilities and access to host devices. If exploited, it has a much higher chance of breaking out to the underlying EC2 host, affecting other containers on the same instance or the host itself.
+
+- **Host PID namespace (`pidMode = "host"`)**  
+  Sharing the host’s PID namespace lets the container see and signal processes belonging to the host or other containers. This breaks process isolation and can allow a compromised container to interfere with co-located workloads.
+
+> Note: `pidMode` inside `container_definitions` is not an ECS container property. The task-level property is `pid_mode`. The `privilege` key is also non-standard; AWS expects `privileged`. Checkov still flags the intent, but these keys should be removed or corrected.
+
+## How to fix safely
+
+1. **Make root filesystems read-only**  
+   For every container, set:
+   ```hcl
+   readonlyRootFilesystem = true
+   ```
+   If the application needs to write to specific paths, mount a dedicated volume at that path instead of making the whole root filesystem writable.
+
+2. **Run containers as non-privileged**  
+   Remove `privilege = true` from the second container in `fail2`. If you need the correct AWS field, set:
+   ```hcl
+   privileged = false
+   ```
+   Or simply omit it. Also consider running the container as a non-root user.
+
+3. **Do not share the host PID namespace**  
+   Remove `pidMode = "host"` from the container definition. Do not set task-level `pid_mode = "host"`. The default ECS behavior is a task-level PID namespace, which provides isolation.

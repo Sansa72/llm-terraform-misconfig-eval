@@ -1,0 +1,25 @@
+**Remediation Briefing: aws_codebuild_project.fail**
+
+---
+
+### 1. CKV_AWS_314 – CodeBuild project missing logging configuration
+
+**What is wrong:** The `aws_codebuild_project.fail` resource does not include a `logs_config` block, so build logs are not being captured.
+
+**Why it matters:** Without logging, you lose visibility into build execution, errors, and output. This hinders troubleshooting, auditing, and security monitoring. Logging is essential for detecting malicious activity, failed builds, and compliance reporting.
+
+**Change required:** Add a `logs_config` block to the `fail` resource. Inside it, define at least one log destination—either `cloudwatch_logs` (with a log group and optional stream name) or `s3_logs` (with a bucket and optional prefix). The existing `pass` resource demonstrates a minimal `s3_logs` configuration; you can follow that pattern or use CloudWatch Logs for easier integration with monitoring and alerting. Ensure the chosen S3 bucket or CloudWatch log group exists and the project’s service role has permissions to write to it.
+
+---
+
+### 2. CKV_AWS_147 – CodeBuild project not encrypted with a customer-managed CMK
+
+**What is wrong:** The `aws_codebuild_project.fail` resource does not specify an `encryption_key`, so it defaults to an AWS-managed key for artifact encryption.
+
+**Why it matters:** Using a customer-managed KMS key (CMK) gives you control over key rotation, access policies, and audit trails. AWS-managed keys do not allow fine-grained permissions or key revocation, which can be a compliance and security risk if you need to restrict access to build artifacts or enforce encryption standards.
+
+**Change required:** Add the `encryption_key` attribute to the `fail` resource, referencing the ARN of a KMS CMK. The `pass` resource shows the correct syntax: `encryption_key = aws_kms_key.scanner_key.id` (or `.arn`). You can use an existing KMS key or create a new one. Ensure the CodeBuild service role has `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions on that key.
+
+---
+
+**Interaction note:** The two fixes are independent; adding a logging configuration does not affect the encryption key setting, and vice versa. Both can be applied simultaneously without conflict.

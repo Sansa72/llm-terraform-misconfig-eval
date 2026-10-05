@@ -1,0 +1,10 @@
+The scanner identified the following misconfigurations in the provided Terraform file:
+
+- **CKV_AWS_28 (point-in-time recovery)** fails on all four DynamoDB table resources: `cmk` (lines 3‑20), `default` (lines 24‑36), `encrypted_false` (lines 38‑54), and `encrypted_no_cmk` (lines 56‑72). None of these resource blocks contain a `point_in_time_recovery` configuration. To remediate, add a `point_in_time_recovery { enabled = true }` block inside each of these resource blocks.
+
+- **CKV_AWS_119 (encryption with a customer managed CMK)** fails on three resources: `default` (lines 24‑36), `encrypted_false` (lines 38‑54), and `encrypted_no_cmk` (lines 56‑72). The `cmk` resource (lines 3‑20) passes because it has `server_side_encryption` enabled with a `kms_key_arn` specified.
+  - `default`: no `server_side_encryption` block is present. Add a `server_side_encryption` block with `enabled = true` and a `kms_key_arn` pointing to a customer managed key.
+  - `encrypted_false`: the `server_side_encryption` block has `enabled = false`. Change `enabled` to `true` and add a `kms_key_arn`.
+  - `encrypted_no_cmk`: `server_side_encryption` is enabled but no `kms_key_arn` is provided, so it uses an AWS owned key. Add a `kms_key_arn` to the existing `server_side_encryption` block.
+
+- **CKV2_AWS_16 (Auto Scaling)** fails on all four tables. The tables use `PROVISIONED` billing mode, but the file contains no auto scaling configuration. To satisfy this check, you must add auto scaling configuration to the file for these tables. The current file does not include any auto scaling resources.

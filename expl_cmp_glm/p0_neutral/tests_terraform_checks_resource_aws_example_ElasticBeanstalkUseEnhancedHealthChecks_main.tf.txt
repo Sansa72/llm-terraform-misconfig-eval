@@ -1,0 +1,43 @@
+### 1. What the misconfiguration is
+Checkov flagged two distinct issues across the Elastic Beanstalk environments:
+*   **Missing Managed Platform Updates (CKV_AWS_340):** All environments (`fail` through `pass2`) lack configuration in the `aws:elasticbeanstalk:managedactions` namespace to enable automatic platform updates. 
+*   **Basic/Disabled Health Reporting (CKV_AWS_312):** Environments `fail`, `fail2`, `fail3`, and `fail4` either omit the `aws:elasticbeanstalk:healthreporting:system` setting block, set `SystemType` to `"basic"`, or explicitly disable `HealthStreamingEnabled`. (Environments `pass` and `pass2` correctly fix this second issue but still fail the platform update check).
+
+### 2. Why it matters
+*   **Unpatched Platforms:** Without managed platform updates, the underlying OS and Elastic Beanstalk platform versions are not automatically patched. This leaves the environments running outdated software with known vulnerabilities, expanding the attack surface.
+*   **Limited Visibility:** Basic or disabled health reporting prevents the environment from streaming detailed metrics and health states. This delays the detection of degraded instances or application failures, increasing the blast radius of an incident by prolonging the time it takes to respond.
+
+### 3. How to fix it safely
+Add the required `setting` blocks to each `aws_elastic_beanstalk_environment` resource.
+
+**To enable managed platform updates (CKV_AWS_340):**
+Add the managed actions namespace. Adjust `PreferredStartTime` and `UpdateLevel` (e.g., `minor` or `patch`) based on your availability requirements.
+```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "PreferredStartTime"
+    value     = "MON:00:00"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions.platformupdate"
+    name      = "UpdateLevel"
+    value     = "minor"
+  }
+```
+
+**To enable enhanced health reporting (CKV_AWS_312):**
+Ensure the `aws:elasticbeanstalk:healthreporting:system` setting is present and `HealthStreamingEnabled` is `true`, as already correctly implemented in the `pass` and `pass2` resources.
+```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "HealthStreamingEnabled"
+    value     = "true"
+  }
+```
+
+Before applying, run `terraform plan` to ensure these configuration changes are applied as in-place updates and do not trigger unnecessary environment rebuilds. Ensure the Elastic Beanstalk instance profile has the necessary IAM permissions to publish health metrics if upgrading from a basic configuration.

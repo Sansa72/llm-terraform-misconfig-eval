@@ -1,0 +1,30 @@
+The scanner flagged a security misconfiguration in the `aws_appflow_connector_profile.fail` resource (lines 1–23). The check **CKV_AWS_264** requires that an AppFlow connector profile be encrypted using a Customer Master Key (CMK) rather than relying on the default AWS-managed key.
+
+**What the finding says**  
+The check ID is `CKV_AWS_264`, and the description is “Ensure App Flow connector profile uses CMK”. The resource `aws_appflow_connector_profile.fail` does not specify a CMK.
+
+**Evidence in the file**  
+- The `fail` resource (lines 1–23) defines a connector profile with `name`, `connector_type`, `connection_mode`, and a `connector_profile_config` block.  
+- There is **no** `kms_arn` argument anywhere in this resource block.  
+- By contrast, the `pass` resource (lines 25–48) includes the line `kms_arn = aws_kms_key.example.arn` (line 29), which satisfies the check.
+
+**Why it matters**  
+Without an explicit `kms_arn`, the connector profile will use the default AWS-managed key for encryption. The check enforces the use of a customer-managed CMK to give you control over key rotation, access policies, and auditing. The finding is based solely on the absence of the `kms_arn` argument in the `fail` resource.
+
+**What to do**  
+Add a `kms_arn` argument to the `aws_appflow_connector_profile.fail` resource, referencing a valid KMS key ARN, just as shown in the `pass` resource. For example:
+
+```hcl
+resource "aws_appflow_connector_profile" "fail" {
+  name            = "example_profile"
+  connector_type  = "Redshift"
+  connection_mode = "Public"
+  kms_arn         = aws_kms_key.example.arn   # <-- add this line
+
+  connector_profile_config {
+    # ... existing configuration ...
+  }
+}
+```
+
+No other changes are indicated by the finding.

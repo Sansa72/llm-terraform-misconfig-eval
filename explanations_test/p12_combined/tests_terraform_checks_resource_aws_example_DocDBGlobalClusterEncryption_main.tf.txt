@@ -1,0 +1,35 @@
+**Remediation briefing: CKV_AWS_292 – DocDB Global Cluster encryption at rest**
+
+The scanner found two instances of the same check failing. Both are addressed below.
+
+---
+
+### 1. CKV_AWS_292 on `aws_docdb_global_cluster.fail`
+
+**Resource and location**  
+`aws_docdb_global_cluster.fail` – lines 1–5 of the provided Terraform file.
+
+**What triggers the finding**  
+The resource block (lines 1–5) does not include the `storage_encrypted` argument. The check notes that the default for this argument is unencrypted, so omitting it leaves the cluster unencrypted at rest.
+
+**Why it matters**  
+The check requires that the DocDB global cluster be encrypted at rest. An unencrypted cluster means data stored on the underlying storage volumes is not protected by encryption, which is a security misconfiguration.
+
+**Required change**  
+Add `storage_encrypted = true` inside the `aws_docdb_global_cluster "fail"` block. This will explicitly enable encryption at rest and satisfy the check.
+
+---
+
+### 2. CKV_AWS_292 on `aws_docdb_global_cluster.fail2`
+
+**Resource and location**  
+`aws_docdb_global_cluster.fail2` – lines 7–12 of the provided Terraform file.
+
+**What triggers the finding**  
+Line 11 sets `storage_encrypted = false`, which explicitly disables encryption at rest. The check flags any configuration where encryption is not enabled.
+
+**Why it matters**  
+Same as above: the cluster is not encrypted at rest, violating the check’s requirement.
+
+**Required change**  
+Change the value of `storage_encrypted` from `false` to `true` on line 11. No other modifications are needed.

@@ -1,0 +1,46 @@
+The scanner flagged multiple security issues in the two `aws_iam_policy_document` data sources. Here’s a breakdown of each finding, tied directly to the resource and lines in your file.
+
+---
+
+### Resource: `data.aws_iam_policy_document.pass` (lines 3–17)
+
+**Check CKV_AWS_111 – “Ensure IAM policies does not allow write access without constraints”**  
+- **Triggered by:** The `actions` list on lines 8–10 includes `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, and `dynamodb:CreateTable`. These are write-level actions (they create resources).  
+- **Why it’s flagged:** The `resources` field on line 12 is set to `"*"`, meaning the write actions are allowed on **all** resources without any constraint (e.g., a specific Lambda function ARN or DynamoDB table ARN). The check requires that write permissions be scoped to specific resources.
+
+**Check CKV_AWS_356 – “Ensure no IAM policies documents allow ‘*’ as a statement's resource for restrictable actions”**  
+- **Triggered by:** The same statement (lines 6–14) uses `resources = ["*"]` (line 12).  
+- **Why it’s flagged:** The actions in this statement (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) are “restrictable” – they can be limited to specific resources. Using a wildcard `"*"` as the resource for such actions violates this check.
+
+---
+
+### Resource: `data.aws_iam_policy_document.fail` (lines 21–37)
+
+This resource triggers all of the above **plus** two additional checks, because of the extra actions it includes.
+
+**Checks CKV_AWS_111 and CKV_AWS_356**  
+- **Triggered by:** The same pattern as above. The statement (lines 24–36) contains write actions (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`, `dynamodb:PutItem`) and uses `resources = ["*"]` (line 34).  
+- **Why:** Write actions without resource constraints (CKV_AWS_111) and a wildcard resource for restrictable actions (CKV_AWS_356).
+
+**Check CKV_AWS_109 – “Ensure IAM policies does not allow permissions management / resource exposure without constraints”**  
+- **Triggered by:** The action `iam:PassRole` on line 27.  
+- **Why:** `iam:PassRole` is a permissions management action. The policy allows it on `"*"` (line 34), meaning it can be used to pass any role to any service. The check flags this because it grants broad ability to manage permissions without resource constraints.
+
+**Check CKV_AWS_110 – “Ensure IAM policies does not allow privilege escalation”**  
+- **Triggered by:** The combination of `iam:PassRole` with `resources = ["*"]` (lines 27 and 34).  
+- **Why:** `iam:PassRole` with a wildcard resource is a well-known privilege escalation vector. It allows an identity to pass any existing role to a service (e.g., Lambda), potentially gaining the permissions of that role. The check identifies this as a direct privilege escalation risk.
+
+---
+
+### Summary of exact lines and resources
+
+| Check ID | Resource | Lines | Triggering evidence |
+|----------|----------|-------|---------------------|
+| CKV_AWS_111 | `aws_iam_policy_document.pass` | 8–12 | Write actions (`Create*`) with `resources = ["*"]` |
+| CKV_AWS_356 | `aws_iam_policy_document.pass` | 8–12 | Restrictable actions with `resources = ["*"]` |
+| CKV_AWS_111 | `aws_iam_policy_document.fail` | 26–34 | Write actions (`Create*`, `PutItem`) with `resources = ["*"]` |
+| CKV_AWS_356 | `aws_iam_policy_document.fail` | 26–34 | Restrictable actions with `resources = ["*"]` |
+| CKV_AWS_109 | `aws_iam_policy_document.fail` | 27, 34 | `iam:PassRole` (permissions management) with `resources = ["*"]` |
+| CKV_AWS_110 | `aws_iam_policy_document.fail` | 27, 34 | `iam:PassRole` with `resources = ["*"]` flagged as privilege escalation |
+
+The file names the first resource “pass,” but the scanner still flags it because the policy content violates the checks. The second resource, “fail,” adds `iam:PassRole` and `dynamodb:PutItem`, which introduce the additional findings.

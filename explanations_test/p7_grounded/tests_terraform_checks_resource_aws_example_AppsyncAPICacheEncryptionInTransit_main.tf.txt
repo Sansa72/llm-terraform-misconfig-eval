@@ -1,0 +1,75 @@
+The scanner flagged two resources (`aws_appsync_api_cache.fail` and `aws_appsync_api_cache.fail2`) for missing encryption settings. Here’s what the findings mean and where the issues are in the file.
+
+---
+
+### Findings summary
+
+- **CKV_AWS_215** – “Ensure Appsync API Cache is encrypted in transit”  
+  Triggered on:
+  - `aws_appsync_api_cache.fail` (lines 10–17)
+  - `aws_appsync_api_cache.fail2` (lines 19–24)
+
+- **CKV_AWS_214** – “Ensure Appsync API Cache is encrypted at rest”  
+  Triggered on:
+  - `aws_appsync_api_cache.fail` (lines 10–17)
+  - `aws_appsync_api_cache.fail2` (lines 19–24)
+
+---
+
+### What the scanner found
+
+**Resource `aws_appsync_api_cache.fail` (lines 10–17)**  
+```terraform
+resource "aws_appsync_api_cache" "fail" {
+  api_id                     = aws_appsync_graphql_api.default.id
+  transit_encryption_enabled = false          # <-- line 13
+  at_rest_encryption_enabled = false           # <-- line 14
+  ttl                        = 60
+  type                       = "SMALL"
+  api_caching_behavior       = "FULL_REQUEST_CACHING"
+}
+```
+- `transit_encryption_enabled` is explicitly set to `false` (line 13).  
+- `at_rest_encryption_enabled` is explicitly set to `false` (line 14).  
+
+Both settings disable encryption, which violates the checks.
+
+**Resource `aws_appsync_api_cache.fail2` (lines 19–24)**  
+```terraform
+resource "aws_appsync_api_cache" "fail2" {
+  api_id               = aws_appsync_graphql_api.default.id
+  ttl                  = 60
+  type                 = "SMALL"
+  api_caching_behavior = "FULL_REQUEST_CACHING"
+}
+```
+- The attributes `transit_encryption_enabled` and `at_rest_encryption_enabled` are **not present**.  
+- The scanner treats missing encryption settings as non‑compliant (the default for these attributes is `false` in the provider, so encryption is effectively disabled).
+
+---
+
+### How to fix
+
+The resource `aws_appsync_api_cache.pass` (lines 1–8) shows the correct configuration:
+
+```terraform
+resource "aws_appsync_api_cache" "pass" {
+  api_id                     = aws_appsync_graphql_api.default.id
+  transit_encryption_enabled = true
+  at_rest_encryption_enabled = true
+  ttl                        = 60
+  type                       = "SMALL"
+  api_caching_behavior       = "FULL_REQUEST_CACHING"
+}
+```
+
+To resolve both findings, set `transit_encryption_enabled = true` and `at_rest_encryption_enabled = true` in the `fail` and `fail2` resources. For `fail2`, you must add these two arguments explicitly.
+
+---
+
+### What the checks enforce
+
+- **CKV_AWS_215** – requires `transit_encryption_enabled = true` so that data moving between the AppSync API and the cache is encrypted.  
+- **CKV_AWS_214** – requires `at_rest_encryption_enabled = true` so that cached data stored on disk is encrypted.
+
+The scanner flagged the resources where these settings are either `false` or absent. No other misconfigurations are reported in the provided file.

@@ -1,0 +1,45 @@
+**Remediation briefing: ECS task definition security misconfigurations**
+
+Below are the failing checks in the order reported, with a clear explanation of the problem, its security impact, and the required change. All changes are described in prose; no ready-to-use Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_336 on `aws_ecs_task_definition.fail` (lines 45–87)
+**Check:** Ensure ECS containers are limited to read-only access to root filesystems  
+**What is wrong:** The second container definition (`"second"`) does not set `readonlyRootFilesystem`, so it defaults to `false` (writable root filesystem).  
+**Why it matters:** A writable root filesystem allows a compromised container to modify binaries, persist malware, or tamper with the runtime environment, increasing the risk of lateral movement and host compromise.  
+**Change needed:** In the `container_definitions` JSON for `aws_ecs_task_definition.fail`, add the attribute `"readonlyRootFilesystem": true` to the second container object (the one with `"name": "second"`). The first container already has this set correctly; no change is required there.
+
+---
+
+### 2. CKV_AWS_336 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Check:** Ensure ECS containers are limited to read-only access to root filesystems  
+**What is wrong:** Both container definitions in this task explicitly set `"readonlyRootFilesystem": false`.  
+**Why it matters:** Same as above – writable root filesystems expose the containers to unnecessary risk if an attacker gains a foothold.  
+**Change needed:** Change the value of `"readonlyRootFilesystem"` from `false` to `true` in **both** container objects (`"first"` and `"second"`) inside the `container_definitions` of `aws_ecs_task_definition.fail2`. If the application requires write access to specific paths, mount a dedicated volume at those paths rather than making the entire root filesystem writable.
+
+---
+
+### 3. CKV_AWS_334 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Check:** Ensure ECS containers should run as non-privileged  
+**What is wrong:** The second container (`"second"`) has `"privilege": true`, granting it elevated Linux capabilities and access to host devices.  
+**Why it matters:** Privileged mode effectively gives the container root-level access to the underlying host. A compromised privileged container can escape to the host, access sensitive resources, and compromise the entire node.  
+**Change needed:** Remove the `"privilege": true` line entirely from the second container definition (or explicitly set it to `false`). The default is `false`, so deletion is sufficient. If the container genuinely needs specific capabilities, add a `linuxParameters` block with only the required capabilities instead of using full privileged mode.
+
+---
+
+### 4. CKV_AWS_335 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Check:** Ensure ECS task definitions should not share the host's process namespace  
+**What is wrong:** The second container definition includes `"pidMode": "host"`, which (if interpreted) would allow the container to see and interact with processes on the host.  
+**Why it matters:** Sharing the host’s PID namespace breaks process isolation. An attacker who compromises the container could inspect or signal host processes, aiding privilege escalation or information gathering.  
+**Change needed:** Delete the `"pidMode": "host"` line from the second container object. The task definition itself does not set a top-level `pid_mode` argument, so the task will use the default private PID namespace. If the task genuinely requires host PID namespace access, the top-level `pid_mode` argument would need to be set to `"host"` – but that would still fail this check, so the requirement should be challenged.
+
+---
+
+### Interactions between fixes
+All three findings on `aws_ecs_task_definition.fail2` affect the same `container_definitions` JSON block. The changes are independent and can be applied simultaneously:
+- Set `readonlyRootFilesystem` to `true` for both containers.
+- Remove `privilege` from the second container.
+- Remove `pidMode` from the second container.
+
+No conflicts arise from applying these together. The `aws_ecs_task_definition.fail` resource only requires the `readonlyRootFilesystem` fix on its second container; it is not affected by the other checks.

@@ -1,0 +1,8 @@
+**Check: CKV_AWS_221 – Ensure CodeArtifact domain is encrypted with a customer-managed KMS key**  
+**Resource: `aws_codeartifact_domain.fail` (lines 1–7)**  
+
+**What is wrong:** The `encryption_key` argument is commented out, so the domain will be encrypted with an AWS-owned key by default instead of a customer-managed CMK.  
+
+**Why it matters:** Using an AWS-owned key means you have no control over key rotation, access policies, or audit logging. Many compliance frameworks require data to be encrypted with keys that you manage, so that you can prove and enforce data protection controls.  
+
+**Change needed:** Uncomment the `encryption_key` line and provide the ARN of a valid customer-managed KMS key. The `pass` resource in the same file already demonstrates the correct pattern: `encryption_key = aws_kms_key.example.arn`. You can reuse that same key reference (or any other CMK ARN) in the failing resource. No other resources are affected by this change.

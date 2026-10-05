@@ -1,0 +1,15 @@
+### 1. What the misconfiguration is
+Checkov identified three distinct issues across the two `aws_dms_replication_instance` resources:
+*   **Public Accessibility (CKV_AWS_89):** Both resources have `publicly_accessible = true`.
+*   **Disabled Auto Upgrades (CKV_AWS_222):** Both resources have `auto_minor_version_upgrade` commented out, which defaults to `false`, preventing automatic minor engine updates and patches.
+*   **Missing CMK Encryption (CKV_AWS_212):** The `aws_dms_replication_instance.fail` resource has `kms_key_arn` commented out, meaning its EBS volumes are not encrypted with a Customer Managed Key.
+
+### 2. Why it matters (security risk / blast radius)
+*   **Public Accessibility:** Exposing a DMS replication instance to the internet expands the attack surface. If replication database credentials are leaked or a vulnerability exists in the DMS engine, an attacker can directly reach the instance from the public internet. 
+*   **Disabled Auto Upgrades:** Without minor version upgrades, the DMS engine will not automatically receive vendor security patches, leaving known vulnerabilities unpatched over time.
+*   **Missing CMK:** Without a Customer Managed Key, you lose administrative control over the cryptographic keys protecting your replication data at rest. This restricts your ability to enforce custom key rotation policies, apply granular IAM access conditions, and generate CloudTrail audit logs for key usage specific to this data.
+
+### 3. How to fix it safely
+*   **Set `publicly_accessible = false`** on both resources. Ensure the instance is deployed in private subnets and that VPC security groups/route tables are configured to allow the necessary private connectivity to your source and target databases.
+*   **Set `auto_minor_version_upgrade = true`** (uncomment it) on both resources to enable automatic application of minor security patches.
+*   **Define a `kms_key_arn`** on the `aws_dms_replication_instance.fail` resource. You can safely reference the same CMK used in the other resource (e.g., `aws_kms_key.example.arn`) to ensure the EBS volumes are encrypted with a key you control.

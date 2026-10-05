@@ -1,0 +1,48 @@
+The Terraform configuration defines two `aws_api_gateway_stage` resources, both of which are missing several security and operational best practices. The scanner flagged the following issues:
+
+- **X-Ray tracing** (`CKV_AWS_73`): Neither stage has tracing enabled, preventing end-to-end visibility into requests.
+- **Access logging** (`CKV_AWS_76`): Neither stage is configured to send logs to CloudWatch, making it difficult to monitor and troubleshoot API activity.
+- **Client certificate authentication** (`CKV2_AWS_51`): Neither stage requires client certificates for backend authentication, weakening transport security.
+- **Appropriate logging level** (`CKV2_AWS_4`): Neither stage defines a logging level (e.g., `ERROR`, `INFO`), which is needed to control the verbosity of execution logs.
+- **WAF protection** (`CKV2_AWS_29`): Neither stage is associated with a WAF Web ACL, leaving the API exposed to common web attacks.
+- **Caching** (`CKV_AWS_120`): The `fail` stage does not have caching enabled, which can improve performance and reduce backend load. (The `pass` stage already has `cache_cluster_enabled = true`.)
+
+To remediate, update the Terraform configuration as follows:
+
+1. **Enable X-Ray tracing** by setting `xray_tracing_enabled = true`.
+2. **Enable access logging** by adding an `access_log_settings` block with a destination ARN and log format.
+3. **Enable client certificate** by providing a `client_certificate_id` (from an `aws_api_gateway_client_certificate` resource).
+4. **Set a logging level** using the `logging_level` argument (e.g., `"INFO"`, `"ERROR"`).
+5. **Associate a WAF Web ACL** by creating an `aws_wafregional_web_acl_association` or `aws_wafv2_web_acl_association` resource that links the stage’s ARN to a WAF Web ACL.
+6. **Enable caching** on the `fail` stage by setting `cache_cluster_enabled = true` and `cache_cluster_size` (e.g., `"0.5"`).
+
+Example snippet for a fully configured stage:
+
+```hcl
+resource "aws_api_gateway_stage" "example" {
+  rest_api_id   = aws_api_gateway_rest_api.example.id
+  deployment_id = aws_api_gateway_deployment.example.id
+  stage_name    = "example"
+
+  cache_cluster_enabled = true
+  cache_cluster_size   = "0.5"
+
+  xray_tracing_enabled = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format         = "$context.identity.sourceIp - - [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId"
+  }
+
+  client_certificate_id = aws_api_gateway_client_certificate.example.id
+
+  logging_level = "INFO"
+}
+
+resource "aws_wafregional_web_acl_association" "example" {
+  resource_arn = aws_api_gateway_stage.example.arn
+  web_acl_id   = aws_wafregional_web_acl.example.id
+}
+```
+
+Apply these settings to both stages to resolve all flagged misconfigurations.

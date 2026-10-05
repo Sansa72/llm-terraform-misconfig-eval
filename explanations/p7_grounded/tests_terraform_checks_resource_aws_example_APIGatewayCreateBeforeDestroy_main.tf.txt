@@ -1,0 +1,15 @@
+The scanner flagged check **CKV_AWS_237** against two resources, indicating that the API Gateway REST APIs are not configured to create a replacement before destroying the original. This can lead to downtime during updates that force resource recreation.
+
+**Evidence from the file:**
+
+- **Resource `aws_api_gateway_rest_api.fail` (lines 1–7):**  
+  The `lifecycle` block is entirely commented out (lines 4–6). No `create_before_destroy` setting is active, so the default behaviour (destroy then create) applies. This triggers the finding.
+
+- **Resource `aws_api_gateway_rest_api.fail2` (lines 9–15):**  
+  A `lifecycle` block is present, but `create_before_destroy` is explicitly set to `false` (line 12). This also violates the check.
+
+- **Resource `aws_api_gateway_rest_api.pass` (lines 17–23):**  
+  This resource has `create_before_destroy = true` (line 21) and was **not** flagged, confirming the expected configuration.
+
+**What to fix:**  
+For both `fail` and `fail2`, set `create_before_destroy = true` inside a `lifecycle` block. For `fail`, uncomment the block and ensure the value is `true`. For `fail2`, change `false` to `true`. This ensures that when the API Gateway must be replaced, the new instance is created and verified before the old one is destroyed, avoiding unnecessary downtime.

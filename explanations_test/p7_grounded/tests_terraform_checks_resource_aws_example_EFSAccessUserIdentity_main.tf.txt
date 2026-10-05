@@ -1,0 +1,32 @@
+The scanner flagged a misconfiguration in the Terraform file you provided.
+
+**Check ID:** CKV_AWS_330  
+**Resource:** `aws_efs_access_point.fail` (lines 1–6)  
+**Finding:** EFS access points should enforce a user identity.
+
+**What the evidence shows:**
+
+- The resource `aws_efs_access_point.fail` (lines 1–6) defines an EFS access point but does **not** include a `posix_user` block.  
+- The same file contains a second resource, `aws_efs_access_point.pass` (lines 14–21), which is identical except that it **does** include a `posix_user` block (lines 18–20) with `uid` and `gid` set to `0`.  
+- The scanner flagged only the first resource because it lacks this block.
+
+**Why it matters:**  
+Without a `posix_user` block, the access point does not enforce a specific user identity for NFS clients that mount the file system. The check requires that every access point explicitly defines the POSIX user and group that will own all files and directories created through that access point.
+
+**How to fix it:**  
+Add a `posix_user` block inside the `root_directory` block (or at the same level as `root_directory`) of `aws_efs_access_point.fail`, specifying the desired `uid` and `gid`. The `pass` resource in the same file (lines 18–20) shows the exact syntax you need. For example:
+
+```hcl
+resource "aws_efs_access_point" "fail" {
+  file_system_id = aws_efs_file_system.sharedstore.id
+  root_directory {
+    path = var.root_path
+  }
+  posix_user {
+    uid = 0   # or the appropriate user ID
+    gid = 0   # or the appropriate group ID
+  }
+}
+```
+
+No other changes are required based on the evidence provided.

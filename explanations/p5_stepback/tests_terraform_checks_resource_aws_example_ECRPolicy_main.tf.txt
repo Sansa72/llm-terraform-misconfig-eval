@@ -1,0 +1,82 @@
+**CKV_AWS_163 – ECR image scanning on push is not enabled**
+
+*Principle*: Automatically scanning container images for known vulnerabilities when they are pushed to a repository prevents insecure images from being deployed. Without it, you lose a critical early detection mechanism.
+
+*Violation*: The following repositories are missing the `image_scanning_configuration` block with `scan_on_push = true`:
+- `aws_ecr_repository.public` (line 5)
+- `aws_ecr_repository.private` (line 40)
+- `aws_ecr_repository.empty` (line 78)
+- `aws_ecr_repository.conditional_ok` (line 87)
+- `aws_ecr_repository.conditional_bad` (line 127)
+
+*Fix*: Add the following block to each of the above resources:
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+
+---
+
+**CKV_AWS_136 – ECR repository is not encrypted with KMS**
+
+*Principle*: Using AWS KMS to encrypt ECR repositories gives you control over key rotation, access policies, and audit trails. Default encryption uses an AWS-managed key, which lacks these customer-controlled security benefits.
+
+*Violation*: The same five repositories do not specify an `encryption_configuration` block. They rely on the default AES-256 encryption with an AWS-owned key, not a KMS key.
+
+*Fix*: Add the following block to each repository (replace the key ARN with your own KMS key if you have one, or use `encryption_type = "KMS"` to use the default AWS-managed KMS key for ECR):
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  # kms_key = "arn:aws:kms:eu-west-2:123456789012:key/your-key-id"  # optional
+}
+```
+
+---
+
+**CKV_AWS_51 – ECR image tags are mutable**
+
+*Principle*: Immutable tags prevent overwriting an existing tag with a different image. This ensures that a tag always points to the same image digest, protecting against accidental or malicious image replacement.
+
+*Violation*: The same five repositories do not set `image_tag_mutability`. The default is `MUTABLE`, allowing tags to be overwritten.
+
+*Fix*: Add the following attribute to each repository:
+```hcl
+image_tag_mutability = "IMMUTABLE"
+```
+
+---
+
+**CKV_AWS_32 – ECR policy is set to public**
+
+*Principle*: An ECR repository policy with `Principal: "*"` and no effective condition grants access to anyone on the internet. This can lead to unauthorized image pulls, pushes, or even deletion. Access must be restricted to specific AWS principals or secured with a condition that verifies the caller’s identity.
+
+*Violation*:
+
+1. **`aws_ecr_repository_policy.fail` (line 9)** – The policy uses `"Principal": "*"` with no condition, allowing any anonymous or authenticated AWS user to perform all listed actions (including `PutImage`, `DeleteRepository`, etc.). This is fully public.
+
+2. **`aws_ecr_repository_policy.fail_conditional` (line 131)** – The policy uses `"Principal": "*"` with a condition `"ForAllValues:StringEquals": {"aws:username": "pull-user-1"}`. The `aws:username` condition key is not a secure way to restrict access because the username can be set arbitrarily by the caller. This condition does not prevent public access; the policy is still effectively public.
+
+*Fix*:
+
+- For `aws_ecr_repository_policy.fail`: Replace `"Principal": "*"` with a specific principal, e.g., an AWS account ARN or IAM user/role ARN. Example:
+  ```hcl
+  policy = jsonencode({
+    Version = "2008-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::123456789012:root" }
+      Action    = [ ... ]
+    }]
+  })
+  ```
+
+- For `aws_ecr_repository_policy.fail_conditional`: Change the condition to use a key that validates the caller’s identity, such as `aws:PrincipalOrgID`, `aws:PrincipalAccount`, or `aws:SourceArn`. For example:
+  ```hcl
+  Condition = {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-12345678"
+    }
+  }
+  ```
+  Alternatively, remove `Principal: "*"` and specify the allowed IAM user ARN directly in the `Principal` block.

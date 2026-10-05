@@ -1,0 +1,32 @@
+The scanner flagged check **CKV_AWS_219** on the resource **`aws_codepipeline.fail`** (lines 77–143). This check requires that the pipeline’s artifact store be encrypted using a KMS customer-managed key (CMK).
+
+**What the file shows:**
+
+- The `aws_codepipeline.pass` resource (lines 1–76) includes an `encryption_key` block inside its `artifact_store` block (lines 9–11):
+  ```terraform
+  encryption_key {
+    id   = data.aws_kms_alias.s3kmskey.arn
+    type = "KMS"
+  }
+  ```
+- The `aws_codepipeline.fail` resource (lines 77–143) has an `artifact_store` block (lines 81–84) that **does not** contain an `encryption_key` block. This is the exact location that triggers the finding.
+
+**Why it’s flagged:**  
+The `artifact_store` in the `fail` resource is missing the `encryption_key` configuration. Without it, the pipeline’s artifact store (S3 bucket) will use default S3 encryption, which may not be a KMS CMK. The check requires an explicit KMS CMK to be set.
+
+**How to fix it:**  
+Add an `encryption_key` block inside the `artifact_store` block of the `aws_codepipeline.fail` resource, matching the pattern used in the `pass` resource. For example:
+
+```terraform
+artifact_store {
+  location = aws_s3_bucket.codepipeline_bucket.bucket
+  type     = "S3"
+
+  encryption_key {
+    id   = data.aws_kms_alias.s3kmskey.arn
+    type = "KMS"
+  }
+}
+```
+
+This will satisfy the check by ensuring the pipeline’s artifact store uses a KMS CMK.

@@ -1,0 +1,18 @@
+### 1. What the misconfiguration is
+In the `aws_batch_job_definition.fail` resource, the `container_properties` JSON explicitly sets `"privileged": true`. Checkov flags this because AWS Batch job definitions should not grant containers elevated, host-level privileges unless absolutely necessary.
+
+### 2. Why it matters (risk / blast radius)
+Running a container in privileged mode bypasses standard container isolation mechanisms, granting the container extensive access to the underlying host's devices, kernel capabilities, and system resources. Because this job also mounts the host's `/tmp` directory (`readOnly: false`), a compromised or malfunctioning container could read, modify, or destroy host files and potentially interfere with other jobs running on the same underlying compute instance.
+
+### 3. How to fix it safely
+Remove the `privileged` key entirely, or set it to `false` in the `container_properties` of the `aws_batch_job_definition.fail` resource. 
+
+Change:
+```json
+"privileged": true,
+```
+To:
+```json
+"privileged": false,
+```
+This matches the secure configuration already used in the `pass`, `pass2`, and `pass3` resources in your file. AWS Batch defaults to `privileged: false` if the key is omitted.

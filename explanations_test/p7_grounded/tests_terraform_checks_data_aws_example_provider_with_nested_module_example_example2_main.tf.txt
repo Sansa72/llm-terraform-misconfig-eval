@@ -1,0 +1,24 @@
+The scanner flagged seven missing security controls on the S3 bucket defined at lines 9–12. The resource block contains only a `bucket` name and a `provider` alias; none of the required configurations are present.
+
+**Resource:** `aws_s3_bucket.bucket` (lines 9–12)  
+**File evidence:**
+```terraform
+resource "aws_s3_bucket" "bucket"{
+  bucket = "module-bucket"
+  provider = "aws.aaa"
+}
+```
+
+**Findings and what’s missing:**
+
+| Check ID | Requirement | Evidence in file |
+|----------|-------------|------------------|
+| **CKV2_AWS_61** | Lifecycle configuration | No `lifecycle_rule` block or `lifecycle` configuration exists. |
+| **CKV_AWS_18** | Access logging enabled | No `logging` block or `aws_s3_bucket_logging` resource is attached. |
+| **CKV2_AWS_62** | Event notifications enabled | No `notification` block or `aws_s3_bucket_notification` resource is present. |
+| **CKV2_AWS_6** | Public Access block | No `aws_s3_bucket_public_access_block` resource or inline `block_public_*` settings are defined. |
+| **CKV_AWS_145** | Default encryption with KMS | No `server_side_encryption_configuration` block with `aws:kms` is set. |
+| **CKV_AWS_144** | Cross-region replication enabled | No `replication_configuration` block or `aws_s3_bucket_replication_configuration` resource exists. |
+| **CKV_AWS_21** | Versioning enabled | No `versioning` block is present. |
+
+All seven checks were raised against the same resource because the Terraform file provides only the minimal bucket declaration. To resolve these, the engineer must add the corresponding configuration blocks or companion resources to the `aws_s3_bucket.bucket` definition.

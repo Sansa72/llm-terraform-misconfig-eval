@@ -1,0 +1,17 @@
+The scanner flagged the `aws_efs_file_system.fail` resource because it enables encryption but does not specify a customer managed KMS key. By default, EFS uses an AWS managed key (`aws/elasticfilesystem`) when `encrypted = true` is set without a `kms_key_id`. While the data is still encrypted at rest, the AWS managed key does not give you control over key rotation, access policies, or usage auditing. A customer managed key (CMK) allows you to define fine‑grained key policies, enforce least privilege, enable automatic rotation, and gain full visibility via CloudTrail logs of every encrypt/decrypt operation.
+
+To fix this, provide a CMK ARN in the `kms_key_id` argument. For example, create a KMS key resource and reference it:
+
+```hcl
+resource "aws_kms_key" "efs" {
+  description             = "CMK for EFS encryption"
+  enable_key_rotation     = true
+}
+
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.efs.arn
+}
+```
+
+This change ensures the file system is encrypted with a key you own and manage, satisfying the check while maintaining the original intent of encryption at rest.

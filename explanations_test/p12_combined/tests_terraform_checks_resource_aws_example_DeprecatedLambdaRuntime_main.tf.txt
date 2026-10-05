@@ -1,0 +1,98 @@
+**Remediation Briefing**
+
+Below are the failing checks, grouped by resource in the order they appear in the scanner output. For each, the exact trigger, the problem, and the required change are described.
+
+---
+
+### 1. CKV_AWS_50 on `aws_lambda_function.pass` (lines 1‑11)
+- **What is wrong:** The resource does not contain a `tracing_config` block, so AWS X‑Ray tracing is not enabled.  
+- **Why it matters:** The check requires active tracing to provide end‑to‑end visibility into function invocations and performance.  
+- **Remediation:** Add a `tracing_config` block inside the resource and set `mode = "Active"`.
+
+### 2. CKV_AWS_117 on `aws_lambda_function.pass` (lines 1‑11)
+- **What is wrong:** No `vpc_config` block is present; the function is not attached to a VPC.  
+- **Why it matters:** Without VPC configuration, the function cannot access resources inside a VPC and lacks network‑level isolation.  
+- **Remediation:** Add a `vpc_config` block specifying at least `subnet_ids` and `security_group_ids` that place the function in the desired VPC.
+
+### 3. CKV_AWS_116 on `aws_lambda_function.pass` (lines 1‑11)
+- **What is wrong:** The resource has no `dead_letter_config` block, so no Dead Letter Queue is configured.  
+- **Why it matters:** A DLQ captures failed asynchronous invocations, preventing event loss and aiding debugging.  
+- **Remediation:** Add a `dead_letter_config` block with `target_arn` pointing to an SQS queue or SNS topic.
+
+### 4. CKV_AWS_272 on `aws_lambda_function.pass` (lines 1‑11)
+- **What is wrong:** The resource does not include a `code_signing_config_arn` argument.  
+- **Why it matters:** Code signing ensures that only trusted, unaltered code is deployed to the function.  
+- **Remediation:** Provide a `code_signing_config_arn` that references a valid `aws_lambda_code_signing_config` resource.
+
+### 5. CKV_AWS_115 on `aws_lambda_function.pass` (lines 1‑11)
+- **What is wrong:** The `reserved_concurrent_executions` argument is missing.  
+- **Why it matters:** Without a function‑level concurrency limit, a single function can consume all available account concurrency, potentially impacting other functions.  
+- **Remediation:** Set `reserved_concurrent_executions` to an appropriate integer value (e.g., 5) to cap concurrent invocations.
+
+---
+
+### 6. CKV_AWS_50 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** Same as item 1 – no `tracing_config` block exists.  
+- **Why it matters:** Same as item 1.  
+- **Remediation:** Add `tracing_config { mode = "Active" }`.
+
+### 7. CKV_AWS_117 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** Same as item 2 – no `vpc_config` block.  
+- **Why it matters:** Same as item 2.  
+- **Remediation:** Add a `vpc_config` block with valid subnet and security group IDs.
+
+### 8. CKV_AWS_116 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** Same as item 3 – no `dead_letter_config` block.  
+- **Why it matters:** Same as item 3.  
+- **Remediation:** Add a `dead_letter_config` block with a `target_arn`.
+
+### 9. CKV_AWS_272 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** Same as item 4 – `code_signing_config_arn` is not set.  
+- **Why it matters:** Same as item 4.  
+- **Remediation:** Set `code_signing_config_arn` to a valid code‑signing configuration ARN.
+
+### 10. CKV_AWS_363 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** The `runtime` is set to `"python3.6"`, which is deprecated.  
+- **Why it matters:** Deprecated runtimes no longer receive security patches or support, exposing the function to unpatched vulnerabilities.  
+- **Remediation:** Change the `runtime` argument to a currently supported Python version, such as `"python3.9"` or later.
+
+### 11. CKV_AWS_115 on `aws_lambda_function.fail` (lines 13‑23)
+- **What is wrong:** Same as item 5 – `reserved_concurrent_executions` is missing.  
+- **Why it matters:** Same as item 5.  
+- **Remediation:** Add `reserved_concurrent_executions` with a suitable limit.
+
+---
+
+### 12. CKV_AWS_50 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** Same as item 1 – no `tracing_config` block.  
+- **Why it matters:** Same as item 1.  
+- **Remediation:** Add `tracing_config { mode = "Active" }`.
+
+### 13. CKV_AWS_117 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** Same as item 2 – no `vpc_config` block.  
+- **Why it matters:** Same as item 2.  
+- **Remediation:** Add a `vpc_config` block with valid subnet and security group IDs.
+
+### 14. CKV_AWS_116 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** Same as item 3 – no `dead_letter_config` block.  
+- **Why it matters:** Same as item 3.  
+- **Remediation:** Add a `dead_letter_config` block with a `target_arn`.
+
+### 15. CKV_AWS_272 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** Same as item 4 – `code_signing_config_arn` is not set.  
+- **Why it matters:** Same as item 4.  
+- **Remediation:** Set `code_signing_config_arn` to a valid code‑signing configuration ARN.
+
+### 16. CKV_AWS_363 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** The `runtime` is set to `"dotnetcore3.1"`, which is deprecated.  
+- **Why it matters:** Deprecated runtimes lack ongoing security updates, increasing risk.  
+- **Remediation:** Change the `runtime` argument to a supported .NET version, such as `"dotnet6"`.
+
+### 17. CKV_AWS_115 on `aws_lambda_function.fail2` (lines 25‑35)
+- **What is wrong:** Same as item 5 – `reserved_concurrent_executions` is missing.  
+- **Why it matters:** Same as item 5.  
+- **Remediation:** Add `reserved_concurrent_executions` with a suitable limit.
+
+---
+
+All three resources share the same missing security configurations; the two `fail` resources additionally use deprecated runtimes. Apply the described changes to each resource to resolve the findings.

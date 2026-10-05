@@ -1,0 +1,117 @@
+## Remediation Briefing
+
+Below are the failing checks in the order they appear in the scanner output. For each, the resource, the triggering lines, the problem, and the required change are described.
+
+---
+
+### 1. CKV_AWS_79 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18. The resource block contains no `metadata_options` block, so the instance defaults to allowing IMDSv1.
+
+**What is wrong and why it matters:** The instance does not enforce Instance Metadata Service Version 2 (IMDSv2), leaving IMDSv1 enabled. IMDSv1 is susceptible to Server-Side Request Forgery (SSRF) attacks that can expose sensitive instance metadata.
+
+**Change needed:** Add a `metadata_options` block inside the resource with `http_tokens = "required"` to disable IMDSv1 and require IMDSv2.
+
+---
+
+### 2. CKV_AWS_88 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18, specifically line 17: `associate_public_ip_address = each.value`. For the instance with key `"key1"`, `each.value` is `true` (as defined in the variable default on line 8).
+
+**What is wrong and why it matters:** The instance with key `"key1"` is configured to receive a public IP address, exposing it directly to the internet. This increases the attack surface and the risk of unauthorized access.
+
+**Change needed:** Ensure `associate_public_ip_address` is `false` for the instance with key `"key1"`. This can be done by changing the variable default so that `"key1"` maps to `false`, or by overriding the value for that instance.
+
+---
+
+### 3. CKV_AWS_126 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18. The resource block does not set `monitoring = true`.
+
+**What is wrong and why it matters:** Detailed monitoring is not enabled. Without it, CloudWatch metrics are collected at 5-minute intervals instead of 1-minute intervals, reducing the granularity of operational monitoring and incident response.
+
+**Change needed:** Add `monitoring = true` to the resource block.
+
+---
+
+### 4. CKV_AWS_135 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18. The resource block does not set `ebs_optimized = true`.
+
+**What is wrong and why it matters:** EBS optimization is not enabled. Without it, EBS I/O traffic shares the instance’s network bandwidth, which can degrade storage performance and impact data throughput.
+
+**Change needed:** Add `ebs_optimized = true` to the resource block. (Note: `t3.micro` supports EBS optimization.)
+
+---
+
+### 5. CKV_AWS_8 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18. The resource block contains no `root_block_device` or `ebs_block_device` with `encrypted = true`.
+
+**What is wrong and why it matters:** The instance’s EBS volumes are not explicitly encrypted. Unencrypted volumes expose data at rest to potential compromise if the volume is accessed outside the instance.
+
+**Change needed:** Add a `root_block_device` block with `encrypted = true` to encrypt the root volume. If additional EBS volumes are attached, ensure they are also encrypted.
+
+---
+
+### 6. CKV_AWS_79 on `aws_instance.poc_modules_foreach["key2"]` (lines 12–18)
+
+**Triggering lines:** 12–18. Same absence of `metadata_options` as for `"key1"`.
+
+**What is wrong and why it matters:** IMDSv1 is enabled by default, making the instance vulnerable to SSRF-based metadata exposure.
+
+**Change needed:** Add `metadata_options { http_tokens = "required" }` to the resource block.
+
+---
+
+### 7. CKV_AWS_126 on `aws_instance.poc_modules_foreach["key2"]` (lines 12–18)
+
+**Triggering lines:** 12–18. No `monitoring = true` is set.
+
+**What is wrong and why it matters:** Detailed monitoring is not enabled, limiting CloudWatch metric granularity.
+
+**Change needed:** Add `monitoring = true` to the resource block.
+
+---
+
+### 8. CKV_AWS_135 on `aws_instance.poc_modules_foreach["key2"]` (lines 12–18)
+
+**Triggering lines:** 12–18. No `ebs_optimized = true` is set.
+
+**What is wrong and why it matters:** EBS optimization is not enabled, potentially causing storage performance degradation.
+
+**Change needed:** Add `ebs_optimized = true` to the resource block.
+
+---
+
+### 9. CKV_AWS_8 on `aws_instance.poc_modules_foreach["key2"]` (lines 12–18)
+
+**Triggering lines:** 12–18. No EBS volume encryption is configured.
+
+**What is wrong and why it matters:** EBS volumes are not encrypted, leaving data at rest unprotected.
+
+**Change needed:** Add a `root_block_device` block with `encrypted = true` (and encrypt any additional volumes).
+
+---
+
+### 10. CKV2_AWS_41 on `aws_instance.poc_modules_foreach["key1"]` (lines 12–18)
+
+**Triggering lines:** 12–18. The resource block does not include an `iam_instance_profile` attribute.
+
+**What is wrong and why it matters:** No IAM role is attached to the instance. Without an instance profile, the instance cannot securely access AWS services without long-term credentials, increasing the risk of credential leakage.
+
+**Change needed:** Add an `iam_instance_profile` attribute referencing an existing IAM instance profile that grants the necessary permissions.
+
+---
+
+### 11. CKV2_AWS_41 on `aws_instance.poc_modules_foreach["key2"]` (lines 12–18)
+
+**Triggering lines:** 12–18. Same missing `iam_instance_profile` as for `"key1"`.
+
+**What is wrong and why it matters:** The instance lacks an IAM role, preventing secure, credential-free access to AWS services.
+
+**Change needed:** Add an `iam_instance_profile` attribute referencing an appropriate IAM instance profile.
+
+---
+
+All changes should be applied to the single `aws_instance.poc_modules_foreach` resource block, as it defines both instances. The modifications will affect both `"key1"` and `"key2"` equally, except for the public IP issue which only requires a change for the `"key1"` instance.

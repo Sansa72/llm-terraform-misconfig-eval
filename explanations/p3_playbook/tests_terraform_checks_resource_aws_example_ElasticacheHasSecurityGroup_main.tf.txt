@@ -1,0 +1,36 @@
+**Remediation Briefing**
+
+Below are the four failing checks, addressed in the order they appear. Each entry names the check and resource, states the problem, explains the risk, and describes the required change in plain language.
+
+---
+
+### 1. CKV_AWS_196 on `aws_elasticache_security_group.exists` (lines 1–4)
+**What is wrong:** An `aws_elasticache_security_group` resource is present.  
+**Why it matters:** This resource type is for ElastiCache clusters running in the EC2-Classic network, which is deprecated. Modern ElastiCache deployments use VPC security groups. Continuing to use this resource ties you to a legacy networking model and may prevent migration to VPC.  
+**Change needed:** Remove the entire `aws_elasticache_security_group` resource block. If you need to control access to an ElastiCache cluster, define a VPC security group (like `aws_security_group`) and reference it in the cluster’s `security_group_ids` argument. The removal of this resource will also resolve the next finding.
+
+---
+
+### 2. CKV_AWS_23 on `aws_elasticache_security_group.exists` (lines 1–4)
+**What is wrong:** The security group rule (or the group itself) lacks a description.  
+**Why it matters:** Descriptions make security rules auditable and help teams understand why a particular access was granted, reducing the risk of misconfiguration.  
+**Change needed:** Because the `aws_elasticache_security_group` resource is deprecated and should be deleted (see CKV_AWS_196), this finding will be eliminated automatically when you remove that resource. If you were to keep it (not recommended), note that the resource type does not support a `description` attribute; the check would remain unfixable. The correct path is to delete the resource entirely.
+
+---
+
+### 3. CKV_AWS_23 on `aws_security_group.bar` (lines 6–8)
+**What is wrong:** The security group `bar` has no description.  
+**Why it matters:** Without a description, it is difficult to identify the purpose of the security group, which complicates audits, troubleshooting, and change management.  
+**Change needed:** Add a `description` argument to the `aws_security_group.bar` resource. Provide a meaningful string that explains the group’s intended use (e.g., “Controls access to XYZ application”). If you later add inline ingress or egress rules, each of those must also include a `description`.
+
+---
+
+### 4. CKV2_AWS_5 on `aws_security_group.bar` (lines 6–8)
+**What is wrong:** The security group is not attached to any resource.  
+**Why it matters:** Unattached security groups represent unused configuration that can drift, be forgotten, or be mistakenly attached later without proper review. They clutter the environment and may violate organizational policies that require all security groups to be actively used.  
+**Change needed:** Either attach this security group to a resource (for example, an EC2 instance, RDS database, or load balancer) by referencing it in that resource’s `vpc_security_group_ids` or equivalent argument, or delete the `aws_security_group.bar` resource if it is genuinely not needed. Note that after you remove the deprecated `aws_elasticache_security_group` (the only current reference to `bar`), this security group will become completely orphaned. Therefore, the cleanest approach is to remove both resources unless you have a concrete, defined use for `bar` elsewhere in your configuration.
+
+---
+
+**Interaction summary:**  
+Removing `aws_elasticache_security_group.exists` resolves the first two findings. However, that removal leaves `aws_security_group.bar` with no references, which makes the fourth finding (CKV2_AWS_5) more acute. The engineer should therefore address all four findings together: delete the ElastiCache security group, and then either delete the orphaned security group or attach it to a real resource while adding a description.

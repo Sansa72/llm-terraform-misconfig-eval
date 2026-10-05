@@ -1,0 +1,83 @@
+Below is a remediation briefing for each failing check, in the order they appear in the scanner output. All observations are based solely on the provided Terraform file and the check descriptions.
+
+---
+
+### 1. CKV_AWS_111 on `data.aws_iam_policy_document.pass` (lines 3–17)
+
+**What is wrong**  
+The policy statement (lines 6–16) grants the write actions `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, and `dynamodb:CreateTable` on resource `"*"` without any condition. This allows those write operations to be performed on any resource in the account.
+
+**Why it matters**  
+Unconstrained write access violates the principle of least privilege. An identity with this policy could create Lambda functions or DynamoDB tables in any scope, potentially leading to unintended resource creation, cost, or configuration drift.
+
+**Remediation**  
+Replace the wildcard `"*"` in the `resources` block with the specific ARNs of the Lambda functions and DynamoDB tables that the policy should be allowed to create. Alternatively, add a `condition` block that limits the write actions (for example, by requiring a specific tag or restricting the source VPC). Either change will constrain the write access and satisfy the check.
+
+---
+
+### 2. CKV_AWS_356 on `aws_iam_policy_document.pass` (lines 3–17)
+
+**What is wrong**  
+The policy uses `"*"` as the resource for the actions `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, and `dynamodb:CreateTable`. These are actions that can be restricted to specific resources, yet the policy applies them to all resources.
+
+**Why it matters**  
+Allowing a wildcard resource for actions that support resource-level permissions grants the principal the ability to act on any resource of that type, unnecessarily broadening the policy’s scope.
+
+**Remediation**  
+Replace the wildcard `"*"` with the exact ARNs of the Lambda functions and DynamoDB tables that the policy should target. If the policy must apply to multiple resources, list each ARN explicitly rather than using a wildcard.
+
+---
+
+### 3. CKV_AWS_111 on `aws_iam_policy_document.fail` (lines 21–37)
+
+**What is wrong**  
+The policy statement (lines 24–35) grants the write actions `iam:PassRole`, `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`, and `dynamodb:PutItem` on resource `"*"` without any condition.
+
+**Why it matters**  
+Unconstrained write access to these actions could allow an identity to pass any IAM role, create Lambda functions, or write to any DynamoDB table, leading to privilege escalation, data tampering, or resource sprawl.
+
+**Remediation**  
+Restrict the `resources` field to specific ARNs for each action. For example, limit `iam:PassRole` to the exact role ARNs that are intended to be passed, and limit `lambda:CreateFunction` and `dynamodb:CreateTable`/`PutItem` to the specific function and table ARNs. If a condition is more appropriate, add a `condition` block that constrains the write access (e.g., based on tags or request context).
+
+---
+
+### 4. CKV_AWS_356 on `aws_iam_policy_document.fail` (lines 21–37)
+
+**What is wrong**  
+The policy uses `"*"` as the resource for the actions `iam:PassRole`, `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`, and `dynamodb:PutItem`. All of these actions support resource-level restrictions, yet the policy applies them to all resources.
+
+**Why it matters**  
+A wildcard resource for restrictable actions grants overly broad permissions, allowing the principal to act on any IAM role, Lambda function, or DynamoDB table in the account.
+
+**Remediation**  
+Replace the wildcard `"*"` with the specific ARNs of the roles, functions, and tables that the policy should be able to affect. If multiple resources are needed, enumerate them individually rather than using a wildcard.
+
+---
+
+### 5. CKV_AWS_109 on `aws_iam_policy_document.fail` (lines 21–37)
+
+**What is wrong**  
+The policy includes `iam:PassRole` with a wildcard resource. This action allows passing an IAM role to a service, and with `"*"` as the resource, any role in the account can be passed.
+
+**Why it matters**  
+Unrestricted `iam:PassRole` can lead to permissions management exposure. An attacker who can pass a highly privileged role to a service (e.g., Lambda) could escalate their privileges significantly.
+
+**Remediation**  
+Restrict the `iam:PassRole` action to specific role ARNs that the policy is intended to pass. Alternatively, add a condition that limits which roles can be passed (e.g., based on role tags or a specific path). This ensures the policy cannot be used to pass arbitrary roles.
+
+---
+
+### 6. CKV_AWS_110 on `aws_iam_policy_document.fail` (lines 21–37)
+
+**What is wrong**  
+The policy combines `iam:PassRole` and `lambda:CreateFunction` with a wildcard resource. This combination is a known privilege escalation vector because it allows an identity to create a Lambda function and pass any IAM role to it, potentially granting the function elevated permissions.
+
+**Why it matters**  
+An identity with these permissions could create a Lambda function that assumes an administrative role, then invoke that function to perform unauthorized actions across the account.
+
+**Remediation**  
+Restrict the `iam:PassRole` action to only the specific roles that are safe to pass, and restrict `lambda:CreateFunction` to specific function ARNs or a naming pattern. Additionally, consider adding a condition that limits which roles can be passed to Lambda (e.g., `iam:PassedToService` condition key set to `lambda.amazonaws.com`). This breaks the privilege escalation path by ensuring only intended roles can be used with the Lambda service.
+
+---
+
+All remediations involve replacing the overly broad `resources = ["*"]` with explicit resource ARNs and/or adding conditions that constrain the permissions. The exact ARNs or condition values will depend on the specific resources and use case in your environment.

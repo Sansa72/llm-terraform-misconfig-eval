@@ -1,0 +1,9 @@
+Explanation for aws_elasticache_cluster.fail (lines 13-20):
+
+- CKV_AWS_134: The rule requires automatic backups to be enabled for Redis clusters. The resource sets `snapshot_retention_limit = 0`, which disables automatic backups. This is the direct cause of the finding.
+
+- CKV_AWS_323: The rule requires that clusters do not use the default subnet group. The resource does not include a `subnet_group_name` argument, so it will use the default subnet group. This omission triggers the finding.
+
+To fix:
+- For CKV_AWS_134, change `snapshot_retention_limit = 0` to a positive number (e.g., `5`, as used in the `aws_elasticache_cluster.pass` resource) in the `fail` resource.
+- For CKV_AWS_323, add `subnet_group_name = "mysubnet"` (or another custom subnet group name) to the `fail` resource, similar to the `pass` resource.

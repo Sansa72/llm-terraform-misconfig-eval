@@ -1,0 +1,81 @@
+The scanner flagged two types of misconfigurations across your CloudWatch Log Group resources:
+
+1. **CKV_AWS_158 – Missing KMS encryption** on all four log groups (`pass_365`, `pass_0`, `fail`, `unknown`).  
+2. **CKV_AWS_338 – Insufficient log retention** on the `fail` log group (retention is only 5 days, must be at least 365 days).
+
+Below is a breakdown of each issue, why it matters, and how to fix it.
+
+---
+
+## 1. CKV_AWS_158: Ensure CloudWatch Log Groups are encrypted with KMS
+
+**What it means**  
+By default, CloudWatch Logs encrypt log data at rest using AWS-managed keys. However, many compliance frameworks (e.g., PCI DSS, HIPAA, SOC 2) require the use of **customer-managed KMS keys** (CMKs) so that you control the key policy, rotation, and access. This check fails when a log group does not explicitly specify a KMS key.
+
+**Affected resources**  
+All four log groups: `pass_365`, `pass_0`, `fail`, `unknown`.
+
+**How to fix**  
+Add the `kms_key_id` argument to each `aws_cloudwatch_log_group` resource, referencing a KMS key ARN. You can create a dedicated KMS key for CloudWatch logs or use an existing one.
+
+Example fix for `pass_365` (apply the same pattern to all):
+
+```hcl
+resource "aws_kms_key" "cloudwatch" {
+  description             = "KMS key for CloudWatch Log Groups"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+
+resource "aws_cloudwatch_log_group" "pass_365" {
+  name              = "pass_365"   # optional, but good practice
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.cloudwatch.arn
+}
+```
+
+If you already have a KMS key, reference its ARN directly (e.g., `kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abcd-1234-..."`).
+
+---
+
+## 2. CKV_AWS_338: Ensure CloudWatch log groups retain logs for at least 1 year
+
+**What it means**  
+Log groups should keep log data for a minimum of 365 days to meet security and compliance requirements (e.g., for auditing, incident investigation). The `retention_in_days` setting controls this. A value of `0` means logs never expire, which also satisfies the “at least 1 year” requirement. However, values like `5` (as in the `fail` resource) are too short.
+
+**Affected resource**  
+Only `aws_cloudwatch_log_group.fail` (retention = 5 days).
+
+**How to fix**  
+Set `retention_in_days` to `365` or higher, or to `0` for indefinite retention. For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.cloudwatch.arn   # also fix encryption
+}
+```
+
+---
+
+## Additional considerations
+
+- **`pass_0` resource** – Its retention is `0` (never expire), which passes the retention check, but it still needs a KMS key to pass CKV_AWS_158.
+- **`unknown` resource** – The retention is set via a variable (`var.retention`). The scanner cannot evaluate the variable, so it only flagged the missing KMS key. To be safe, ensure the variable’s value is at least `365` (or `0`) in your variable definitions or defaults, and add the KMS key.
+
+Example variable constraint:
+
+```hcl
+variable "retention" {
+  description = "CloudWatch log retention in days"
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.retention == 0 || var.retention >= 365
+    error_message = "Retention must be 0 (never expire) or at least 365 days."
+  }
+}
+```
+
+After making these changes, run `terraform plan` to verify the updates, then apply. The scanner should no longer report these misconfigurations.

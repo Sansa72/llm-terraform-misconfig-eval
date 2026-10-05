@@ -1,0 +1,145 @@
+The bucket `aws_s3_bucket.bucket` is defined with only a name; all security-relevant features are absent. Below, each finding is explained with the principle it enforces, how the current empty definition violates it, and the specific Terraform change needed.
+
+---
+
+### CKV2_AWS_6 – Ensure that S3 bucket has a Public Access block
+**Principle:** S3 buckets must explicitly block public access to prevent unintended exposure of data to the internet. Without a block, bucket/object ACLs or policies could accidentally grant public read/write.
+
+**Violation:** The resource has no `aws_s3_bucket_public_access_block` attached. This leaves the bucket open to public access if any ACL or policy later permits it.
+
+**Fix:** Add a public access block that denies all public ACLs and policies:
+```hcl
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+---
+
+### CKV_AWS_21 – Ensure all data stored in the S3 bucket have versioning enabled
+**Principle:** Versioning preserves every version of an object, protecting against accidental deletion or overwrites and enabling recovery.
+
+**Violation:** No versioning configuration is present; the bucket uses the default (unversioned).
+
+**Fix:** Enable versioning:
+```hcl
+resource "aws_s3_bucket_versioning" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+```
+
+---
+
+### CKV_AWS_18 – Ensure the S3 bucket has access logging enabled
+**Principle:** Access logs provide an audit trail of all requests to the bucket, essential for security monitoring, forensics, and compliance.
+
+**Violation:** No logging configuration is defined. Without it, there is no record of who accessed what data and when.
+
+**Fix:** Enable server access logging, pointing to a target bucket (which must already exist and have appropriate permissions):
+```hcl
+resource "aws_s3_bucket_logging" "bucket" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = "<logging-bucket-name>"
+  target_prefix = "log/"
+}
+```
+
+---
+
+### CKV_AWS_145 – Ensure that S3 buckets are encrypted with KMS by default
+**Principle:** Default encryption using a customer-managed KMS key (SSE-KMS) provides greater control, key rotation, and audit trails compared to SSE-S3 or no encryption.
+
+**Violation:** No default encryption configuration is set. Objects stored without explicit encryption headers would be unencrypted or use the less secure SSE-S3.
+
+**Fix:** Enforce SSE-KMS with a specific KMS key (or the `aws/s3` managed key):
+```hcl
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "<kms-key-arn>"   # or omit to use aws/s3
+    }
+  }
+}
+```
+
+---
+
+### CKV2_AWS_61 – Ensure that an S3 bucket has a lifecycle configuration
+**Principle:** Lifecycle rules manage object retention, transition to cheaper storage classes, and expiration. They help control costs and enforce data retention policies, preventing accumulation of stale or unnecessary data.
+
+**Violation:** No lifecycle configuration is attached. Objects will remain in the bucket indefinitely with no automated cleanup or tiering.
+
+**Fix:** Add a lifecycle rule appropriate to your data (example: expire old versions after 90 days):
+```hcl
+resource "aws_s3_bucket_lifecycle_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+```
+
+---
+
+### CKV2_AWS_62 – Ensure S3 buckets have event notifications enabled
+**Principle:** Event notifications (e.g., to SNS, SQS, or Lambda) allow real-time alerting on object creation, deletion, or other changes, supporting security monitoring and automated workflows.
+
+**Violation:** No event notification configuration exists. Security-relevant events (like uploads of potentially malicious files) will go undetected.
+
+**Fix:** Define at least one notification, for example sending all object creation events to an SNS topic:
+```hcl
+resource "aws_s3_bucket_notification" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.example.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+```
+
+---
+
+### CKV_AWS_144 – Ensure that S3 bucket has cross-region replication enabled
+**Principle:** Cross-region replication (CRR) provides geographic redundancy, ensuring data durability and availability even if an entire AWS region fails.
+
+**Violation:** No replication configuration is present. The bucket’s contents exist in a single region, making them vulnerable to a regional outage.
+
+**Fix:** Enable replication to a bucket in a different region. This requires versioning on both source and destination buckets, and an IAM role:
+```hcl
+resource "aws_s3_bucket_replication_configuration" "bucket" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "replicate-all"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.destination.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+---
+
+All the above resources must reference the existing bucket `aws_s3_bucket.bucket`. After applying these changes, the bucket will meet the required security baselines.

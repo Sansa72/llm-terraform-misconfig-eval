@@ -1,0 +1,17 @@
+**Remediation Briefing: CKV_AWS_219 – Missing KMS CMK on CodePipeline Artifact Store**
+
+---
+
+### Finding: CKV_AWS_219 on `aws_codepipeline.fail` (lines 77–143)
+
+**What is wrong**  
+The `artifact_store` block in `aws_codepipeline.fail` does not include an `encryption_key` sub-block, so the pipeline’s S3 artifact bucket uses default S3-managed encryption (SSE-S3) instead of a customer-managed KMS key (CMK).
+
+**Why it matters**  
+Without a CMK, you lose the ability to control key lifecycle (rotation, deletion), define fine-grained access policies, and gain full audit visibility via AWS CloudTrail. Artifacts often contain source code, build outputs, and deployment templates—sensitive material that should be protected with a key you own and manage. The check enforces that all pipeline artifacts are encrypted under a KMS CMK to meet security best practices and compliance requirements.
+
+**What to change**  
+Inside the `artifact_store` block of `aws_codepipeline.fail`, add an `encryption_key` block that references a KMS key. The key can be specified by its ARN or via a KMS alias data source, exactly as shown in the `aws_codepipeline.pass` resource (line 10–13). The block must set `type = "KMS"`. For example, you can reuse the same `data.aws_kms_alias.s3kmskey.arn` if that key is intended for all pipeline artifacts, or create a dedicated key for this pipeline. The change is purely additive; no other resource modifications are required.
+
+**Interactions with other fixes**  
+No other failing checks are present, so there are no cross-fix interactions to consider. The `aws_codepipeline.pass` resource already satisfies the check and can serve as a reference.

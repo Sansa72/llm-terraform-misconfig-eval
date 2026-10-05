@@ -1,0 +1,45 @@
+The scanner flagged three findings. I’ll break down each one based on the provided Terraform code.
+
+---
+
+### Finding 1: CKV_AWS_269 on `aws_connect_instance_storage_config.pass` (lines 1-17)
+
+**Check description:** Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK.
+
+**What the file shows:**  
+The resource `pass` (lines 1-17) defines a single `storage_config` block with `storage_type = "S3"` and an `s3_config` block. There is **no** `kinesis_video_stream_config` block anywhere in this resource.
+
+**Problem:**  
+The check CKV_AWS_269 applies to Kinesis Video Stream storage configurations. The resource `pass` does not contain a Kinesis Video Stream storage config. The finding is therefore not supported by any Kinesis-related configuration in the given code. The engineer should verify whether this check is a false positive or if the scanner expects a Kinesis Video Stream config to be present. Based solely on the file, no misconfiguration of a Kinesis Video Stream storage config can be identified.
+
+---
+
+### Finding 2: CKV_AWS_270 on `aws_connect_instance_storage_config.fail` (lines 19-34)
+
+**Check description:** Ensure Connect Instance S3 Storage Config uses CMK.
+
+**What the file shows:**  
+The `fail` resource defines an S3 storage config with an `encryption_config` block (lines 28-30):
+
+```terraform
+encryption_config {
+  encryption_type = "KMS"
+}
+```
+
+A `key_id` is **not** specified.
+
+**Problem:**  
+The encryption type is set to `"KMS"`, but no customer-managed key (CMK) is provided via `key_id`. When `key_id` is omitted, Amazon Connect uses an AWS-managed KMS key, not a customer-managed CMK. The check requires a CMK. The fix is to add a `key_id` attribute referencing a customer-managed KMS key ARN, similar to the `pass` resource (line 12: `key_id = aws_kms_key.example.arn`).
+
+---
+
+### Finding 3: CKV_AWS_269 on `aws_connect_instance_storage_config.fail` (lines 19-34)
+
+**Check description:** Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK.
+
+**What the file shows:**  
+The `fail` resource, like `pass`, contains only an S3 storage config. There is no `kinesis_video_stream_config` block.
+
+**Problem:**  
+Same as the first finding: the resource does not define a Kinesis Video Stream storage configuration, so the check cannot be evaluated against the provided code. The engineer should confirm whether a Kinesis Video Stream config is expected and, if so, ensure it includes a CMK. If not, this finding may be a false positive.

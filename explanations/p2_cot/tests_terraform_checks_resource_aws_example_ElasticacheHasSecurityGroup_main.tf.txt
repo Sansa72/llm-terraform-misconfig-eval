@@ -1,0 +1,69 @@
+The scanner findings point to two problems: the use of a deprecated ElastiCache security group resource, and a VPC security group that is neither properly described nor attached to any resource.
+
+### What’s wrong
+
+1. **`aws_elasticache_security_group.exists`**  
+   - **CKV_AWS_196**: This resource type is for EC2‑Classic, which is no longer supported for new AWS accounts. ElastiCache now requires VPC security groups.  
+   - **CKV_AWS_23**: The check expects every security group rule to have a description. The legacy `aws_elasticache_security_group` doesn’t support descriptions on its rules.
+
+2. **`aws_security_group.bar`**  
+   - **CKV_AWS_23**: The security group has no ingress/egress rules, so there are no rules to describe. The check flags this because it expects all rules (when present) to include a description.  
+   - **CKV2_AWS_5**: The security group is not attached to any resource (e.g., an ElastiCache cluster, EC2 instance, etc.), making it unused and a potential indicator of misconfiguration.
+
+### Security impact
+
+- The legacy `aws_elasticache_security_group` does not work in a VPC. If your environment is VPC‑based (the default for new accounts), this resource is effectively dead code, leaving your ElastiCache resources unprotected.  
+- A security group without rules and without an attachment provides no access control. If it were later attached to a resource, the lack of descriptions on rules would hinder auditing and incident response.
+
+### How to fix
+
+1. **Remove the `aws_elasticache_security_group` resource entirely.**  
+2. **Add meaningful ingress/egress rules to the VPC security group, each with a description.**  
+3. **Attach the security group to an ElastiCache resource** (e.g., a Redis cluster) so it is actively used.
+
+Below is a corrected Terraform configuration that addresses all findings. It assumes you want a Redis cluster in the default VPC; adjust the `vpc_id`, `subnet_ids`, and rules to match your environment.
+
+```hcl
+resource "aws_security_group" "bar" {
+  name        = "security-group"
+  description = "Security group for ElastiCache Redis cluster"
+
+  ingress {
+    description = "Allow Redis from trusted CIDR"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]   # Replace with your actual trusted CIDR
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_elasticache_cluster" "example" {
+  cluster_id           = "example-cluster"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  port                 = 6379
+
+  security_group_ids = [aws_security_group.bar.id]
+
+  # If you are not using the default VPC, specify subnet_group_name or a subnet_ids inside a aws_elasticache_subnet_group.
+}
+```
+
+**What changed and why:**
+
+- **Removed `aws_elasticache_security_group`** – it’s incompatible with VPC‑only ElastiCache.  
+- **Added `description` to the security group** and to each rule – satisfies CKV_AWS_23.  
+- **Added an `aws_elasticache_cluster`** that references the security group – this attaches the group to a real resource, resolving CKV2_AWS_5.  
+- **Added ingress/egress rules** – the security group now actually controls traffic. Adjust the CIDR and ports to match your requirements.
+
+If you already have an ElastiCache cluster defined elsewhere, simply reference `aws_security_group.bar.id` in its `security_group_ids` argument instead of creating a new one.

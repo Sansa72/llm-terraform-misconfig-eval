@@ -1,0 +1,175 @@
+The scanner flagged several misconfigurations in your Terraform file. Below is a breakdown of each finding, the exact resource and lines it references, and what the file shows at those lines.
+
+---
+
+### 1. `aws_ecr_repository.public` (lines 5–7)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository" "public" {
+  name = "public_repo"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled
+- **CKV_AWS_136** – Ensure that ECR repositories are encrypted using KMS
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable
+
+**Evidence:**  
+The resource block contains only the `name` argument. There is no `image_scanning_configuration` block, no `encryption_configuration` block, and no `image_tag_mutability` argument. The scanner therefore reports that scan-on-push, KMS encryption, and tag immutability are not configured.
+
+---
+
+### 2. `aws_ecr_repository_policy.fail` (lines 9–38)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository_policy" "fail" {
+  repository = aws_ecr_repository.public.name
+  policy     = <<POLICY
+{   "Version": "2008-10-17",
+    "Statement": [
+        {
+            "Sid": "new policy",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": [ ... ],
+        }
+    ]
+}
+POLICY
+}
+```
+
+**Finding:**
+- **CKV_AWS_32** – Ensure ECR policy is not set to public
+
+**Evidence:**  
+The policy statement uses `"Principal": "*"` (line 17) and contains no `Condition` block. This grants the listed actions to any AWS principal, making the repository policy public. The scanner flags the entire policy resource (lines 9–38) because it is attached to the repository and is publicly accessible.
+
+---
+
+### 3. `aws_ecr_repository.private` (lines 40–42)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository" "private" {
+  name = "private_repo"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled
+- **CKV_AWS_136** – Ensure that ECR repositories are encrypted using KMS
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable
+
+**Evidence:**  
+Identical situation to `aws_ecr_repository.public`. Only `name` is set; the three required configurations are absent.
+
+---
+
+### 4. `aws_ecr_repository.empty` (lines 78–80)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository" "empty" {
+  name = "nopolicy_repo"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled
+- **CKV_AWS_136** – Ensure that ECR repositories are encrypted using KMS
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable
+
+**Evidence:**  
+Again, only `name` is provided. The three security controls are missing.
+
+---
+
+### 5. `aws_ecr_repository.conditional_ok` (lines 87–89)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository" "conditional_ok" {
+  name = "conditional_ok_repo"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled
+- **CKV_AWS_136** – Ensure that ECR repositories are encrypted using KMS
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable
+
+**Evidence:**  
+Only `name` is set. The repository itself lacks the required configurations, regardless of the policy attached to it.
+
+---
+
+### 6. `aws_ecr_repository.conditional_bad` (lines 127–129)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository" "conditional_bad" {
+  name = "conditional_bad_repo"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled
+- **CKV_AWS_136** – Ensure that ECR repositories are encrypted using KMS
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable
+
+**Evidence:**  
+Same as above – only `name` is defined, so all three checks fail.
+
+---
+
+### 7. `aws_ecr_repository_policy.fail_conditional` (lines 131–165)
+
+**Resource definition:**
+```terraform
+resource "aws_ecr_repository_policy" "fail_conditional" {
+  repository = aws_ecr_repository.conditional_bad.name
+  policy     = <<POLICY
+{   "Version": "2008-10-17",
+    "Statement": [
+        {
+            "Sid": "new policy",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": [ ... ],
+            "Condition": {
+                "ForAllValues:StringEquals": {
+                    "aws:username": "pull-user-1"
+                }
+            }
+        }
+    ]
+}
+POLICY
+}
+```
+
+**Finding:**
+- **CKV_AWS_32** – Ensure ECR policy is not set to public
+
+**Evidence:**  
+The policy uses `"Principal": "*"` (line 141) and attempts to restrict access with a condition on `aws:username`. The scanner considers this policy public because `aws:username` is not a secure, immutable attribute for access control (any IAM user can set their own username). The presence of `Principal: *` without a valid, restrictive condition triggers the public-policy check. The finding points to the entire policy resource (lines 131–165).
+
+---
+
+### Summary of required fixes
+
+For every `aws_ecr_repository` resource that is flagged, you need to add:
+
+- `image_scanning_configuration { scan_on_push = true }` (addresses CKV_AWS_163)
+- `encryption_configuration { encryption_type = "KMS" }` (or specify a KMS key; addresses CKV_AWS_136)
+- `image_tag_mutability = "IMMUTABLE"` (addresses CKV_AWS_51)
+
+For the two `aws_ecr_repository_policy` resources flagged with CKV_AWS_32, you must ensure the policy is not public. This means either:
+- Replace `"Principal": "*"` with specific AWS principals (accounts, IAM users/roles), or
+- Keep `"Principal": "*"` but add a condition that uses a secure, AWS‑managed attribute (e.g., `aws:PrincipalOrgID` with `StringEquals` or `ForAnyValue:StringEquals`), not `aws:username`.
+
+The file already contains examples of compliant policies (e.g., `pass`, `pass_conditional`, `cond_any_pass`, `cond_equals_pass`) that you can use as a reference.

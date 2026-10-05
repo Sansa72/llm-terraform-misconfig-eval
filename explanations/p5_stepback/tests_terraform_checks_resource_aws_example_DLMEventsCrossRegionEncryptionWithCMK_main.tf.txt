@@ -1,0 +1,41 @@
+The following explains the flagged findings and how to resolve them, based solely on the provided Terraform and scanner results.
+
+---
+
+### Finding: CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail`
+**Principle:** Cross-region snapshot copies must be encrypted to protect data confidentiality during transit and at rest in the destination region. Without encryption, snapshot data could be exposed to unauthorized access.
+
+**Violation:** The `cross_region_copy` block in `aws_dlm_lifecycle_policy.fail` contains an empty `encryption_configuration {}` (line 30). This explicitly disables encryption for cross-region copies. The scanner correctly flags this as non-compliant with the requirement to encrypt cross-region events.
+
+**Fix:** Enable encryption by setting `encrypted = true` inside the `encryption_configuration` block, and provide a KMS key ARN via `cmk_arn` to use a customer-managed key (which also resolves CKV_AWS_254). The `pass` resource (lines 55–58) shows the correct pattern:
+```hcl
+encryption_configuration {
+  encrypted = true
+  cmk_arn   = aws_kms_key.test.arn
+}
+```
+
+---
+
+### Finding: CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail`
+**Principle:** When encryption is used, the key should be a Customer Managed Key (CMK) rather than the AWS default key. This ensures the organization retains control over key lifecycle, access policies, rotation, and auditing, and prevents reliance on AWS-managed keys that cannot be modified or revoked by the customer.
+
+**Violation:** The same empty `encryption_configuration {}` block in `aws_dlm_lifecycle_policy.fail` means no encryption is configured at all, which also fails the requirement to use a CMK. Even if encryption were enabled, a CMK must be explicitly specified.
+
+**Fix:** As above, add `encrypted = true` and `cmk_arn = aws_kms_key.test.arn` (or the ARN of an existing KMS key) inside the `encryption_configuration` block.
+
+---
+
+### Finding: CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail2`
+**Principle:** Same as above — cross-region snapshot copies must be encrypted with a Customer Managed Key to maintain full control over the encryption key.
+
+**Violation:** In `aws_dlm_lifecycle_policy.fail2`, the `encryption_configuration` block enables encryption (`encrypted = true`) but does not specify a `cmk_arn` (lines 93–95). This means the snapshots will be encrypted with the default AWS-managed key, which does not satisfy the requirement for a customer-managed key.
+
+**Fix:** Add a `cmk_arn` attribute referencing a valid KMS key. For example:
+```hcl
+encryption_configuration {
+  encrypted = true
+  cmk_arn   = aws_kms_key.test.arn
+}
+```
+This matches the compliant configuration in the `pass` resource (lines 55–58).

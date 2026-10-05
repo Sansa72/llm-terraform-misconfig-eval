@@ -1,0 +1,61 @@
+Below is a remediation briefing for each scanner finding, in the order they appear.
+
+---
+
+### 1. CKV_AWS_296 on `aws_dms_endpoint.fail` (lines 42–60)
+**What is wrong:** The `kms_key_arn` is set to an empty string, meaning no customer-managed key is used.  
+**Why it matters:** Without a customer-managed KMS key, the DMS endpoint relies on AWS-managed encryption, which reduces your control over key lifecycle, access policies, and auditability.  
+**Change needed:** Replace the empty `kms_key_arn` value with a valid KMS key ARN. You can reference an existing key (e.g., the same key used by `aws_dms_endpoint.pass2`) or create a new `aws_kms_key` resource and reference its ARN. The attribute must not be empty.
+
+---
+
+### 2. CKV_AWS_296 on `aws_dms_endpoint.fail2` (lines 62–79)
+**What is wrong:** The `kms_key_arn` attribute is completely absent, so the endpoint uses the default AWS-managed key.  
+**Why it matters:** Same as above – lack of customer-managed key reduces encryption control and may violate compliance requirements.  
+**Change needed:** Add `kms_key_arn` and set it to a valid customer-managed KMS key ARN. Use the same key reference as in `pass2` (`aws_kms_key.pike.arn`) or another valid ARN.
+
+---
+
+### 3. CKV_AWS_296 on `aws_dms_endpoint.fail3` (lines 83–100)
+**What is wrong:** The resource is an S3 endpoint (`engine_name = "s3"`) but has no `kms_key_arn` and no `s3_settings` block with a KMS key.  
+**Why it matters:** For S3 endpoints, encryption is configured inside the `s3_settings` block, not via the top-level `kms_key_arn`. Without a customer-managed key in `s3_settings`, the endpoint uses the default S3 encryption, which may not meet your security standards.  
+**Change needed:** Add an `s3_settings` block containing `server_side_encryption_kms_key_id` set to a valid KMS key ARN, exactly as done in `aws_dms_endpoint.pass3`. This will satisfy the check and correctly encrypt the S3 target. (If the scanner still expects a top-level `kms_key_arn`, you may also set it to the same ARN, but the primary fix is the `s3_settings` block.)
+
+---
+
+### 4. CKV2_AWS_49 on `aws_dms_endpoint.pass` (lines 2–20)
+**What is wrong:** `ssl_mode` is set to `"none"`, disabling SSL for the endpoint.  
+**Why it matters:** Data in transit between DMS and the database is sent in plaintext, exposing it to interception and tampering.  
+**Change needed:** Change `ssl_mode` from `"none"` to `"require"`. The resource already has a `certificate_arn`, so SSL can be enabled without additional prerequisites. For Aurora endpoints, `"require"` is typically sufficient.
+
+---
+
+### 5. CKV2_AWS_49 on `aws_dms_endpoint.pass2` (lines 22–40)
+**What is wrong:** `ssl_mode` is `"none"`.  
+**Why it matters:** Same as above – unencrypted data in transit.  
+**Change needed:** Change `ssl_mode` to `"require"`. The certificate ARN is already present.
+
+---
+
+### 6. CKV2_AWS_49 on `aws_dms_endpoint.fail` (lines 42–60)
+**What is wrong:** `ssl_mode` is `"none"`.  
+**Why it matters:** Same risk of plaintext data transfer.  
+**Change needed:** Change `ssl_mode` to `"require"`. This fix is independent of the CMK fix for the same resource; both must be applied.
+
+---
+
+### 7. CKV2_AWS_49 on `aws_dms_endpoint.fail2` (lines 62–79)
+**What is wrong:** `ssl_mode` is `"none"`.  
+**Why it matters:** Same as above.  
+**Change needed:** Change `ssl_mode` to `"require"`. Apply this together with the missing `kms_key_arn` fix.
+
+---
+
+### 8. CKV2_AWS_49 on `aws_dms_endpoint.pass4` (lines 124–142)
+**What is wrong:** `ssl_mode` is `"none"` for a MongoDB endpoint (`engine_name = "mongod"`).  
+**Why it matters:** Unencrypted connections to MongoDB expose sensitive data.  
+**Change needed:** Change `ssl_mode` to `"require"` (or `"verify-full"` if certificate validation is required). The certificate ARN is already provided, so SSL can be enabled immediately.
+
+---
+
+**Interaction note:** Resources `fail` and `fail2` are flagged for both CMK and SSL. The fixes are orthogonal – adding/changing `kms_key_arn` and setting `ssl_mode` to `"require"` do not interfere with each other and can be done in the same commit.

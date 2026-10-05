@@ -1,0 +1,169 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported by the scanner. For each, the exact trigger location, the evidenced misconfiguration, and the required change are described.
+
+---
+
+### 1. CKV_AWS_356 on `aws_iam_policy_document.pass` (lines 3–15)
+
+- **Trigger:** The `statement` block at lines 5–13, specifically `resources = ["*"]` combined with `actions = ["s3:Describe*"]`.
+- **What is wrong:** The policy uses a wildcard `"*"` as the resource for `s3:Describe*` actions, which are resource‑level permissions. This grants those actions on **all** S3 resources, exceeding the principle of least privilege.
+- **Why it matters (from the finding):** The check ensures no IAM policy document allows `"*"` as a statement’s resource for restrictable actions. The current policy does exactly that.
+- **Required change:** Replace the wildcard resource with the specific ARN(s) of the S3 bucket(s) or objects that need to be described. If the intent is to allow describing multiple buckets, list each ARN explicitly. If describing objects, consider using a condition key (e.g., `s3:prefix`) to further limit scope.
+
+---
+
+### 2. CKV_AWS_108 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The `statement` block at lines 45–53, with `effect = "Allow"`, `actions = ["*"]`, `resources = ["*"]`.
+- **What is wrong:** The policy allows all actions on all resources, which includes data access actions (e.g., `s3:GetObject`, `dynamodb:Scan`) that can be used to exfiltrate data.
+- **Why it matters:** The check prohibits IAM policies that allow data exfiltration. The wildcard actions and resources directly enable it.
+- **Required change:** Restrict the `actions` list to only the specific actions required (e.g., read‑only actions if data retrieval is needed) and limit `resources` to the exact ARNs of the data stores. Avoid any wildcard that could grant access to unintended data.
+
+---
+
+### 3. CKV_AWS_111 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** Same `statement` block (lines 45–53) with `actions = ["*"]` and `resources = ["*"]`.
+- **What is wrong:** The policy grants unrestricted write access (e.g., `s3:PutObject`, `iam:CreateUser`) on all resources without any constraints.
+- **Why it matters:** The check requires that write access be constrained. The current policy imposes no limits.
+- **Required change:** Remove wildcard actions. List only the necessary write actions, and scope `resources` to the specific ARNs that should be writable. Add conditions (e.g., `aws:RequestedRegion`, `s3:prefix`) if further restriction is needed.
+
+---
+
+### 4. CKV_AWS_49 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The `actions = ["*"]` line (line 48) inside the `statement` block.
+- **What is wrong:** The policy uses `"*"` as the action, granting permission to perform any AWS action.
+- **Why it matters:** The check forbids IAM policy documents that allow `"*"` as a statement’s actions. This is a direct violation.
+- **Required change:** Replace `"*"` with an explicit list of the exact actions required. Never use a wildcard for actions unless absolutely unavoidable and justified.
+
+---
+
+### 5. CKV_AWS_107 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The same `statement` block, because `actions = ["*"]` includes credential‑related actions (e.g., `iam:CreateAccessKey`, `sts:AssumeRole`).
+- **What is wrong:** The policy allows actions that can expose or create long‑term credentials.
+- **Why it matters:** The check ensures IAM policies do not allow credentials exposure. The wildcard action permits such exposure.
+- **Required change:** Remove any actions that manage or expose credentials from the allowed list. If credential actions are genuinely needed, restrict them to specific resources and add strong conditions (e.g., MFA, source IP). In most cases, they should not be present.
+
+---
+
+### 6. CKV_AWS_356 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The `resources = ["*"]` line (line 50) combined with `actions = ["*"]` (which includes restrictable actions).
+- **What is wrong:** The policy uses a wildcard resource for actions that are resource‑level permissions, granting them on all resources.
+- **Why it matters:** Same as check CKV_AWS_356 on the `pass` resource – wildcard resources for restrictable actions are overly permissive.
+- **Required change:** Replace `"*"` in `resources` with the specific ARNs of the resources the actions should apply to. If multiple resources are needed, list each one explicitly.
+
+---
+
+### 7. CKV_AWS_109 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The `statement` block with `actions = ["*"]` and `resources = ["*"]`.
+- **What is wrong:** The policy allows permissions management actions (e.g., `iam:AttachRolePolicy`, `iam:CreatePolicy`) and resource exposure without any constraints.
+- **Why it matters:** The check prohibits IAM policies that allow permissions management or resource exposure without constraints. The wildcard grants full control.
+- **Required change:** Remove any IAM‑related actions from the allowed list unless absolutely necessary. If permissions management is required, restrict it to specific resources (e.g., a particular role ARN) and add conditions. Never use `"*"` for both actions and resources in such cases.
+
+---
+
+### 8. CKV_AWS_1 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The combination of `actions = ["*"]` and `resources = ["*"]` with `effect = "Allow"`.
+- **What is wrong:** The policy effectively grants full administrative privileges (`"*"` on `"*"`).
+- **Why it matters:** The check ensures that IAM policies allowing full `"*-*"` administrative privileges are not created. This policy does exactly that.
+- **Required change:** Do not use `"*"` for both actions and resources. Decompose the policy into multiple statements, each granting only the minimum required actions on the minimum required resources.
+
+---
+
+### 9. CKV_AWS_110 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The `statement` block with `actions = ["*"]` and `resources = ["*"]`.
+- **What is wrong:** The policy includes actions that can be chained to escalate privileges (e.g., `iam:UpdateAssumeRolePolicy`, `lambda:UpdateFunctionCode`).
+- **Why it matters:** The check prohibits IAM policies that allow privilege escalation. The wildcard action set makes escalation trivial.
+- **Required change:** Remove any actions known to enable privilege escalation unless they are strictly required and tightly scoped. Replace `"*"` with a curated list of safe, necessary actions.
+
+---
+
+### 10. CKV2_AWS_40 on `aws_iam_policy_document.fail` (lines 43–55)
+
+- **Trigger:** The same `statement` block, because `actions = ["*"]` includes all IAM actions (e.g., `iam:*`) on `resources = ["*"]`.
+- **What is wrong:** The policy allows full IAM privileges, meaning it can create, modify, or delete any IAM resource.
+- **Why it matters:** The check ensures no IAM policy allows full IAM privileges. This policy grants them unconditionally.
+- **Required change:** Remove any IAM actions from the policy unless absolutely necessary. If IAM actions are needed, restrict them to specific IAM resources (e.g., a particular role) and specific actions (e.g., `iam:GetRole`), never `iam:*`.
+
+---
+
+### 11. CKV_AWS_108 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `statement` block at lines 59–66, with `actions = ["*"]`, `resources = ["*"]`, and **no explicit `effect`** (defaults to `"Allow"`).
+- **What is wrong:** The policy effectively allows all actions on all resources, enabling data exfiltration.
+- **Why it matters:** Same as check CKV_AWS_108 on `fail` – the default `Allow` makes this a data exfiltration risk.
+- **Required change:** Either set `effect = "Deny"` if the intent is to block actions (and ensure the statement is needed), or, if it must be an `Allow`, scope `actions` and `resources` down to the minimum required, as described for the `fail` resource. If the statement is not needed, remove it entirely.
+
+---
+
+### 12. CKV_AWS_111 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** Same `statement` block (lines 59–66) with default `Allow`, `actions = ["*"]`, `resources = ["*"]`.
+- **What is wrong:** The policy grants unrestricted write access without constraints.
+- **Why it matters:** The check requires write access to be constrained; this policy imposes none.
+- **Required change:** As above – either change to a `Deny` or restrict `actions` and `resources` to only the necessary write operations on specific resources.
+
+---
+
+### 13. CKV_AWS_49 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `actions = ["*"]` line (line 61) in the `statement` block.
+- **What is wrong:** The policy uses `"*"` as the action.
+- **Why it matters:** The check forbids `"*"` in a statement’s actions. The default `Allow` makes this a direct violation.
+- **Required change:** Replace `"*"` with an explicit list of required actions. If the statement is meant to be a `Deny`, explicitly set `effect = "Deny"` and consider whether `"*"` is still appropriate (a `Deny` with `"*"` may be acceptable for certain guardrails, but verify against policy intent).
+
+---
+
+### 14. CKV_AWS_107 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `statement` block with default `Allow` and `actions = ["*"]`.
+- **What is wrong:** The policy allows credential‑exposing actions.
+- **Why it matters:** The check prohibits credentials exposure. The wildcard action permits it.
+- **Required change:** Remove credential‑related actions from the allowed set. If the statement is a `Deny`, this check may not apply, but the current default `Allow` triggers it. Explicitly set `effect = "Deny"` if that is the goal, or restrict actions.
+
+---
+
+### 15. CKV_AWS_356 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `resources = ["*"]` line (line 63) combined with `actions = ["*"]` (which includes restrictable actions) and default `Allow`.
+- **What is wrong:** The policy uses a wildcard resource for restrictable actions.
+- **Why it matters:** Same as earlier CKV_AWS_356 findings – overly broad resource access.
+- **Required change:** Replace `"*"` in `resources` with specific ARNs. If the statement is a `Deny`, the resource wildcard may be intentional, but the default `Allow` must be changed to `Deny` to avoid this violation.
+
+---
+
+### 16. CKV_AWS_109 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `statement` block with default `Allow`, `actions = ["*"]`, `resources = ["*"]`.
+- **What is wrong:** The policy allows permissions management and resource exposure without constraints.
+- **Why it matters:** The check requires constraints; none are present.
+- **Required change:** Either convert to a `Deny` or restrict actions and resources to eliminate permissions management capabilities. If the statement is a `Deny`, ensure it is explicitly declared.
+
+---
+
+### 17. CKV_AWS_1 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The combination of default `Allow`, `actions = ["*"]`, `resources = ["*"]`.
+- **What is wrong:** The policy grants full administrative privileges.
+- **Why it matters:** The check forbids creation of policies with full `"*-*"` admin rights.
+- **Required change:** Do not use `"*"` for both actions and resources in an `Allow` statement. If the statement is intended as a `Deny`, set `effect = "Deny"`; otherwise, scope down to least privilege.
+
+---
+
+### 18. CKV_AWS_110 on `aws_iam_policy_document.no_effect` (lines 57–68)
+
+- **Trigger:** The `statement` block with default `Allow`, `actions = ["*"]`, `resources = ["*"]`.
+- **What is wrong:** The policy allows privilege escalation.
+- **Why it matters:** The check prohibits policies that enable privilege escalation.
+- **Required change:** Remove escalation‑capable actions from the allowed list. If the statement is a `Deny`, explicitly set `effect = "Deny"`; otherwise, restrict actions to a safe set.
+
+---
+
+**Note:** The `no_effect` resource lacks an explicit `effect`. In Terraform’s `aws_iam_policy_document`, the default is `"Allow"`. All checks against it assume an allow statement. If the actual intent is a `Deny` statement, adding `effect = "Deny"` will likely resolve all these findings, but you must verify that the `Deny` with `"*"` actions and resources is truly required and does not introduce other risks. If the statement is not needed, remove it entirely.

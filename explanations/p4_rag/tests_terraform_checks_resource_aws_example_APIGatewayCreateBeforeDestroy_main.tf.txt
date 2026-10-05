@@ -1,0 +1,29 @@
+The scanner flagged two API Gateway resources because they lack the `create_before_destroy` lifecycle setting, which is required to prevent downtime during updates that force resource replacement.
+
+## What’s the issue?
+
+When Terraform needs to replace an `aws_api_gateway_rest_api` resource (for example, because you changed its `name`), the default behaviour is to **destroy the existing API first, then create the new one**. This causes an outage window where the API is completely unavailable. The Prisma Cloud policy [CKV_AWS_237](https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/ensure-aws-api-gateway-enables-create-before-destroy) requires you to set `create_before_destroy = true` so that the new API is provisioned and ready before the old one is removed, eliminating that downtime.
+
+## What’s wrong in this file
+
+- **`aws_api_gateway_rest_api.fail` (lines 1–7):** The `lifecycle` block is entirely commented out. Without an explicit `create_before_destroy = true`, Terraform uses the default behaviour (destroy then create), which triggers the violation.
+- **`aws_api_gateway_rest_api.fail2` (lines 9–15):** The `lifecycle` block is present but explicitly sets `create_before_destroy = false`. This is the same as the default and equally problematic.
+
+The third resource, `aws_api_gateway_rest_api.pass`, shows the correct configuration with `create_before_destroy = true`.
+
+## How to fix it
+
+Uncomment the `lifecycle` block in the first resource and change the second resource’s setting to `true`. Both should look like this:
+
+```hcl
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+Apply the same change to `fail2`. After the fix, Terraform will create the replacement API before destroying the old one, keeping your API available during updates.

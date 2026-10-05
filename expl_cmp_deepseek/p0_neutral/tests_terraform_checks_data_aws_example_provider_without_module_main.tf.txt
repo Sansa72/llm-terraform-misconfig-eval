@@ -1,0 +1,70 @@
+Both `aws_s3_bucket` resources only declare the bucket itself. None of the flagged S3 security controls are configured, so the findings apply equally to `bucket` and `bucket_2`.
+
+## What is missing and why it matters
+
+### 1. Public Access Block — `CKV2_AWS_6`
+No `aws_s3_bucket_public_access_block` resource is attached to either bucket.
+
+- **Risk:** There is no bucket-level guardrail preventing public ACLs or public bucket policies. If a later policy or ACL grants public access, objects in the bucket could be exposed publicly. This is a direct data-exposure risk.
+
+### 2. Access Logging — `CKV_AWS_18`
+No `aws_s3_bucket_logging` configuration is present.
+
+- **Risk:** Server-side access logs are not being captured for requests to these buckets. If the buckets contain sensitive data, you lose the ability to detect unauthorized access or investigate data exfiltration after the fact.
+
+### 3. Versioning — `CKV_AWS_21`
+No `aws_s3_bucket_versioning` resource is present.
+
+- **Risk:** Object overwrites and deletes are irreversible. Accidental or malicious deletion/modification cannot be rolled back. Versioning is also a prerequisite for cross-region replication.
+
+### 4. KMS Encryption by Default — `CKV_AWS_145`
+No `aws_s3_bucket_server_side_encryption_configuration` is present.
+
+- **Risk:** Objects are not explicitly configured to use KMS-managed encryption. They may use default S3-managed encryption or no encryption, depending on account/bucket defaults. This fails KMS-specific compliance requirements and removes the ability to control encryption via KMS key policies.
+
+### 5. Lifecycle Configuration — `CKV2_AWS_61`
+No `aws_s3_bucket_lifecycle_configuration` is present.
+
+- **Risk:** Objects, and any versions if versioning is enabled later, are retained indefinitely. This can lead to unnecessary data retention, increased storage cost, and retention of sensitive data beyond required periods.
+
+### 6. Event Notifications — `CKV2_AWS_62`
+No `aws_s3_bucket_notification` resource is present.
+
+- **Risk:** Object uploads, deletions, or replications do not trigger automated alerts or downstream processing. Security-relevant events may go unnoticed, delaying incident response.
+
+### 7. Cross-Region Replication — `CKV_AWS_144`
+No `aws_s3_bucket_replication_configuration` is present.
+
+- **Risk:** Data exists only in the source bucket’s region. If that region or bucket becomes unavailable or is compromised, there is no secondary copy in another region for recovery or continuity.
+
+## How to fix safely
+
+Apply the following resources to **both** buckets:
+
+1. **Public Access Block**  
+   Add an `aws_s3_bucket_public_access_block` with all four block flags set to `true`:  
+   `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`.
+
+2. **Access Logging**  
+   Add an `aws_s3_bucket_logging` resource targeting a dedicated, access-controlled log bucket. Ensure the target bucket policy allows S3 to write logs.
+
+3. **Versioning**  
+   Add an `aws_s3_bucket_versioning` resource with `versioning_configuration.status = "Enabled"`.
+
+4. **KMS Encryption**  
+   Add an `aws_s3_bucket_server_side_encryption_configuration` with:  
+   `sse_algorithm = "aws:kms"` and a `kms_master_key_id` referencing an existing KMS key or a new `aws_kms_key`.
+
+5. **Lifecycle Configuration**  
+   Add an `aws_s3_bucket_lifecycle_configuration` with appropriate rules for expiring current/noncurrent versions or transitioning objects to lower-cost storage. Base the rules on your retention requirements.
+
+6. **Event Notifications**  
+   Add an `aws_s3_bucket_notification` resource. Choose an SNS topic, SQS queue, or Lambda function as the destination for relevant events such as `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`.
+
+7. **Cross-Region Replication**  
+   - Enable versioning first on both source and destination buckets.  
+   - Create a destination bucket in a different region.  
+   - Create an IAM role that grants S3 replication permissions.  
+   - Add an `aws_s3_bucket_replication_configuration` to the source bucket referencing the destination bucket and IAM role.
+
+> If any control is intentionally not applicable to these buckets, document the reason and suppress the finding with a justification. Otherwise, implement the controls above on both buckets.

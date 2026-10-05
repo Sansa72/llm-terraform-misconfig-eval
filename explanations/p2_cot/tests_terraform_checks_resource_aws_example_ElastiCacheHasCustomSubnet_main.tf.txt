@@ -1,0 +1,11 @@
+The `aws_elasticache_cluster.fail` resource has two security misconfigurations that need to be fixed.
+
+**1. Automatic backups are disabled (CKV_AWS_134)**  
+The `snapshot_retention_limit` is set to `0`, which disables automatic daily snapshots for the Redis cluster. Without automatic backups, you lose the ability to perform point-in-time recovery and are at risk of permanent data loss if the cluster fails or data is corrupted.  
+**Fix:** Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5` days) to enable automatic backups.
+
+**2. Default subnet group is in use (CKV_AWS_323)**  
+No `subnet_group_name` is specified, so the cluster is launched in the default subnet group. Default subnet groups use the default VPC and its subnets, which are rarely configured with the proper network segmentation, security controls, or routing for production workloads. This can lead to unintended network exposure.  
+**Fix:** Add a `subnet_group_name` argument referencing a custom subnet group that places the cluster in the appropriate private subnets for your environment.
+
+Both changes are straightforward and align the resource with the already-compliant `aws_elasticache_cluster.pass` example in the same file.

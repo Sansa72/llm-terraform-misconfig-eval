@@ -1,0 +1,113 @@
+The scanner evaluated the Terraform file against multiple security checks. Below is a breakdown of every finding, mapped to the exact resource and lines that trigger it. The resource names `pass` and `fail` are part of the code; a resource named `pass` does not mean it is compliant—it still fails several checks.
+
+---
+
+### 1. `aws_rds_cluster_instance.fail` (lines 1–7)
+**Failing checks:** CKV_AWS_354, CKV_AWS_353, CKV_AWS_226, CKV_AWS_17, CKV_AWS_118
+
+- **CKV_AWS_353** – *Ensure that RDS instances have performance insights enabled*  
+  Line 3: `performance_insights_enabled = false` explicitly disables Performance Insights.
+
+- **CKV_AWS_354** – *Ensure RDS Performance Insights are encrypted using KMS CMKs*  
+  Because Performance Insights is disabled (line 3), no KMS key is provided. Even if it were enabled, no `performance_insights_kms_key_id` is set.
+
+- **CKV_AWS_226** – *Ensure DB instance gets all minor upgrades automatically*  
+  Line 5: `auto_minor_version_upgrade = false` explicitly disables automatic minor version upgrades.
+
+- **CKV_AWS_17** – *Ensure all data stored in RDS is not publicly accessible*  
+  Line 4: `publicly_accessible = true` makes the instance publicly accessible.
+
+- **CKV_AWS_118** – *Ensure that enhanced monitoring is enabled for Amazon RDS instances*  
+  No `monitoring_interval` or `monitoring_role_arn` is set; enhanced monitoring is not enabled.
+
+---
+
+### 2. `aws_rds_cluster_instance.fail2` (lines 9–14)
+**Failing checks:** CKV_AWS_354, CKV_AWS_353, CKV_AWS_226, CKV_AWS_17, CKV_AWS_118
+
+- **CKV_AWS_353** – Line 11: `performance_insights_enabled = false`
+- **CKV_AWS_354** – No KMS key for Performance Insights (line 11 disabled, no key specified)
+- **CKV_AWS_226** – `auto_minor_version_upgrade` is not set; the provider default is `false`, so automatic upgrades are disabled.
+- **CKV_AWS_17** – Line 12: `publicly_accessible = true`
+- **CKV_AWS_118** – No enhanced monitoring configuration present.
+
+---
+
+### 3. `aws_rds_cluster_instance.pass` (lines 16–25)
+Despite the name, this resource still fails four checks: **CKV_AWS_354, CKV_AWS_353, CKV_AWS_17, CKV_AWS_118**.
+
+- **CKV_AWS_353** – Line 18: `performance_insights_enabled = false`
+- **CKV_AWS_354** – Performance Insights is disabled; no KMS key is set. (The commented-out lines 19–20 show `performance_insights_kms_key_id` and `kms_key_id` were considered but are not active.)
+- **CKV_AWS_17** – Line 21: `publicly_accessible = true`
+- **CKV_AWS_118** – No enhanced monitoring configuration.
+
+*Note:* This resource passes **CKV_AWS_226** because line 22 sets `auto_minor_version_upgrade = true`.
+
+---
+
+### 4. `aws_db_instance.pass` (lines 27–34)
+**Failing checks:** CKV_AWS_354, CKV_AWS_353, CKV_AWS_17, CKV_AWS_118, CKV_AWS_161, CKV_AWS_293, CKV_AWS_157, CKV_AWS_129, CKV_AWS_133, CKV_AWS_16, CKV2_AWS_60, CKV2_AWS_30
+
+- **CKV_AWS_353** – No `performance_insights_enabled` attribute; default is `false`.
+- **CKV_AWS_354** – No `performance_insights_kms_key_id` is set.
+- **CKV_AWS_17** – Line 29: `publicly_accessible = true`
+- **CKV_AWS_118** – No enhanced monitoring configuration.
+- **CKV_AWS_161** – No `iam_database_authentication_enabled` attribute; default is `false`.
+- **CKV_AWS_293** – No `deletion_protection` attribute; default is `false`.
+- **CKV_AWS_157** – No `multi_az` attribute; default is `false`.
+- **CKV_AWS_129** – No `enabled_cloudwatch_logs_exports`; no logs are exported.
+- **CKV_AWS_133** – Line 30: `backup_retention_period = 0` disables automated backups.
+- **CKV_AWS_16** – Line 28: `//storage_encrypted = true` is commented out; no storage encryption is enabled.
+- **CKV2_AWS_60** – No `copy_tags_to_snapshot` attribute; default is `false`.
+- **CKV2_AWS_30** – Engine is `postgres` (line 31) but no `enabled_cloudwatch_logs_exports` includes PostgreSQL query logging.
+
+*Note:* This resource passes **CKV_AWS_226** because line 32 sets `auto_minor_version_upgrade = true`.
+
+---
+
+### 5. `aws_db_instance.fail` (lines 36–43)
+**Failing checks:** CKV_AWS_354, CKV_AWS_353, CKV_AWS_226, CKV_AWS_17, CKV_AWS_118, CKV_AWS_161, CKV_AWS_293, CKV_AWS_157, CKV_AWS_129, CKV_AWS_133, CKV_AWS_16, CKV2_AWS_60, CKV2_AWS_30
+
+- **CKV_AWS_353** – No `performance_insights_enabled`; default `false`.
+- **CKV_AWS_354** – No `performance_insights_kms_key_id`.
+- **CKV_AWS_226** – Line 41: `auto_minor_version_upgrade = false`
+- **CKV_AWS_17** – Line 38: `publicly_accessible = true`
+- **CKV_AWS_118** – No enhanced monitoring.
+- **CKV_AWS_161** – No `iam_database_authentication_enabled`.
+- **CKV_AWS_293** – No `deletion_protection`.
+- **CKV_AWS_157** – No `multi_az`.
+- **CKV_AWS_129** – No `enabled_cloudwatch_logs_exports`.
+- **CKV_AWS_133** – Line 39: `backup_retention_period = 0`
+- **CKV_AWS_16** – Line 37: `//storage_encrypted = true` is commented out.
+- **CKV2_AWS_60** – No `copy_tags_to_snapshot`.
+- **CKV2_AWS_30** – Engine `postgres` (line 40) without query logging.
+
+---
+
+### 6. `aws_db_instance.fail2` (lines 45–51)
+**Failing checks:** CKV_AWS_354, CKV_AWS_353, CKV_AWS_226, CKV_AWS_17, CKV_AWS_118, CKV_AWS_161, CKV_AWS_293, CKV_AWS_157, CKV_AWS_129, CKV_AWS_133, CKV_AWS_16, CKV2_AWS_60, CKV2_AWS_30
+
+- **CKV_AWS_353** – No `performance_insights_enabled`.
+- **CKV_AWS_354** – No `performance_insights_kms_key_id`.
+- **CKV_AWS_226** – `auto_minor_version_upgrade` is not set; default `false`.
+- **CKV_AWS_17** – Line 47: `publicly_accessible = true`
+- **CKV_AWS_118** – No enhanced monitoring.
+- **CKV_AWS_161** – No `iam_database_authentication_enabled`.
+- **CKV_AWS_293** – No `deletion_protection`.
+- **CKV_AWS_157** – No `multi_az`.
+- **CKV_AWS_129** – No `enabled_cloudwatch_logs_exports`.
+- **CKV_AWS_133** – Line 48: `backup_retention_period = 0`
+- **CKV_AWS_16** – Line 46: `//storage_encrypted = true` is commented out.
+- **CKV2_AWS_60** – No `copy_tags_to_snapshot`.
+- **CKV2_AWS_30** – Engine `postgres` (line 49) without query logging.
+
+---
+
+### Summary of root causes
+- **Performance Insights** (`CKV_AWS_353`, `CKV_AWS_354`): Either explicitly disabled or left at default `false`; no KMS key configured.
+- **Public accessibility** (`CKV_AWS_17`): All resources set `publicly_accessible = true`.
+- **Minor upgrades** (`CKV_AWS_226`): Disabled explicitly or by omission.
+- **Enhanced monitoring** (`CKV_AWS_118`): Not configured in any resource.
+- **`aws_db_instance`‑specific checks** (`CKV_AWS_161`, `CKV_AWS_293`, `CKV_AWS_157`, `CKV_AWS_129`, `CKV_AWS_133`, `CKV_AWS_16`, `CKV2_AWS_60`, `CKV2_AWS_30`): All are missing the required attributes (IAM auth, deletion protection, Multi‑AZ, log exports, backup retention > 0, storage encryption, copy tags to snapshots, PostgreSQL query logging). The commented‑out `storage_encrypted` line does not activate encryption.
+
+Every claim above is directly supported by the scanner findings and the exact lines in the provided Terraform file.

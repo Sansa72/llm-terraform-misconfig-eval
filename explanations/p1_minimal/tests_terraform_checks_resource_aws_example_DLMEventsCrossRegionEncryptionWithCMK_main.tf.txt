@@ -1,0 +1,101 @@
+The scanner flagged two security misconfigurations in your DLM lifecycle policies related to cross-region snapshot copy encryption. Let’s break down each finding and how to fix it.
+
+## Findings Overview
+
+| Check ID | Resource | Issue |
+|----------|----------|-------|
+| CKV_AWS_253 | `aws_dlm_lifecycle_policy.fail` | Cross region copy is not explicitly encrypted. |
+| CKV_AWS_254 | `aws_dlm_lifecycle_policy.fail` | Cross region copy is not encrypted with a Customer Managed Key (CMK). |
+| CKV_AWS_254 | `aws_dlm_lifecycle_policy.fail2` | Cross region copy is encrypted, but not with a Customer Managed Key (CMK). |
+
+The `pass` resource shows the correct configuration and is not flagged. The `unknown` resource is a different policy type (not event-based) and has no cross-region copy, so it’s not relevant.
+
+---
+
+## Why This Matters
+
+When you configure a DLM policy with a cross-region copy action, you can control how the copied snapshots are encrypted:
+
+- **No explicit encryption configuration** → The snapshot may be copied unencrypted (if the source is unencrypted) or encrypted with the default AWS-managed key. This gives you no control over key rotation, access policies, or auditing.
+- **Encryption enabled but no CMK specified** → The snapshot is encrypted, but with the AWS-managed key. You still lack the ability to manage the key yourself (e.g., restrict access, enforce key rotation, integrate with CloudTrail for detailed usage logs).
+- **Encryption enabled with a Customer Managed Key (CMK)** → You have full control over the key’s lifecycle, permissions, and auditing. This is the recommended security best practice.
+
+The checks **CKV_AWS_253** and **CKV_AWS_254** enforce that cross-region snapshot copies are encrypted and that a CMK is used.
+
+---
+
+## Resource: `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+
+**Problems:**
+- `encryption_configuration {}` is empty → no encryption is explicitly enabled (fails CKV_AWS_253).
+- No `cmk_arn` is provided → even if encryption were enabled, it would use the default AWS-managed key (fails CKV_AWS_254).
+
+**Fix:**  
+Set `encryption = true` and provide the ARN of a customer-managed KMS key.
+
+```hcl
+action {
+  name = "tf-acc-basic"
+  cross_region_copy {
+    encryption_configuration {
+      encryption = true
+      cmk_arn    = aws_kms_key.dlm_key.arn   # reference your own KMS key
+    }
+    retain_rule {
+      interval      = 15
+      interval_unit = "MONTHS"
+    }
+  }
+}
+```
+
+---
+
+## Resource: `aws_dlm_lifecycle_policy.fail2` (lines 76–109)
+
+**Problem:**
+- `encryption_configuration` has `encryption = true` but **no `cmk_arn`**. This means the copy is encrypted with the AWS-managed key, not a customer-managed key (fails CKV_AWS_254).
+
+**Fix:**  
+Add the `cmk_arn` attribute pointing to a KMS key you control.
+
+```hcl
+encryption_configuration {
+  encryption = true
+  cmk_arn    = aws_kms_key.dlm_key.arn
+}
+```
+
+---
+
+## Reference: Correct Configuration (the `pass` resource)
+
+The `pass` resource already implements both requirements correctly:
+
+```hcl
+cross_region_copy {
+  encryption_configuration {
+    encryption = true
+    cmk_arn    = aws_kms_key.test.arn
+  }
+  retain_rule {
+    interval      = 15
+    interval_unit = "MONTHS"
+  }
+}
+```
+
+Make sure the KMS key exists and the DLM execution role has permissions to use it (`kms:Encrypt`, `kms:Decrypt`, `kms:ReEncrypt*`, `kms:GenerateDataKey*`, `kms:DescribeKey`).
+
+---
+
+## Summary of Required Changes
+
+1. In **`aws_dlm_lifecycle_policy.fail`**:  
+   - Add `encryption = true` inside `encryption_configuration`.  
+   - Add `cmk_arn = aws_kms_key.xxx.arn` (replace with your key’s ARN).
+
+2. In **`aws_dlm_lifecycle_policy.fail2`**:  
+   - Add `cmk_arn = aws_kms_key.xxx.arn` inside the existing `encryption_configuration` block.
+
+After applying these changes, both policies will use customer-managed keys for cross-region snapshot copies, satisfying the scanner checks and improving your security posture.

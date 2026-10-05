@@ -1,0 +1,45 @@
+The scanner flagged two issues in your DLM lifecycle policies related to cross-region snapshot copy encryption. Here’s what’s wrong and how to fix it.
+
+## What the rules require
+
+- **CKV_AWS_253**: When a DLM policy includes a cross-region copy action, the copied snapshots must be encrypted. This ensures data is protected during transit and at rest in the destination region.
+- **CKV_AWS_254**: The encryption must use a **customer-managed KMS key** (CMK), not the default AWS-managed key. A CMK gives you control over key rotation, access policies, and auditing, which is critical for compliance and least-privilege management.
+
+Both rules apply only when a `cross_region_copy` block is present in the policy’s action.
+
+## What’s wrong in your file
+
+### Resource `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+```hcl
+cross_region_copy {
+  encryption_configuration {}
+}
+```
+The `encryption_configuration` block is empty. This means **no encryption is configured at all** for the cross-region copies.  
+**Violates**: CKV_AWS_253 (no encryption) and CKV_AWS_254 (no CMK).
+
+### Resource `aws_dlm_lifecycle_policy.fail2` (lines 76–109)
+```hcl
+cross_region_copy {
+  encryption_configuration {
+    encryption = true
+  }
+}
+```
+Encryption is enabled, but no `cmk_arn` is specified. AWS will use the **default EBS encryption key** (an AWS-managed key) for the destination region.  
+**Violates**: CKV_AWS_254 (must use a customer-managed key). CKV_AWS_253 is satisfied because encryption is `true`.
+
+## How to fix
+
+Use the `pass` resource (lines 39–73) as a model. The correct configuration inside `cross_region_copy` is:
+
+```hcl
+encryption_configuration {
+  encryption = true
+  cmk_arn    = aws_kms_key.your_key.arn   # customer-managed key ARN
+}
+```
+
+Make sure the KMS key exists (e.g., `aws_kms_key` resource) and that the DLM execution role has permissions to use it for encryption (`kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, etc.).
+
+Apply this pattern to both `fail` and `fail2` resources. The `unknown` resource is not flagged because it doesn’t contain a `cross_region_copy` action, so no changes are needed there.

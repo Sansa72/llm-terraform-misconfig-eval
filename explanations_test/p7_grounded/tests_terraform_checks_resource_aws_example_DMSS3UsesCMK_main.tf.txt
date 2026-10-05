@@ -1,0 +1,17 @@
+The scanner flagged two resources for the same issue: **CKV_AWS_298 – Ensure DMS S3 uses Customer Managed Key (CMK)**. Both findings are supported by the Terraform file.
+
+**Resource 1: `aws_dms_s3_endpoint.fail` (lines 1–8)**
+- The `kms_key_arn` argument is completely absent.  
+- Without it, the S3 endpoint will use the default AWS-managed key for encryption, not a customer-managed key. The check requires an explicit CMK.
+
+**Resource 2: `aws_dms_s3_endpoint.fail2` (lines 10–18)**
+- Line 16 sets `kms_key_arn = ""`.  
+- An empty string is not a valid CMK identifier; functionally, this is the same as omitting the argument. The endpoint will still fall back to an AWS-managed key.
+
+**What the check expects**  
+The two passing resources in the same file (`pass` and `pass2`) show the correct pattern:  
+- `pass` (line 26) provides a full CMK ARN.  
+- `pass2` (line 36) references a CMK via `aws_kms_key.pike.arn` (note: the resource type in the file is `aws-kms_key`, likely a typo, but the intent is clear).
+
+**Action required**  
+For both `fail` and `fail2`, assign a valid Customer Managed Key ARN to `kms_key_arn`. The value must be a non-empty ARN of a KMS key that you manage, not an AWS-managed key.

@@ -1,0 +1,233 @@
+## CloudFront Security Findings and Remediation
+
+The following explains each failing check, the security principle behind it, how your configuration violates it, and the exact change needed.
+
+---
+
+### Resource: `aws_cloudfront_distribution.pass` (lines 1–44)
+
+**CKV_AWS_216 – Ensure CloudFront distribution is enabled**  
+*Principle*: A distribution that is defined but disabled may indicate a forgotten or misconfigured resource, leading to unexpected downtime or a resource that could be silently re-enabled later without review.  
+*Violation*: `enabled = false` on line 40 explicitly disables the distribution.  
+*Fix*: Set `enabled = true`.
+
+**CKV_AWS_86 – Ensure CloudFront distribution has Access Logging enabled**  
+*Principle*: Access logs provide an audit trail of all requests, which is essential for security monitoring, incident response, and compliance.  
+*Violation*: No `logging_config` block is present anywhere in the resource.  
+*Fix*: Add a `logging_config` block referencing an S3 bucket and optional prefix:
+```hcl
+logging_config {
+  bucket = aws_s3_bucket.logs.bucket_domain_name
+  prefix = "cloudfront/pass/"
+}
+```
+
+**CKV_AWS_174 – Verify CloudFront Distribution Viewer Certificate is using TLS v1.2**  
+*Principle*: Enforcing modern TLS versions (1.2 or higher) protects data in transit against downgrade attacks and known weaknesses in older protocols.  
+*Violation*: The `viewer_certificate {}` block (line 42) is empty. When using the default CloudFront certificate, the default `minimum_protocol_version` is `TLSv1`, which is insecure.  
+*Fix*: Explicitly set a TLS 1.2 minimum:
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+**CKV_AWS_68 – CloudFront Distribution should have WAF enabled**  
+*Principle*: A Web Application Firewall protects against common web exploits (SQL injection, XSS, etc.) at the application layer.  
+*Violation*: No `web_acl_id` is specified.  
+*Fix*: Associate a WAF Web ACL (v1 or v2) by setting `web_acl_id = aws_wafv2_web_acl.example.arn` (or the v1 equivalent).
+
+**CKV_AWS_305 – Ensure CloudFront distribution has a default root object configured**  
+*Principle*: A default root object prevents accidental exposure of directory listings or error pages when users request the root URL, and ensures a predictable entry point.  
+*Violation*: The attribute `default_root_object` is not set.  
+*Fix*: Add `default_root_object = "index.html"` (or your preferred object).
+
+**CKV2_AWS_42 – Ensure AWS CloudFront distribution uses custom SSL certificate**  
+*Principle*: A custom SSL certificate (ACM) ties the distribution to your own domain, providing proper trust and avoiding browser warnings that occur with the default `*.cloudfront.net` certificate.  
+*Violation*: The empty `viewer_certificate {}` block defaults to `cloudfront_default_certificate = true`, using the shared CloudFront certificate.  
+*Fix*: Use an ACM certificate and reference it:
+```hcl
+viewer_certificate {
+  acm_certificate_arn            = aws_acm_certificate.example.arn
+  cloudfront_default_certificate = false
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+**CKV2_AWS_32 – Ensure CloudFront distribution has a response headers policy attached**  
+*Principle*: Response headers policies inject security headers (HSTS, X-Content-Type-Options, etc.) that protect against clickjacking, MIME sniffing, and other browser‑side attacks.  
+*Violation*: The `default_cache_behavior` block (line 33) does not include `response_headers_policy_id`.  
+*Fix*: Attach a managed or custom policy:
+```hcl
+default_cache_behavior {
+  # ... existing configuration ...
+  response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"  # example managed policy
+}
+```
+
+**CKV2_AWS_47 – Ensure AWS CloudFront attached WAFv2 WebACL is configured with AMR for Log4j Vulnerability**  
+*Principle*: WAF must include AWS Managed Rules that specifically address critical, known vulnerabilities like Log4Shell (CVE-2021-44228) to block exploitation attempts.  
+*Violation*: No WAF is attached (see CKV_AWS_68), so the required rule group is absent.  
+*Fix*: Attach a WAFv2 Web ACL that contains the `AWSManagedRulesKnownBadInputsRuleSet` (or the dedicated `AWSManagedRulesLog4jRuleSet`) and reference it via `web_acl_id`.
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail` (lines 46–81)
+
+**CKV_AWS_86 – Access Logging**  
+*Principle*: Same as above – logging is required for visibility.  
+*Violation*: No `logging_config` block exists.  
+*Fix*: Add a `logging_config` block as shown earlier.
+
+**CKV_AWS_174 – TLS v1.2 on viewer certificate**  
+*Principle*: Same as above.  
+*Violation*: `viewer_certificate` block (line 76) sets `cloudfront_default_certificate = true` but does not specify `minimum_protocol_version`, so it defaults to `TLSv1`.  
+*Fix*: Add `minimum_protocol_version = "TLSv1.2_2021"` inside the `viewer_certificate` block.
+
+**CKV_AWS_68 – WAF enabled**  
+*Principle*: Same as above.  
+*Violation*: No `web_acl_id` is set.  
+*Fix*: Add `web_acl_id` referencing a WAF Web ACL.
+
+**CKV_AWS_310 – Origin failover configured**  
+*Principle*: Origin failover ensures high availability by automatically switching to a secondary origin when the primary returns specified HTTP error codes. Without it, a single origin failure causes an outage.  
+*Violation*: Only one `origin` block is defined (line 47); there is no `origin_group` block.  
+*Fix*: Define an origin group with at least two members and a `failover_criteria` block, then point the cache behavior to the group’s `origin_id`.
+
+**CKV2_AWS_42 – Custom SSL certificate**  
+*Principle*: Same as above.  
+*Violation*: `viewer_certificate` uses `cloudfront_default_certificate = true`.  
+*Fix*: Replace with an ACM certificate ARN and set `cloudfront_default_certificate = false`.
+
+**CKV2_AWS_32 – Response headers policy**  
+*Principle*: Same as above.  
+*Violation*: The `default_cache_behavior` block (line 60) has no `response_headers_policy_id`.  
+*Fix*: Add `response_headers_policy_id` with a valid policy ID.
+
+**CKV2_AWS_47 – WAFv2 with Log4j AMR**  
+*Principle*: Same as above.  
+*Violation*: No WAF is attached.  
+*Fix*: Attach a WAFv2 Web ACL that includes the Log4j managed rule group.
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail2` (lines 83–122)
+
+**CKV_AWS_216 – Distribution enabled**  
+*Principle*: Same as for `pass`.  
+*Violation*: `enabled = false` on line 119.  
+*Fix*: Set `enabled = true`.
+
+**CKV_AWS_86 – Access Logging**  
+*Principle*: Same as above.  
+*Violation*: No `logging_config` block.  
+*Fix*: Add a `logging_config` block.
+
+**CKV_AWS_174 – TLS v1.2**  
+*Principle*: Same as above.  
+*Violation*: Empty `viewer_certificate {}` (line 121) defaults to `TLSv1`.  
+*Fix*: Add `minimum_protocol_version = "TLSv1.2_2021"` (and choose between default or custom certificate).
+
+**CKV_AWS_68 – WAF enabled**  
+*Principle*: Same as above.  
+*Violation*: No `web_acl_id`.  
+*Fix*: Add `web_acl_id`.
+
+**CKV_AWS_310 – Origin failover configured**  
+*Principle*: Same as above.  
+*Violation*: An `origin_group` block is present (line 84) but it is missing the required `failover_criteria` block. Without it, the group is not a valid failover configuration.  
+*Fix*: Add a `failover_criteria` block inside `origin_group`:
+```hcl
+origin_group {
+  origin_id = "groupS3"
+  failover_criteria {
+    status_codes = [403, 404, 500, 502]
+  }
+  member { origin_id = "primaryS3" }
+  member { origin_id = "failoverS3" }
+}
+```
+
+**CKV_AWS_305 – Default root object**  
+*Principle*: Same as above.  
+*Violation*: `default_root_object` is not set.  
+*Fix*: Add `default_root_object = "index.html"`.
+
+**CKV2_AWS_42 – Custom SSL certificate**  
+*Principle*: Same as above.  
+*Violation*: Empty `viewer_certificate` defaults to the CloudFront default certificate.  
+*Fix*: Use an ACM certificate as described earlier.
+
+**CKV2_AWS_32 – Response headers policy**  
+*Principle*: Same as above.  
+*Violation*: `default_cache_behavior` (line 113) lacks `response_headers_policy_id`.  
+*Fix*: Add the policy ID.
+
+**CKV2_AWS_47 – WAFv2 with Log4j AMR**  
+*Principle*: Same as above.  
+*Violation*: No WAF attached.  
+*Fix*: Attach a WAFv2 Web ACL with the Log4j rule group.
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail3` (lines 124–160)
+
+**CKV_AWS_216 – Distribution enabled**  
+*Principle*: Same as above.  
+*Violation*: `enabled = false` on line 157.  
+*Fix*: Set `enabled = true`.
+
+**CKV_AWS_86 – Access Logging**  
+*Principle*: Same as above.  
+*Violation*: No `logging_config` block.  
+*Fix*: Add a `logging_config` block.
+
+**CKV_AWS_174 – TLS v1.2**  
+*Principle*: Same as above.  
+*Violation*: Empty `viewer_certificate {}` (line 159) defaults to `TLSv1`.  
+*Fix*: Add `minimum_protocol_version = "TLSv1.2_2021"`.
+
+**CKV_AWS_68 – WAF enabled**  
+*Principle*: Same as above.  
+*Violation*: No `web_acl_id`.  
+*Fix*: Add `web_acl_id`.
+
+**CKV_AWS_310 – Origin failover configured**  
+*Principle*: Same as above.  
+*Violation*: The `origin_group` block (line 125) contains `failover_criteria` but has no `member` blocks. An origin group with no members cannot provide failover.  
+*Fix*: Add at least two `member` blocks referencing the defined origins:
+```hcl
+origin_group {
+  origin_id = "groupS3"
+  failover_criteria {
+    status_codes = [403, 404, 500, 502]
+  }
+  member { origin_id = "primaryS3" }
+  member { origin_id = "failoverS3" }
+}
+```
+
+**CKV_AWS_305 – Default root object**  
+*Principle*: Same as above.  
+*Violation*: `default_root_object` is not set.  
+*Fix*: Add `default_root_object = "index.html"`.
+
+**CKV2_AWS_42 – Custom SSL certificate**  
+*Principle*: Same as above.  
+*Violation*: Empty `viewer_certificate` uses the default certificate.  
+*Fix*: Use an ACM certificate.
+
+**CKV2_AWS_32 – Response headers policy**  
+*Principle*: Same as above.  
+*Violation*: `default_cache_behavior` (line 151) lacks `response_headers_policy_id`.  
+*Fix*: Add the policy ID.
+
+**CKV2_AWS_47 – WAFv2 with Log4j AMR**  
+*Principle*: Same as above.  
+*Violation*: No WAF attached.  
+*Fix*: Attach a WAFv2 Web ACL with the Log4j managed rule group.
+
+---
+
+Apply these changes to bring all distributions into compliance with the flagged checks.

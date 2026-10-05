@@ -1,0 +1,42 @@
+The scanner flagged three resources under check **CKV_AWS_259**, which verifies that a CloudFront response headers policy enforces HTTP Strict Transport Security (HSTS). The evidence is in the provided Terraform file.
+
+### 1. `aws_cloudfront_response_headers_policy.no_security_headers_config` (lines 18–20)
+```terraform
+resource "aws_cloudfront_response_headers_policy" "no_security_headers_config" {
+  name    = "test"
+}
+```
+**Problem:** The resource has no `security_headers_config` block at all. Without that block, there is no HSTS configuration. The check requires a `strict_transport_security` block inside `security_headers_config` to enforce HSTS.
+
+### 2. `aws_cloudfront_response_headers_policy.no_strict_transport_security` (lines 22–30)
+```terraform
+resource "aws_cloudfront_response_headers_policy" "no_strict_transport_security" {
+  name    = "test"
+
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+  }
+}
+```
+**Problem:** A `security_headers_config` block exists, but it only contains `content_type_options`. There is no `strict_transport_security` block. The check requires that block to be present and properly configured.
+
+### 3. `aws_cloudfront_response_headers_policy.incorrect_strict_transport_security` (lines 32–43)
+```terraform
+resource "aws_cloudfront_response_headers_policy" "incorrect_strict_transport_security" {
+  name    = "test"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 1
+      include_subdomains         = true
+      override                   = true
+      preload                    = true
+    }
+  }
+}
+```
+**Problem:** A `strict_transport_security` block is present, but `access_control_max_age_sec` is set to `1` second. This value is too short to meaningfully enforce HSTS. The compliant example (`aws_cloudfront_response_headers_policy.pass`, lines 1–12) uses `31536000` seconds (1 year), which is the typical minimum required by this check. The scanner therefore considers the policy ineffective for enforcing Strict Transport Security.
+
+**Fix:** For each resource, ensure a `security_headers_config` block contains a `strict_transport_security` block with `access_control_max_age_sec` set to at least `31536000` (and `override = true`), as shown in the `pass` resource.

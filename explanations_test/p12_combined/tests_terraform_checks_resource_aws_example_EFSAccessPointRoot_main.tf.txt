@@ -1,0 +1,68 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported, with the evidence from the file and the required change.
+
+---
+
+### 1. CKV_AWS_330 on `aws_efs_access_point.pass` (lines 1–6)
+
+**What triggers it:**  
+The resource block at lines 1–6 defines an access point with a `root_directory` but contains no `posix_user` block.
+
+**What is wrong and why it matters:**  
+The access point does not enforce a user identity, meaning file system operations are not tied to a specific POSIX user and group. This can allow unintended access or reliance on the client’s default identity.
+
+**Change needed:**  
+Add a `posix_user` block inside the `aws_efs_access_point.pass` resource, specifying a `uid` and `gid` (for example, `1000` and `1000`). This will enforce that all file accesses through this access point use that identity.
+
+---
+
+### 2. CKV_AWS_329 on `aws_efs_access_point.fail` (lines 13–18)
+
+**What triggers it:**  
+The resource block at lines 13–18 includes a `root_directory` block, but its `path` is set to `"/"`.
+
+**What is wrong and why it matters:**  
+Setting the root directory path to `"/"` does not enforce a restricted root directory; the access point still exposes the entire file system root. The check requires that the access point enforce a specific, non‑root directory to limit the client’s view.
+
+**Change needed:**  
+Change the `path` value inside the `root_directory` block from `"/"` to a dedicated subdirectory (e.g., `"/app"` or the variable `var.root_path`). This will confine the access point to that directory.
+
+---
+
+### 3. CKV_AWS_330 on `aws_efs_access_point.fail` (lines 13–18)
+
+**What triggers it:**  
+The same resource block at lines 13–18 lacks a `posix_user` block.
+
+**What is wrong and why it matters:**  
+The access point does not enforce a user identity, so file operations are not restricted to a specific POSIX user/group, potentially allowing unintended access.
+
+**Change needed:**  
+Add a `posix_user` block inside the `aws_efs_access_point.fail` resource, with a defined `uid` and `gid`. This will enforce a consistent user identity for all accesses through this access point.
+
+---
+
+### 4. CKV_AWS_329 on `aws_efs_access_point.fail2` (lines 21–23)
+
+**What triggers it:**  
+The resource block at lines 21–23 has no `root_directory` block at all.
+
+**What is wrong and why it matters:**  
+Without a `root_directory` block, the access point does not enforce a root directory, leaving the client able to access the entire file system from the root. The check requires that a root directory be explicitly enforced.
+
+**Change needed:**  
+Add a `root_directory` block inside the `aws_efs_access_point.fail2` resource, with a `path` set to a non‑root directory (e.g., `"/data"`). This will restrict the access point’s view to that subdirectory.
+
+---
+
+### 5. CKV_AWS_330 on `aws_efs_access_point.fail2` (lines 21–23)
+
+**What triggers it:**  
+The same resource block at lines 21–23 contains no `posix_user` block.
+
+**What is wrong and why it matters:**  
+The access point does not enforce a user identity, so file accesses are not tied to a specific POSIX user/group, which can lead to unintended access.
+
+**Change needed:**  
+Add a `posix_user` block inside the `aws_efs_access_point.fail2` resource, specifying a `uid` and `gid`. This will enforce a consistent user identity for all operations through this access point.

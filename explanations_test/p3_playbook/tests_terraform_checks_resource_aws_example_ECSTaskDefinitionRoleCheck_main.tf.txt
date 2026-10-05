@@ -1,0 +1,25 @@
+## Remediation Briefing
+
+### Finding 1
+- **Check**: CKV_AWS_336  
+- **Resource**: `aws_ecs_task_definition.pass` (lines 1–20)  
+- **What’s wrong**: The container definition does not set `readonlyRootFilesystem` to `true`.  
+- **Why it matters**: Without a read-only root filesystem, a compromised container can write to the filesystem, potentially allowing an attacker to install malicious tools, modify binaries, or exfiltrate data. Enforcing read-only access reduces the attack surface and aligns with the principle of least privilege.  
+- **Remediation**: In the JSON-encoded container definition, add the key `"readonlyRootFilesystem": true` at the same level as `name`, `image`, `cpu`, etc. This change will make the root filesystem read-only for the container. If the application genuinely needs to write to certain directories, mount ephemeral storage volumes for those specific paths instead.
+
+### Finding 2
+- **Check**: CKV_AWS_336  
+- **Resource**: `aws_ecs_task_definition.fail` (lines 22–41)  
+- **What’s wrong**: The container definition does not set `readonlyRootFilesystem` to `true`.  
+- **Why it matters**: Same risk as above—writable root filesystems allow a compromised container to be used for persistence or lateral movement.  
+- **Remediation**: Add `"readonlyRootFilesystem": true` inside the container definition JSON for this resource, exactly as described for the `pass` resource. This change is independent of the role fix below.
+
+### Finding 3
+- **Check**: CKV_AWS_249  
+- **Resource**: `aws_ecs_task_definition.fail` (lines 22–41)  
+- **What’s wrong**: The `execution_role_arn` and `task_role_arn` are set to the same IAM role ARN (`aws_iam_role.example.arn`).  
+- **Why it matters**: The execution role grants the ECS agent permission to pull images and publish logs, while the task role grants the application inside the container permission to access AWS services. Using the same role for both violates the principle of least privilege and can give the application excessive permissions (e.g., access to ECR or CloudWatch) that it does not need.  
+- **Remediation**: Create or reference two distinct IAM roles: one for the execution role (with permissions like `ecr:GetAuthorizationToken`, `ecr:BatchCheckLayerAvailability`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, and `logs:CreateLogStream`, `logs:PutLogEvents`) and a separate, more restrictive role for the task role (only the permissions the application actually requires). Update the `execution_role_arn` and `task_role_arn` arguments to point to these different roles. This change is independent of the `readonlyRootFilesystem` fix; both can be applied simultaneously.
+
+### Interactions
+No interaction between the fixes exists in the supplied file. Adding `readonlyRootFilesystem` to both resources and changing the IAM role ARNs in the `fail` resource are orthogonal changes that can be performed in any order.

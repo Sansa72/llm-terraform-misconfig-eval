@@ -1,0 +1,72 @@
+The scanner flagged five misconfigurations across your two DMS replication instances. I’ll explain each finding, why it’s a security risk, and how to fix it in Terraform.
+
+---
+
+### 1. CKV_AWS_89 – DMS replication instance should not be publicly accessible
+**Affected resources:** `aws_dms_replication_instance.pass` (line 1) and `aws_dms_replication_instance.fail` (line 12)
+
+**Problem:**  
+Both instances have `publicly_accessible = true`. This assigns a public IP address to the instance and makes it reachable from the internet. A publicly exposed DMS instance increases the attack surface significantly—anyone can attempt to connect, brute-force credentials, or exploit unpatched vulnerabilities.
+
+**Fix:**  
+Set `publicly_accessible = false` on both resources. The instances will then only be accessible from within the VPC, following the principle of least privilege.
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  # ...
+  publicly_accessible = false   # change from true
+  # ...
+}
+```
+
+---
+
+### 2. CKV_AWS_222 – Ensure DMS instance gets all minor upgrades automatically
+**Affected resources:** `aws_dms_replication_instance.pass` and `aws_dms_replication_instance.fail`
+
+**Problem:**  
+The `auto_minor_version_upgrade` attribute is not set (or is commented out) in both resources. Its default value is `false`. Without automatic minor version upgrades, the instance will not receive security patches and bug fixes released by AWS for the DMS engine. This leaves the instance running on a potentially vulnerable version.
+
+**Fix:**  
+Explicitly set `auto_minor_version_upgrade = true` on both instances.
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  # ...
+  auto_minor_version_upgrade = true
+  # ...
+}
+```
+
+---
+
+### 3. CKV_AWS_212 – Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)
+**Affected resource:** `aws_dms_replication_instance.fail` (line 12)
+
+**Problem:**  
+The `fail` instance does not specify a `kms_key_arn`. While DMS always encrypts the underlying EBS volume, without a customer managed key (CMK) it defaults to an AWS-managed key. Using an AWS-managed key means you have no control over key rotation, access policies, or auditing, and it may violate compliance requirements that mandate customer-managed keys.
+
+**Fix:**  
+Provide a customer managed KMS key ARN via the `kms_key_arn` argument, just like the `pass` instance does.
+
+```hcl
+resource "aws_dms_replication_instance" "fail" {
+  # ...
+  kms_key_arn = aws_kms_key.example.arn   # or any valid CMK ARN
+  # ...
+}
+```
+
+---
+
+### Summary of required changes
+
+| Resource | Current Value | Required Change |
+|----------|---------------|-----------------|
+| `aws_dms_replication_instance.pass` | `publicly_accessible = true` | Set to `false` |
+| `aws_dms_replication_instance.pass` | `auto_minor_version_upgrade` missing (default `false`) | Add `auto_minor_version_upgrade = true` |
+| `aws_dms_replication_instance.fail` | `publicly_accessible = true` | Set to `false` |
+| `aws_dms_replication_instance.fail` | `auto_minor_version_upgrade` missing (default `false`) | Add `auto_minor_version_upgrade = true` |
+| `aws_dms_replication_instance.fail` | `kms_key_arn` not set | Add `kms_key_arn = aws_kms_key.example.arn` (or another CMK) |
+
+After applying these changes, both instances will be private, automatically receive minor engine upgrades, and the `fail` instance will use a customer-managed KMS key for EBS encryption.

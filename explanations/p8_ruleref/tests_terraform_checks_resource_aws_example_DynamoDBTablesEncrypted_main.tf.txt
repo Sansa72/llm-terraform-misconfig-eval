@@ -1,0 +1,113 @@
+The scanner flagged four DynamoDB tables in your Terraform configuration. Three checks failed across them: **point-in-time recovery (PITR)**, **encryption with a customer-managed CMK**, and **Auto Scaling**. Below I’ll explain each issue, why it matters, and exactly what needs to change in your code.
+
+---
+
+## 1. CKV_AWS_28 – Point-in-time recovery is not enabled
+
+**What it means**  
+DynamoDB point-in-time recovery (PITR) provides continuous backups of your table data for the last 35 days, protecting against accidental writes or deletes. Without it, you have no way to restore the table to a specific moment in the recent past.
+
+**Where it fails**  
+All four tables (`aws_dynamodb_table.cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`) lack a `point_in_time_recovery` block. Even the `cmk` resource, which is otherwise well-configured, is missing this.
+
+**How to fix**  
+Add the following block inside each `aws_dynamodb_table` resource:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+This enables continuous backups with no additional configuration required.
+
+---
+
+## 2. CKV_AWS_119 – Table not encrypted with a Customer Managed CMK
+
+**What it means**  
+DynamoDB always encrypts data at rest by default using an **AWS owned key**. This check requires a **Customer Managed Key (CMK)** in AWS KMS, which gives you control over key rotation, access policies, and auditing. Using the default AWS-owned key or disabling encryption entirely removes that control and can violate compliance requirements.
+
+**Where it fails**  
+- `aws_dynamodb_table.default` – no `server_side_encryption` block → uses AWS-owned key (fails).  
+- `aws_dynamodb_table.encrypted_false` – `enabled = false` → encryption is off (fails).  
+- `aws_dynamodb_table.encrypted_no_cmk` – `enabled = true` but no `kms_key_arn` → uses AWS-owned key (fails).  
+- `aws_dynamodb_table.cmk` – already passes because it specifies a customer-managed CMK ARN.
+
+**How to fix**  
+For the three failing tables, replace or add the `server_side_encryption` block to match the pattern in the `cmk` resource:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+}
+```
+
+If you have a KMS key defined elsewhere in Terraform, reference it via `aws_kms_key.my_key.arn` instead of hardcoding the ARN.
+
+---
+
+## 3. CKV2_AWS_16 – Auto Scaling is not enabled
+
+**What it means**  
+For tables using `PROVISIONED` billing mode, you must configure Auto Scaling to automatically adjust read and write capacity based on actual usage. Without it, a sudden traffic spike can exhaust the fixed capacity, causing throttling and application errors. Auto Scaling ensures the table can scale up during demand and scale down to save costs.
+
+**Where it fails**  
+All four tables use `billing_mode = "PROVISIONED"` with static `read_capacity` and `write_capacity` values, and no Auto Scaling resources are defined. The scanner correctly identifies this as a missing capability.
+
+**How to fix**  
+You have two options:
+
+### Option A – Switch to on-demand capacity (simplest)
+If your workload is unpredictable and you don’t want to manage scaling, change the billing mode to `PAY_PER_REQUEST` and remove the static capacity values:
+
+```hcl
+billing_mode = "PAY_PER_REQUEST"
+# read_capacity and write_capacity are not needed
+```
+
+This eliminates the need for Auto Scaling entirely and will satisfy the check.
+
+### Option B – Add Auto Scaling resources (for provisioned mode)
+If you must stay on `PROVISIONED`, define an `aws_appautoscaling_target` and two `aws_appautoscaling_policy` resources (one for reads, one for writes) for each table. For example, for the `cmk` table:
+
+```hcl
+resource "aws_appautoscaling_target" "cmk_read" {
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.cmk.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "cmk_read_policy" {
+  name               = "cmk-read-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.cmk_read.resource_id
+  scalable_dimension = aws_appautoscaling_target.cmk_read.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.cmk_read.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value = 70.0
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+  }
+}
+```
+
+Repeat for write capacity (change `scalable_dimension` to `dynamodb:table:WriteCapacityUnits` and metric type to `DynamoDBWriteCapacityUtilization`). You’ll need similar blocks for each table.
+
+---
+
+## Summary of required changes per resource
+
+| Resource | PITR | CMK encryption | Auto Scaling |
+|----------|------|---------------|--------------|
+| `cmk` | Add `point_in_time_recovery { enabled = true }` | Already compliant | Add Auto Scaling or switch to `PAY_PER_REQUEST` |
+| `default` | Add `point_in_time_recovery { enabled = true }` | Add `server_side_encryption` with CMK ARN | Add Auto Scaling or switch to `PAY_PER_REQUEST` |
+| `encrypted_false` | Add `point_in_time_recovery { enabled = true }` | Change `enabled` to `true` and add CMK ARN | Add Auto Scaling or switch to `PAY_PER_REQUEST` |
+| `encrypted_no_cmk` | Add `point_in_time_recovery { enabled = true }` | Add `kms_key_arn` to the existing block | Add Auto Scaling or switch to `PAY_PER_REQUEST` |
+
+All changes are straightforward additions to the existing Terraform resources. The `cmk` table is the closest to compliant and only needs PITR and Auto Scaling. The other three need encryption and PITR fixes as well.

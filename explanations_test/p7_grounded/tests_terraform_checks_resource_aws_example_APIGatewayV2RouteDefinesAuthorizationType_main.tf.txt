@@ -1,0 +1,29 @@
+The scanner flagged two resources for the same check: **CKV_AWS_309**, which requires API Gateway V2 routes to specify an authorization type. Both flagged resources are in the provided Terraform file.
+
+**1. `aws_apigatewayv2_route.fail` (lines 1–4)**
+```terraform
+resource "aws_apigatewayv2_route" "fail" {
+  api_id    = aws_apigatewayv2_api.example.id
+  route_key = "$default"
+}
+```
+The `authorization_type` argument is completely absent. Because no authorization type is set, the route defaults to `NONE` (no authorization), which the check treats as a misconfiguration.
+
+**2. `aws_apigatewayv2_route.fail2` (lines 6–10)**
+```terraform
+resource "aws_apigatewayv2_route" "fail2" {
+  api_id             = aws_apigatewayv2_api.example.id
+  route_key          = "$default"
+  authorization_type = "NONE"
+}
+```
+Here the `authorization_type` is explicitly set to `"NONE"`. The check flags this because the route is intentionally configured without any authorization, leaving the endpoint publicly accessible.
+
+**Why the other resources pass**  
+- `aws_apigatewayv2_route.pass2` uses `authorization_type = "JWT"`  
+- `aws_apigatewayv2_route.pass` uses `authorization_type = "AWS_IAM"`  
+
+Both specify a valid authorization mechanism, satisfying the check.
+
+**What to do**  
+Change the `authorization_type` on the failing routes to a value that enforces access control, such as `"JWT"`, `"AWS_IAM"`, or `"CUSTOM"`, depending on your API’s authentication requirements. If the route genuinely needs to be public, you should document the exception and suppress the finding with a justification, but the scanner’s default expectation is that routes are protected.

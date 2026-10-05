@@ -1,0 +1,11 @@
+**Remediation Briefing: CKV_AWS_302 – Public DB Snapshot**
+
+**Check ID:** CKV_AWS_302  
+**Resource:** `aws_db_snapshot.fail`  
+**Triggering lines:** 12–16, specifically line 15 (`shared_accounts=["all"]`)
+
+**What is wrong and why it matters**  
+The snapshot is configured with `shared_accounts = ["all"]`, which makes it publicly accessible. A public DB snapshot can be copied and restored by any AWS account, exposing the underlying database data to unauthorised parties.
+
+**Required change**  
+Remove the `shared_accounts` attribute entirely if the snapshot does not need to be shared, or replace `"all"` with a list of specific, trusted AWS account IDs (e.g. `["123456789012"]`). The check will pass once the snapshot is no longer shared with the entire internet.

@@ -1,0 +1,76 @@
+Let's break down each finding, referencing the exact resources, lines, and check IDs.
+
+---
+
+### 1. CKV_AWS_89 – DMS replication instance should not be publicly accessible
+
+**Finding:** This check is raised against **both** resources.
+
+- **Resource `aws_dms_replication_instance.pass`** (lines 1–9)  
+  The finding points to this resource. The trigger is on **line 4**:  
+  ```hcl
+  publicly_accessible        = true
+  ```
+  Despite the resource name `pass`, the instance is configured to be publicly accessible. The check flags any DMS instance with `publicly_accessible` set to `true`.
+
+- **Resource `aws_dms_replication_instance.fail`** (lines 12–20)  
+  The same issue exists on **line 15**:  
+  ```hcl
+  publicly_accessible        = true
+  ```
+
+**What to fix:**  
+Set `publicly_accessible` to `false` on both resources, unless there is a strict, documented business requirement for public access. The scanner expects `publicly_accessible = false`.
+
+---
+
+### 2. CKV_AWS_212 – Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)
+
+**Finding:** Raised only against `aws_dms_replication_instance.fail` (lines 12–20).
+
+**Evidence:**  
+- The resource does not specify a `kms_key_arn`.  
+- Line 18 contains a commented-out attribute:  
+  ```hcl
+  # kms_key_arn = ""
+  ```
+  Because no KMS key ARN is provided, the underlying EBS volume will either be unencrypted or encrypted with the default AWS-managed key. The check requires a **customer-managed key** (CMK) to be explicitly set.
+
+**What to fix:**  
+Uncomment the `kms_key_arn` line and provide a valid CMK ARN, for example:  
+```hcl
+kms_key_arn = aws_kms_key.example.arn
+```
+(You’ll need to ensure the key exists and the DMS replication instance has permissions to use it.)
+
+---
+
+### 3. CKV_AWS_222 – Ensure DMS instance gets all minor upgrade automatically
+
+**Finding:** Raised only against `aws_dms_replication_instance.fail` (lines 12–20).
+
+**Evidence:**  
+Line 19:  
+```hcl
+auto_minor_version_upgrade = false
+```
+The check requires `auto_minor_version_upgrade` to be `true` so that the instance automatically receives minor engine upgrades during the maintenance window.
+
+**What to fix:**  
+Change the value to `true`:  
+```hcl
+auto_minor_version_upgrade = true
+```
+
+---
+
+### Summary of required changes
+
+| Resource | Line | Current Value | Required Value |
+|----------|------|---------------|----------------|
+| `aws_dms_replication_instance.pass` | 4 | `publicly_accessible = true` | `false` |
+| `aws_dms_replication_instance.fail` | 15 | `publicly_accessible = true` | `false` |
+| `aws_dms_replication_instance.fail` | 18 | `# kms_key_arn = ""` (commented out) | Uncomment and set a valid CMK ARN |
+| `aws_dms_replication_instance.fail` | 19 | `auto_minor_version_upgrade = false` | `true` |
+
+No other resources or checks are mentioned in the provided scanner output, so only these lines need to be addressed.

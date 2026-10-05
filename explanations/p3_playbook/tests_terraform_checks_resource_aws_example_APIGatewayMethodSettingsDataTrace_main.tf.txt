@@ -1,0 +1,61 @@
+**Remediation Briefing: API Gateway Method Settings**
+
+Below is a walk‑through of every failing check, in the order they appear in the scanner output. Each section names the check and the resource, states the problem, explains the risk, and describes the required change in plain language.
+
+---
+
+### 1. CKV_AWS_276 on resource `aws_api_gateway_method_settings.fail` (lines 1‑9)
+**What’s wrong:** Data trace logging is explicitly enabled (`data_trace_enabled = true`).  
+**Why it matters:** Data trace logging sends the full request and response payloads to CloudWatch Logs. This can expose sensitive data (PII, credentials, tokens) in logs, increasing the risk of data leakage and violating least‑privilege principles.  
+**Change needed:** In the `settings` block of this resource, set `data_trace_enabled` to `false` (or remove the attribute entirely, as the default is `false`). This will stop the logging of full request/response bodies.
+
+---
+
+### 2. CKV_AWS_225 on resource `aws_api_gateway_method_settings.fail` (lines 1‑9)
+**What’s wrong:** API Gateway method caching is not enabled.  
+**Why it matters:** Caching reduces the number of calls made to the backend, improving performance and reducing load on downstream services. Without it, every request hits the integration endpoint, which can lead to higher latency and cost.  
+**Change needed:** In the `settings` block, add `caching_enabled = true`. This will activate the cache for the specified method and stage.
+
+---
+
+### 3. CKV_AWS_308 on resource `aws_api_gateway_method_settings.fail` (lines 1‑9)
+**What’s wrong:** Cache data encryption is not enabled.  
+**Why it matters:** Even when caching is turned on, the cached responses may contain sensitive information. Without encryption, that data is stored in plaintext, violating data‑protection requirements.  
+**Change needed:** In the same `settings` block, add `cache_data_encrypted = true`. This ensures that all cached responses are encrypted at rest.  
+*Interaction note:* This check is only relevant once caching is enabled (CKV_AWS_225). Both attributes must be set together to fully secure the cache.
+
+---
+
+### 4. CKV_AWS_225 on resource `aws_api_gateway_method_settings.pass_explicit` (lines 11‑19)
+**What’s wrong:** Caching is not enabled.  
+**Why it matters:** Same as above – missing caching leads to unnecessary backend load and higher latency.  
+**Change needed:** In the `settings` block of this resource, add `caching_enabled = true`. The block already contains `data_trace_enabled = false`, so only the caching attribute is missing.
+
+---
+
+### 5. CKV_AWS_308 on resource `aws_api_gateway_method_settings.pass_explicit` (lines 11‑19)
+**What’s wrong:** Cache encryption is not enabled.  
+**Why it matters:** Without encryption, cached data is stored in plaintext, exposing it to potential unauthorised access.  
+**Change needed:** In the same `settings` block, add `cache_data_encrypted = true`. This must be done together with enabling caching (CKV_AWS_225) to satisfy both checks.
+
+---
+
+### 6. CKV_AWS_225 on resource `aws_api_gateway_method_settings.pass_implicit` (lines 21‑25)
+**What’s wrong:** Caching is not enabled.  
+**Why it matters:** Same performance and cost implications as above.  
+**Change needed:** This resource currently has no `settings` block at all. You must add a `settings` block and inside it set `caching_enabled = true`. The block can be minimal, containing only the required attributes.
+
+---
+
+### 7. CKV_AWS_308 on resource `aws_api_gateway_method_settings.pass_implicit` (lines 21‑25)
+**What’s wrong:** Cache encryption is not enabled.  
+**Why it matters:** Without encryption, cached data is stored in plaintext, creating a security risk.  
+**Change needed:** In the newly added `settings` block (required for CKV_AWS_225), also set `cache_data_encrypted = true`. Both attributes must be present to pass the caching and encryption checks.
+
+---
+
+**Summary of interactions:**  
+- For the `fail` resource, the fix for CKV_AWS_276 (disable data trace) is independent of the caching fixes.  
+- For all three resources, the fixes for CKV_AWS_225 (enable caching) and CKV_AWS_308 (encrypt cache) are coupled: you must add both `caching_enabled = true` and `cache_data_encrypted = true` in the same `settings` block.  
+- The `pass_explicit` resource already has a `settings` block; you only need to add the two caching attributes.  
+- The `pass_implicit` resource has no `settings` block; you must create one containing both caching attributes.

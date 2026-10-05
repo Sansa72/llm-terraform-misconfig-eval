@@ -1,0 +1,27 @@
+**Remediation Briefing: CKV_AWS_233 – Ensure Create Before Destroy for ACM Certificates**
+
+Below are the two failing findings, addressed in the order they appear in the scanner output. Both relate to the same check and the same underlying risk, but the required changes differ slightly per resource.
+
+---
+
+### 1. CKV_AWS_233 on `aws_acm_certificate.fail` (lines 14–25)
+
+**What is wrong:** The `lifecycle` block explicitly sets `create_before_destroy = false`, which disables the safe replacement behaviour.
+
+**Why it matters:** AWS Certificate Manager (ACM) certificates are tied to domain validation records. If Terraform destroys the existing certificate before creating a replacement, any service relying on that certificate (e.g., a load balancer or CloudFront distribution) will lose its TLS binding during the replacement window. This can cause downtime, failed connections, or validation errors. Enabling `create_before_destroy` ensures the new certificate is issued and validated before the old one is removed, avoiding a gap in coverage.
+
+**Change needed:** In the `lifecycle` block of `aws_acm_certificate.fail`, change the value of `create_before_destroy` from `false` to `true`. The block already exists, so only the boolean value needs to be flipped. No other resource depends on this certificate in the provided file, so no additional coordination is required.
+
+---
+
+### 2. CKV_AWS_233 on `aws_acm_certificate.fail2` (lines 27–34)
+
+**What is wrong:** The resource has no `lifecycle` block at all, so Terraform uses the default behaviour (`create_before_destroy = false`).
+
+**Why it matters:** The same risk applies as above: a replacement operation would destroy the existing certificate first, potentially breaking any service that uses it. Without an explicit `create_before_destroy = true`, the resource is vulnerable to the same downtime and validation issues.
+
+**Change needed:** Add a `lifecycle` block inside `aws_acm_certificate.fail2` that sets `create_before_destroy = true`. The block should be placed at the same level as `domain_name`, `validation_method`, and `tags`. The existing `aws_acm_certificate.pass` resource (lines 1–13) already demonstrates the correct syntax and placement; follow that pattern.
+
+---
+
+**Interaction note:** The two failing resources are independent in the supplied file. Fixing one does not affect the other, and no ordering or dependency constraints exist between them. Both can be remediated in the same change set without conflict.

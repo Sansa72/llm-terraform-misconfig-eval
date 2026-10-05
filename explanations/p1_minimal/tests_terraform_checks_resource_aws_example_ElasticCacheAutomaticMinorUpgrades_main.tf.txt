@@ -1,0 +1,85 @@
+The scanner identified several security misconfigurations across your ElastiCache cluster definitions. Below is a breakdown of each failing check, why it matters, and how to fix it.
+
+---
+
+### 1. CKV_AWS_323 – Default Subnet Group
+**Affected resources:**  
+`aws_elasticache_cluster.pass`, `aws_elasticache_cluster.pass2`, `aws_elasticache_cluster.fail`, `aws_elasticache_cluster.memcached`
+
+**Problem:**  
+None of the clusters specify a `subnet_group_name`. When omitted, ElastiCache places the cluster in the **default subnet group** of the VPC. This group is automatically created by AWS and often contains public subnets or subnets without the network controls you’d want for a data store. It can expose your cache to unintended network access and makes it harder to enforce a consistent security posture.
+
+**Fix:**  
+Create a custom subnet group that uses private subnets and assign it to each cluster.
+
+```hcl
+resource "aws_elasticache_subnet_group" "cache" {
+  name       = "my-cache-subnet-group"
+  subnet_ids = ["subnet-abc123", "subnet-def456"]  # your private subnets
+}
+
+resource "aws_elasticache_cluster" "pass" {
+  # ... other arguments ...
+  subnet_group_name = aws_elasticache_subnet_group.cache.name
+}
+```
+
+Apply this to all four cluster resources.
+
+---
+
+### 2. CKV_AWS_134 – Automatic Backup Disabled (Redis only)
+**Affected resources:**  
+`aws_elasticache_cluster.pass2`, `aws_elasticache_cluster.fail`
+
+**Problem:**  
+For Redis clusters, automatic backups are controlled by `snapshot_retention_limit`.  
+- In `pass2`, the argument is missing → defaults to `0` (no backups).  
+- In `fail`, it is explicitly set to `0`.
+
+Without automatic backups, you lose the ability to recover from data corruption, accidental deletion, or cluster failure. This is a significant data durability risk.
+
+**Fix:**  
+Set `snapshot_retention_limit` to at least `1` (number of days to retain daily snapshots). For production, 5–7 days is common.
+
+```hcl
+resource "aws_elasticache_cluster" "pass2" {
+  # ... other arguments ...
+  snapshot_retention_limit = 5   # enable automatic daily backups
+}
+```
+
+Do the same for `fail` (and consider renaming that resource to reflect it’s now compliant).
+
+---
+
+### 3. CKV_AWS_322 – Auto Minor Version Upgrade Disabled (Redis only)
+**Affected resource:**  
+`aws_elasticache_cluster.fail`
+
+**Problem:**  
+`auto_minor_version_upgrade` is explicitly set to `false`. This prevents the cluster from automatically receiving minor engine upgrades during the maintenance window. Missing minor upgrades can leave the cluster vulnerable to known security issues or bugs that have already been patched.
+
+**Fix:**  
+Set `auto_minor_version_upgrade = true` (or simply remove the line, as `true` is the default for Redis).
+
+```hcl
+resource "aws_elasticache_cluster" "fail" {
+  # ... other arguments ...
+  auto_minor_version_upgrade = true
+  snapshot_retention_limit  = 5
+}
+```
+
+---
+
+### Summary of Required Changes
+
+| Resource | Add / Change |
+|----------|--------------|
+| `pass`   | Add `subnet_group_name` referencing a custom subnet group |
+| `pass2`  | Add `subnet_group_name` and `snapshot_retention_limit` (≥1) |
+| `fail`   | Add `subnet_group_name`, set `snapshot_retention_limit` ≥1, set `auto_minor_version_upgrade = true` |
+| `memcached` | Add `subnet_group_name` (backup & auto-upgrade checks do not apply to Memcached) |
+
+After making these changes, re-run the scanner to confirm all checks pass.

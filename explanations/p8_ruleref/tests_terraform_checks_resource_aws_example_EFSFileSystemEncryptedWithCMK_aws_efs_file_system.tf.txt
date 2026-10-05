@@ -1,0 +1,46 @@
+The scanner flagged a single issue on the `aws_efs_file_system` resource named **`fail`** (lines 6–8). The rule **CKV_AWS_184** requires that the EFS file system be encrypted using a **customer-managed KMS key (CMK)**, not the default AWS-managed key.
+
+### What’s wrong in this file
+
+```terraform
+resource "aws_efs_file_system" "fail" {
+  encrypted = true
+}
+```
+
+Setting `encrypted = true` enables encryption at rest, but without specifying `kms_key_id`, EFS automatically uses the **AWS-managed key** (`aws/elasticfilesystem`). That key is owned and managed entirely by AWS; you cannot control its rotation schedule, key policy, or audit trail independently. The policy requires a **customer-managed key** so that your organisation retains full control over the encryption lifecycle, access permissions, and logging.
+
+The `pass` resource in the same file shows the correct pattern:
+
+```terraform
+resource "aws_efs_file_system" "pass" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.test.arn
+}
+```
+
+Here, `kms_key_id` points to a CMK (created elsewhere, presumably in the same Terraform configuration). This satisfies the rule because the key is customer-managed.
+
+### Why this matters (grounded in the reference)
+
+The Prisma Cloud policy (CKV_AWS_184) is based on the general security principle that **customer-managed keys provide stronger security posture** than AWS-managed keys. With a CMK you can:
+
+- Define and enforce fine-grained key policies (who can use the key, under what conditions).
+- Enable automatic key rotation on a schedule you control.
+- Centrally audit all cryptographic operations via AWS CloudTrail.
+- Revoke access to the key immediately if a security incident occurs, effectively making the encrypted data inaccessible.
+
+Relying on the AWS-managed key means you surrender all of these controls. For an EFS file system that may contain sensitive application data, this is a significant gap.
+
+### How to fix it
+
+Add a `kms_key_id` argument to the `fail` resource, referencing a customer-managed KMS key. If the key `aws_kms_key.test` already exists and is appropriate, the fix is a one-line change:
+
+```terraform
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.test.arn
+}
+```
+
+If a different CMK should be used, create or import it and reference its ARN. After applying the change, the EFS file system will be re-encrypted with the specified CMK (new data will be encrypted with the new key; existing data remains encrypted with the old key unless you migrate it, but the configuration will satisfy the policy).

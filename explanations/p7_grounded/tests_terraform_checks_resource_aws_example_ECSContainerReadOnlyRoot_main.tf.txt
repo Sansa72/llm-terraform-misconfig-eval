@@ -1,0 +1,61 @@
+The scanner flagged three security checks against the `fail` and `fail2` resources. Here is what each finding means, backed by the exact lines in the file.
+
+---
+
+### CKV_AWS_336 – Read-only root filesystem
+
+**Finding:**  
+`CKV_AWS_336` on `aws_ecs_task_definition.fail` (lines 45-87) and `aws_ecs_task_definition.fail2` (lines 89-133).  
+**Check description:** *Ensure ECS containers are limited to read-only access to root filesystems.*
+
+**What the file shows:**
+
+- In the `pass` resource (lines 1-43), both containers explicitly set `readonlyRootFilesystem = true` (lines 12 and 24). No finding is raised.
+- In the `fail` resource, the **second** container definition (lines 66-76) does **not** include the `readonlyRootFilesystem` attribute. The first container (line 56) has it set to `true`, but the second container omits it entirely. The default value for this attribute is `false`, so the second container will have a writable root filesystem.
+- In the `fail2` resource, both containers explicitly set `readonlyRootFilesystem = false`:
+  - First container: line 100.
+  - Second container: line 115.
+
+**Problem:**  
+The check requires that every container in the task definition has `readonlyRootFilesystem` set to `true`. The `fail` resource’s second container lacks the setting (defaults to `false`), and the `fail2` resource’s containers both explicitly disable it. This means those containers can write to their root filesystem, which the scanner considers a misconfiguration.
+
+**Fix:**  
+Add `readonlyRootFilesystem = true` to the second container in `fail` (around line 66) and change the value from `false` to `true` in both containers of `fail2` (lines 100 and 115). If a container genuinely requires write access to its root filesystem, you would need to document the exception and suppress the finding with a justification.
+
+---
+
+### CKV_AWS_334 – Non-privileged containers
+
+**Finding:**  
+`CKV_AWS_334` on `aws_ecs_task_definition.fail2` (lines 89-133).  
+**Check description:** *Ensure ECS containers should run as non-privileged.*
+
+**What the file shows:**
+
+- In the `fail2` resource, the **second** container definition (line 113) contains `privilege = true`.
+- The first container in `fail2` does not set `privilege` (defaults to `false`), and neither container in `pass` or `fail` sets it.
+
+**Problem:**  
+The check flags any container that runs in privileged mode. The second container of `fail2` explicitly requests privileged access, which grants the container elevated capabilities on the host. The scanner expects `privilege` to be `false` (or omitted, as the default is `false`).
+
+**Fix:**  
+Remove `privilege = true` from line 113, or change it to `privilege = false`. If the container’s workload truly requires privileged mode, you must provide a justification and suppress the finding.
+
+---
+
+### CKV_AWS_335 – Host process namespace isolation
+
+**Finding:**  
+`CKV_AWS_335` on `aws_ecs_task_definition.fail2` (lines 89-133).  
+**Check description:** *Ensure ECS task definitions should not share the host's process namespace.*
+
+**What the file shows:**
+
+- In the `fail2` resource, the **second** container definition (line 114) sets `pidMode = "host"`.
+- The first container in `fail2` does not set `pidMode`. The `fail` resource’s first container (line 56) sets `pidMode = "task"`, which is the default and is not flagged. The `pass` resource does not set `pidMode` at all.
+
+**Problem:**  
+The check prohibits sharing the host’s process namespace. Setting `pidMode = "host"` inside a container definition allows that container to see and interact with all processes on the underlying EC2 host. The scanner expects the container’s `pidMode` to be either unset (defaults to `"task"`) or explicitly set to `"task"`.
+
+**Fix:**  
+Remove `pidMode = "host"` from line 114. If the container needs to see host processes, you must justify the exception and suppress the finding. Note that `pidMode = "task"` (as seen in `fail` line 56) is acceptable and does not trigger this check.

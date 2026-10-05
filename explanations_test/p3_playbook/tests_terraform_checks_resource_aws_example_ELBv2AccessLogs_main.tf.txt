@@ -1,0 +1,152 @@
+**Remediation briefing: Load balancer security misconfigurations**
+
+Below are the failing checks in the order reported, with the required changes. All fixes are independent except where noted.
+
+---
+
+### 1. CKV_AWS_152 on `aws_lb.enabled` (lines 3–12)
+**What is wrong:** The network load balancer does not have cross-zone load balancing enabled.  
+**Why it matters:** Without cross-zone load balancing, traffic is not evenly distributed across targets in all enabled Availability Zones, reducing resilience and capacity utilisation.  
+**Change:** Add the attribute `enable_cross_zone_load_balancing = true` to the `aws_lb "enabled"` resource.
+
+### 2. CKV_AWS_150 on `aws_lb.enabled` (lines 3–12)
+**What is wrong:** Deletion protection is not enabled on this network load balancer.  
+**Why it matters:** Accidental deletion of the load balancer would cause an outage; deletion protection prevents this.  
+**Change:** Add `enable_deletion_protection = true` to the same resource.
+
+### 3. CKV_AWS_150 on `aws_alb.enabled` (lines 14–23)
+**What is wrong:** The application load balancer is missing deletion protection.  
+**Why it matters:** Same risk as above – accidental deletion leads to service disruption.  
+**Change:** Add `enable_deletion_protection = true` to the `aws_alb "enabled"` resource.
+
+### 4. CKV_AWS_131 on `aws_alb.enabled` (lines 14–23)
+**What is wrong:** The ALB is not configured to drop invalid HTTP headers.  
+**Why it matters:** Accepting malformed headers can enable HTTP request smuggling and similar attacks.  
+**Change:** Add `drop_invalid_header_fields = true` to the `aws_alb "enabled"` resource.
+
+### 5. CKV_AWS_152 on `aws_lb.default` (lines 27–31)
+**What is wrong:** The network load balancer “default” lacks cross-zone load balancing.  
+**Why it matters:** Same availability and fault-tolerance concerns as check 1.  
+**Change:** Add `enable_cross_zone_load_balancing = true` to `aws_lb "default"`.
+
+### 6. CKV_AWS_150 on `aws_lb.default` (lines 27–31)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Prevents accidental deletion.  
+**Change:** Add `enable_deletion_protection = true` to `aws_lb "default"`.
+
+### 7. CKV_AWS_91 on `aws_lb.default` (lines 27–31)
+**What is wrong:** No `access_logs` block exists, so access logging is disabled.  
+**Why it matters:** Access logs are essential for security monitoring, troubleshooting, and compliance.  
+**Change:** Add an `access_logs` block inside the resource with `enabled = true` and `bucket = var.bucket_name`. Ensure the S3 bucket exists and the load balancer has write permissions.
+
+### 8. CKV_AWS_150 on `aws_alb.default` (lines 33–37)
+**What is wrong:** Deletion protection is missing.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_alb "default"`.
+
+### 9. CKV_AWS_91 on `aws_alb.default` (lines 33–37)
+**What is wrong:** No `access_logs` block – logging is disabled.  
+**Why it matters:** Same as check 7.  
+**Change:** Add an `access_logs` block with `enabled = true` and `bucket = var.bucket_name`.
+
+### 10. CKV_AWS_131 on `aws_alb.default` (lines 33–37)
+**What is wrong:** The ALB does not drop invalid HTTP headers.  
+**Why it matters:** Same as check 4.  
+**Change:** Add `drop_invalid_header_fields = true` to `aws_alb "default"`.
+
+### 11. CKV_AWS_152 on `aws_lb.only_bucket` (lines 39–47)
+**What is wrong:** Cross-zone load balancing is not enabled.  
+**Why it matters:** Same as check 1.  
+**Change:** Add `enable_cross_zone_load_balancing = true` to `aws_lb "only_bucket"`.
+
+### 12. CKV_AWS_150 on `aws_lb.only_bucket` (lines 39–47)
+**What is wrong:** Deletion protection is missing.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_lb "only_bucket"`.
+
+### 13. CKV_AWS_91 on `aws_lb.only_bucket` (lines 39–47)
+**What is wrong:** The `access_logs` block is present but the `enabled` attribute is not explicitly set to `true`. Although the provider default is `true`, the scanner requires an explicit declaration.  
+**Why it matters:** Implicit defaults can be ambiguous; explicit configuration leaves no room for misinterpretation.  
+**Change:** Inside the existing `access_logs` block, add `enabled = true`.
+
+### 14. CKV_AWS_150 on `aws_alb.only_bucket` (lines 49–57)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_alb "only_bucket"`.
+
+### 15. CKV_AWS_91 on `aws_alb.only_bucket` (lines 49–57)
+**What is wrong:** The `access_logs` block lacks an explicit `enabled = true`.  
+**Why it matters:** Same as check 13.  
+**Change:** Add `enabled = true` inside the existing `access_logs` block.
+
+### 16. CKV_AWS_131 on `aws_alb.only_bucket` (lines 49–57)
+**What is wrong:** Invalid HTTP headers are not dropped.  
+**Why it matters:** Same as check 4.  
+**Change:** Add `drop_invalid_header_fields = true` to `aws_alb "only_bucket"`.
+
+### 17. CKV_AWS_152 on `aws_lb.disabled` (lines 59–68)
+**What is wrong:** Cross-zone load balancing is not enabled.  
+**Why it matters:** Same as check 1.  
+**Change:** Add `enable_cross_zone_load_balancing = true` to `aws_lb "disabled"`.
+
+### 18. CKV_AWS_150 on `aws_lb.disabled` (lines 59–68)
+**What is wrong:** Deletion protection is missing.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_lb "disabled"`.
+
+### 19. CKV_AWS_91 on `aws_lb.disabled` (lines 59–68)
+**What is wrong:** Access logging is explicitly disabled (`enabled = false`).  
+**Why it matters:** Disabled logging prevents audit trails and security analysis.  
+**Change:** Change `enabled = false` to `enabled = true` inside the `access_logs` block. The bucket reference is already present.
+
+### 20. CKV_AWS_150 on `aws_alb.disabled` (lines 70–79)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_alb "disabled"`.
+
+### 21. CKV_AWS_91 on `aws_alb.disabled` (lines 70–79)
+**What is wrong:** Access logging is explicitly disabled.  
+**Why it matters:** Same as check 19.  
+**Change:** Set `enabled = true` inside the `access_logs` block.
+
+### 22. CKV_AWS_131 on `aws_alb.disabled` (lines 70–79)
+**What is wrong:** The ALB does not drop invalid HTTP headers.  
+**Why it matters:** Same as check 4.  
+**Change:** Add `drop_invalid_header_fields = true` to `aws_alb "disabled"`.
+
+### 23. CKV_AWS_152 on `aws_lb.gateway` (lines 83–90)
+**What is wrong:** The gateway load balancer does not have the `enable_cross_zone_load_balancing` attribute set, even though cross-zone load balancing is always enabled for gateway LBs. The scanner expects an explicit declaration.  
+**Why it matters:** Explicit configuration satisfies policy checks and makes the intent clear.  
+**Change:** Add `enable_cross_zone_load_balancing = true` to the `aws_lb "gateway"` resource. (This attribute is not required by AWS for gateway LBs, but it will pass the check.)
+
+### 24. CKV_AWS_150 on `aws_lb.gateway` (lines 83–90)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as other deletion protection checks.  
+**Change:** Add `enable_deletion_protection = true` to `aws_lb "gateway"`.
+
+### 25. CKV2_AWS_28 on `aws_alb.enabled` (lines 14–23)
+**What is wrong:** The public-facing ALB is not associated with a WAF web ACL.  
+**Why it matters:** A WAF protects against common web exploits (SQLi, XSS, etc.) and is a security baseline for internet-facing applications.  
+**Change:** Create an `aws_wafv2_web_acl` resource (or reference an existing one via a data source) with appropriate managed or custom rules. Then add an `aws_wafv2_web_acl_association` resource that links the web ACL’s ARN to `aws_alb.enabled.arn`.
+
+### 26. CKV2_AWS_28 on `aws_alb.default` (lines 33–37)
+**What is wrong:** The ALB is not WAF-protected.  
+**Why it matters:** Same as above.  
+**Change:** Add an `aws_wafv2_web_acl_association` for `aws_alb.default.arn`, referencing the same (or a dedicated) web ACL.
+
+### 27. CKV2_AWS_28 on `aws_alb.only_bucket` (lines 49–57)
+**What is wrong:** No WAF association.  
+**Why it matters:** Same as above.  
+**Change:** Add an `aws_wafv2_web_acl_association` for `aws_alb.only_bucket.arn`.
+
+### 28. CKV2_AWS_28 on `aws_alb.disabled` (lines 70–79)
+**What is wrong:** No WAF association.  
+**Why it matters:** Same as above.  
+**Change:** Add an `aws_wafv2_web_acl_association` for `aws_alb.disabled.arn`.
+
+---
+
+**Interaction notes:**
+- The four WAF checks (25–28) can be satisfied by defining a single `aws_wafv2_web_acl` and creating four `aws_wafv2_web_acl_association` resources, one per ALB. There is no need to duplicate the web ACL definition.
+- The access logging fixes for `only_bucket` resources (13, 15) only require adding `enabled = true` inside the existing block, while the `disabled` resources (19, 21) require changing `false` to `true`. The `default` resources (7, 9) need a new `access_logs` block entirely.
+- All other fixes (cross-zone, deletion protection, drop headers) are simple attribute additions that do not conflict with each other or with the logging/WAF changes.

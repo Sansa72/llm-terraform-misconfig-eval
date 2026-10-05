@@ -1,0 +1,6 @@
+**Check:** CKV_AWS_266 on `aws_db_snapshot_copy.fail`  
+**What’s wrong:** The snapshot copy is not configured to use a customer-managed KMS key.  
+**Why it matters:** Without specifying a customer-managed key, the snapshot copy is encrypted with the default AWS-managed key. Customer-managed keys give you control over key rotation, access policies, and auditing, which is often required for compliance and security best practices.  
+**Remediation:** Add the `kms_key_id` argument to the `aws_db_snapshot_copy.fail` resource, referencing a valid KMS key ARN or ID (for example, the key already used in the `pass` resource). This ensures the snapshot copy is encrypted with a key you own and manage.
+
+No other findings are present, so there are no interactions to consider.

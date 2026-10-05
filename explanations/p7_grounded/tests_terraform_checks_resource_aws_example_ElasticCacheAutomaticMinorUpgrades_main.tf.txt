@@ -1,0 +1,59 @@
+The scanner flagged four findings across three resources. Here’s what each one means, based strictly on the provided file and check descriptions.
+
+---
+
+### CKV_AWS_323 – “Ensure ElastiCache clusters do not use the default subnet group”
+
+**Flagged on:**
+- `aws_elasticache_cluster.pass` (lines 3–11)
+- `aws_elasticache_cluster.pass2` (lines 13–19)
+- `aws_elasticache_cluster.fail` (lines 21–29)
+- `aws_elasticache_cluster.memcached` (lines 33–39)
+
+**What the check requires:**  
+The cluster must be assigned a custom subnet group. If no `subnet_group_name` is specified, the cluster uses the **default subnet group** for the VPC, which is considered a security misconfiguration.
+
+**Evidence in the file:**  
+None of the four resource blocks include a `subnet_group_name` argument. For example, the `pass` resource (lines 3–11) defines `cluster_id`, `engine`, `node_type`, etc., but no subnet group. The same omission exists in the other three blocks. Because the attribute is absent, each cluster will fall back to the default subnet group, triggering the check.
+
+---
+
+### CKV_AWS_134 – “Ensure that Amazon ElastiCache Redis clusters have automatic backup turned on”
+
+**Flagged on:**
+- `aws_elasticache_cluster.pass2` (lines 13–19)
+- `aws_elasticache_cluster.fail` (lines 21–29)
+
+**What the check requires:**  
+For Redis clusters, automatic backups must be enabled. In Terraform, this is controlled by `snapshot_retention_limit` – a value greater than 0 enables backups; 0 or omitting the argument disables them.
+
+**Evidence in the file:**
+- **`pass2` (lines 13–19):** The block does **not** include `snapshot_retention_limit`. The default value is 0, meaning automatic backups are disabled.  
+- **`fail` (lines 21–29):** Line 29 explicitly sets `snapshot_retention_limit = 0`, which also disables backups.  
+
+The `pass` resource (lines 3–11) is **not** flagged because it sets `snapshot_retention_limit = 5` (line 10), satisfying the check.
+
+---
+
+### CKV_AWS_322 – “Ensure ElastiCache for Redis cache clusters have auto minor version upgrades enabled”
+
+**Flagged on:**
+- `aws_elasticache_cluster.fail` (lines 21–29)
+
+**What the check requires:**  
+Redis clusters should have automatic minor version upgrades enabled. In Terraform, this is the `auto_minor_version_upgrade` argument.
+
+**Evidence in the file:**  
+Line 28 of the `fail` resource sets `auto_minor_version_upgrade = false`. This explicitly disables the feature, directly violating the check.  
+The `pass` resource (line 9) sets it to `true` and is not flagged. The `pass2` resource does not set the argument; the provider default is `true`, so the scanner did not raise this check there. The `memcached` resource is not flagged because the check is specific to Redis engines.
+
+---
+
+### Summary of required fixes
+
+| Resource | Line(s) | Issue | Fix |
+|----------|---------|-------|-----|
+| `pass` | 3–11 | Missing `subnet_group_name` | Add `subnet_group_name = "<your-custom-subnet-group>"` |
+| `pass2` | 13–19 | Missing `subnet_group_name` and `snapshot_retention_limit` | Add both a custom subnet group and `snapshot_retention_limit` > 0 |
+| `fail` | 21–29 | Missing `subnet_group_name`; `snapshot_retention_limit = 0`; `auto_minor_version_upgrade = false` | Add a custom subnet group; set `snapshot_retention_limit` > 0; set `auto_minor_version_upgrade = true` |
+| `memcached` | 33–39 | Missing `subnet_group_name` | Add `subnet_group_name = "<your-custom-subnet-group>"` (the Redis-specific checks do not apply) |

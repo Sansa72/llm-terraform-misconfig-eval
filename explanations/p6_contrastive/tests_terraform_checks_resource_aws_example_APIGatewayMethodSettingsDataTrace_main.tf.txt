@@ -1,0 +1,32 @@
+**CKV_AWS_276 – Data Trace enabled (resource `fail`)**
+
+- **Current state:** The `settings` block explicitly sets `data_trace_enabled = true`. This instructs API Gateway to log the full request and response (including headers, body, and query parameters) to CloudWatch Logs for every invocation of the method.
+- **Required state:** Data trace must be disabled. This can be done by either setting `data_trace_enabled = false` or by omitting the property entirely (the default is `false`).
+- **Difference:** The value of `data_trace_enabled` changes from `true` to `false` (or the property is removed). All other settings remain unchanged.
+- **Why it matters for security:** Full request/response logging can capture sensitive data such as authentication tokens, personally identifiable information (PII), or secrets. Disabling data trace prevents this sensitive information from being written to logs, reducing the risk of accidental exposure and aiding compliance with data protection requirements.
+
+**CKV_AWS_225 – Caching not enabled (resources `fail`, `pass_explicit`, `pass_implicit`)**
+
+- **Current state:** None of the three resources include `caching_enabled = true` in their `settings` block (or the block is absent entirely). The default value is `false`, so API Gateway does not cache responses for these methods.
+- **Required state:** Caching must be enabled by setting `caching_enabled = true` inside the `settings` block.
+- **Difference:** The `settings` block gains the property `caching_enabled = true`. For `pass_implicit`, a `settings` block must be added to hold this property. All other existing properties (like `data_trace_enabled`) remain as they are.
+- **Why it matters for security:** Enabling caching improves performance and reduces load on backend systems, but it also introduces a new data store. The security concern is that without caching, the check cannot verify that the cache is properly protected (see next check). Enabling caching is a prerequisite for applying encryption controls to the cached data.
+
+**CKV_AWS_308 – Cache encryption not enabled (resources `fail`, `pass_explicit`, `pass_implicit`)**
+
+- **Current state:** None of the resources set `cache_data_encrypted = true`. Even if caching were enabled, the cached responses would be stored unencrypted at rest.
+- **Required state:** When caching is enabled, the cache must be encrypted. This is achieved by setting `cache_data_encrypted = true` in the `settings` block.
+- **Difference:** The `settings` block gains the property `cache_data_encrypted = true`. This must be paired with `caching_enabled = true` to be effective. The two properties together ensure that any cached API responses are encrypted at rest.
+- **Why it matters for security:** Unencrypted caches can expose sensitive response data if the underlying storage is compromised. Enforcing encryption protects the confidentiality of cached data, aligning with the principle of defence in depth.
+
+---
+
+**Summary for the engineer**
+
+The scanner flagged three distinct issues across your API Gateway method settings resources. To resolve all of them, you need to make the following property-level changes, keeping everything else constant:
+
+1. **Disable data trace** on the `fail` resource: change `data_trace_enabled` from `true` to `false` (or remove the line). This stops full request/response logging that could leak secrets.
+2. **Enable caching** on all three resources: add `caching_enabled = true` inside the `settings` block. For `pass_implicit`, you must first add a `settings` block.
+3. **Encrypt the cache** on all three resources: add `cache_data_encrypted = true` inside the same `settings` block. This ensures that once caching is active, the stored data is encrypted at rest.
+
+The final `settings` block for each resource should therefore contain (at minimum) `caching_enabled = true` and `cache_data_encrypted = true`. For the `fail` resource, also ensure `data_trace_enabled` is `false`. No other configuration properties need to be altered.

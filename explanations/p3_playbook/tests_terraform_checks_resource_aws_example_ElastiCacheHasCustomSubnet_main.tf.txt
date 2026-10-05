@@ -1,0 +1,17 @@
+**Check: CKV_AWS_134 – Ensure that Amazon ElastiCache Redis clusters have automatic backup turned on**  
+**Resource:** `aws_elasticache_cluster.fail`  
+**What’s wrong:** The cluster has `snapshot_retention_limit` set to `0`, which disables automatic backups.  
+**Why it matters:** Without automatic backups, you lose the ability to recover from data corruption, accidental deletion, or cluster failure. Redis backups are essential for point-in-time recovery and meeting data durability requirements.  
+**Change needed:** Set `snapshot_retention_limit` to a positive integer (e.g., `5`) to enable automatic daily snapshots. The value defines how many days’ worth of snapshots to retain. You can also optionally specify a `snapshot_window` to control when the backup occurs, but the minimum requirement is a non‑zero retention limit.
+
+---
+
+**Check: CKV_AWS_323 – Ensure ElastiCache clusters do not use the default subnet group**  
+**Resource:** `aws_elasticache_cluster.fail`  
+**What’s wrong:** The cluster does not specify a `subnet_group_name`, so it falls back to the default subnet group for the VPC.  
+**Why it matters:** The default subnet group often spans all Availability Zones in the region and may not align with your network segmentation, security, or high‑availability requirements. Using a custom subnet group gives you control over which subnets and AZs the cluster uses, improving fault isolation and compliance.  
+**Change needed:** Add a `subnet_group_name` argument pointing to a custom ElastiCache subnet group. You can reference an existing group (e.g., `"mysubnet"` as used in the passing resource) or create a new `aws_elasticache_subnet_group` resource and reference it. Ensure the chosen subnets are in the desired VPC and Availability Zones.
+
+---
+
+**Interactions:** Both fixes apply to the same `fail` resource but are independent; applying one does not affect the other. No additional coordination is required.

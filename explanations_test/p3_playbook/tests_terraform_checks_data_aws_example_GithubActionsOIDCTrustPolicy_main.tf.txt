@@ -1,0 +1,66 @@
+**Remediation briefing: IAM policy misconfigurations**
+
+Below are the failing checks in the order reported, with the required changes.  
+All references to `myOrg` and `myRepo` are placeholders – replace them with your actual GitHub organization and repository names.
+
+---
+
+### 1. CKV_AWS_111 on `aws_iam_policy_document.pass1` (lines 25‑39)
+**What is wrong:** The policy grants write‑capable actions (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) without any resource or condition constraint.  
+**Why it matters:** Unrestricted write access allows an identity to create resources anywhere in the account, which can lead to privilege escalation, data tampering, or uncontrolled cost.  
+**Change needed:** Replace the wildcard `"*"` in `resources` with the exact ARNs of the specific Lambda functions, event source mappings, and DynamoDB tables that the policy should be able to create. If the policy must cover multiple resources, list each ARN explicitly. If that is not feasible, consider splitting the statement into multiple statements with narrower resource scopes, or add condition keys (e.g., `aws:RequestedRegion`, `aws:ResourceTag`) to limit the wildcard’s reach.
+
+---
+
+### 2. CKV_AWS_356 on `aws_iam_policy_document.pass1` (lines 25‑39)
+**What is wrong:** The statement uses `"*"` as the resource for actions that are considered “restrictable” (the three `Create*` actions).  
+**Why it matters:** A wildcard resource for sensitive actions violates the principle of least privilege and is a common vector for lateral movement.  
+**Change needed:** The same fix as for CKV_AWS_111 applies – replace `"*"` with the specific resource ARNs that the policy is intended to target. Once the resource is no longer a wildcard, both checks will pass.
+
+---
+
+### 3. CKV_AWS_358 on `aws_iam_policy_document.fail1` (lines 97‑110)
+**What is wrong:** The trust policy for the GitHub OIDC provider contains no condition to restrict which GitHub organization or repository can assume the role.  
+**Why it matters:** Without an organization constraint, any GitHub Actions workflow from any public repository (or any private repository if the token is somehow obtained) could assume this IAM role, leading to full account compromise.  
+**Change needed:** Add a `condition` block that ties the `token.actions.githubusercontent.com:sub` claim to your specific organization. For example, use `StringLike` with a value of `"repo:myOrg/*"` (all repos in the org) or `"repo:myOrg/myRepo:*"` (a single repo). Also include an audience condition (`token.actions.githubusercontent.com:aud`) set to `"sts.amazonaws.com"` for completeness.
+
+---
+
+### 4. CKV_AWS_358 on `aws_iam_policy_document.fail2` (lines 112‑131)
+**What is wrong:** The condition on the `sub` claim uses the value `"invalid"`, which does not correspond to any real GitHub organization or repository.  
+**Why it matters:** The condition is effectively useless – it does not restrict the role to a known organization, so the role remains assumable by any GitHub Actions workflow that can obtain a valid OIDC token.  
+**Change needed:** Replace the `values` of the `token.actions.githubusercontent.com:sub` condition with a proper organization‑scoped string, such as `"repo:myOrg/*"` (using `StringLike`). Ensure the condition test is appropriate for the pattern you choose (`StringEquals` for exact matches, `StringLike` for wildcards).
+
+---
+
+### 5. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard` (lines 134‑153)
+**What is wrong:** The `sub` condition is set to `"*"`, which matches any subject claim.  
+**Why it matters:** A wildcard subject allows any GitHub Actions workflow, from any organization, to assume the role – exactly the scenario the check is designed to prevent.  
+**Change needed:** Replace the wildcard with a value that identifies your organization, e.g., `"repo:myOrg/*"` with `StringLike`. Do not use `"*"` or any pattern that does not include a fixed organization name.
+
+---
+
+### 6. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard-assertion` (lines 176‑195)
+**What is wrong:** The condition uses `"repo:*"`, which still leaves the organization part as a wildcard.  
+**Why it matters:** `"repo:*"` matches any repository in any organization, so the role is not restricted to a specific known organization.  
+**Change needed:** Change the value to include your actual organization name, for example `"repo:myOrg/*"` (all repos) or `"repo:myOrg/myRepo:*"` (a specific repo). Use `StringLike` to allow the wildcard after the organization prefix.
+
+---
+
+### 7. CKV_AWS_358 on `aws_iam_policy_document.fail-misused-repo` (lines 197‑216)
+**What is wrong:** The condition value `"repo:myOrg*"` uses a prefix wildcard that could match organizations with names starting with `myOrg` (e.g., `myOrg2`, `myOrg-test`).  
+**Why it matters:** The check requires a strict, known organization; a prefix match is ambiguous and could inadvertently allow other organizations.  
+**Change needed:** Use the exact organization name followed by a slash and a wildcard, e.g., `"repo:myOrg/*"` with `StringLike`. This ensures only repositories under the specific `myOrg` organization are permitted.
+
+---
+
+### 8. CKV_AWS_358 on `aws_iam_policy_document.pass-gh-org` (lines 240‑264)
+**What is wrong:** The condition uses the claim `token.actions.githubusercontent.com/github-org:sub` instead of the standard `token.actions.githubusercontent.com:sub` claim. The value `"repo:myOrg/myRepo:ref:refs/heads/MyBranch"` is a repository subject, not an organization subject.  
+**Why it matters:** Because the condition is on a non‑standard (or non‑existent) claim, it does not actually restrict the `sub` claim that GitHub provides. The role remains open to any GitHub Actions workflow.  
+**Change needed:** Change the `variable` to `"token.actions.githubusercontent.com:sub"` and set the value to a proper organization‑scoped string, such as `"repo:myOrg/myRepo:*"` (if you want to restrict to a specific repo) or `"repo:myOrg/*"` (for the whole org). Keep the audience condition as is. This will correctly tie the role to your known GitHub organization.
+
+---
+
+**Note on interactions:**  
+- The fixes for CKV_AWS_111 and CKV_AWS_356 on `pass1` are identical – constraining the resource list resolves both.  
+- All CKV_AWS_358 findings are independent of each other; each policy document must be corrected individually. The same principle applies to all: the `sub` condition must unambiguously reference your specific GitHub organization.

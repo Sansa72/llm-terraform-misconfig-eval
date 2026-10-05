@@ -1,0 +1,280 @@
+## Remediation Briefing: RDS Security Misconfigurations
+
+Below are the failing checks in the order reported by the scanner. For each, the resource, the problem, its importance, and the required change are described. Where fixes interact (e.g., enabling Performance Insights is a prerequisite for encrypting them), the relationship is noted.
+
+---
+
+### 1. CKV_AWS_161 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** IAM database authentication is not enabled.  
+**Why it matters:** Without IAM authentication, database access relies solely on static credentials, increasing the risk of credential leakage and making it harder to enforce short‑lived, identity‑based access.  
+**Change needed:** Add `iam_database_authentication_enabled = true` to the `aws_db_instance.postgres` resource. This allows the instance to accept IAM‑authenticated connections for the `postgres` user.
+
+---
+
+### 2. CKV_AWS_354 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Performance Insights is not configured to use a customer‑managed KMS key.  
+**Why it matters:** By default, Performance Insights data is encrypted with an AWS‑owned key. Using a customer‑managed CMK gives you control over key rotation, access policies, and auditability.  
+**Change needed:** First, ensure Performance Insights is enabled (see check CKV_AWS_353 below). Then set `performance_insights_kms_key_id` to the ARN of a KMS CMK. If you already have a CMK for RDS storage encryption, you may reuse it or create a dedicated one.
+
+---
+
+### 3. CKV_AWS_293 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Deletion protection is not enabled.  
+**Why it matters:** Accidental deletion of a production database can cause data loss and extended downtime. Deletion protection prevents the instance from being deleted without explicitly disabling the safeguard.  
+**Change needed:** Add `deletion_protection = true` to the resource.
+
+---
+
+### 4. CKV_AWS_353 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Performance Insights is not enabled.  
+**Why it matters:** Performance Insights provides detailed database performance metrics and helps identify bottlenecks. Without it, troubleshooting performance issues is slower and less granular.  
+**Change needed:** Add `performance_insights_enabled = true`. This is also a prerequisite for check CKV_AWS_354 (encrypting Performance Insights with a CMK).
+
+---
+
+### 5. CKV_AWS_157 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Multi‑AZ deployment is not enabled.  
+**Why it matters:** A single‑AZ RDS instance has no automatic failover. An AZ outage or instance failure leads to downtime. Multi‑AZ provides high availability and automatic failover.  
+**Change needed:** Add `multi_az = true`. Note that this may increase cost and requires a supported instance class; `db.t3.small` is compatible.
+
+---
+
+### 6. CKV_AWS_226 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Automatic minor version upgrades are not enabled.  
+**Why it matters:** Minor versions often include security patches and bug fixes. Without auto‑upgrade, you risk running vulnerable or unstable database software.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+---
+
+### 7. CKV_AWS_118 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Enhanced monitoring provides OS‑level metrics (CPU, memory, disk I/O) at a higher granularity than CloudWatch alone, which is critical for diagnosing performance issues.  
+**Change needed:** Set `monitoring_interval` to a value greater than 0 (e.g., `60`) and provide a valid `monitoring_role_arn` that grants RDS permission to publish enhanced monitoring logs to CloudWatch Logs.
+
+---
+
+### 8. CKV_AWS_16 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Storage encryption at rest is not enabled.  
+**Why it matters:** Unencrypted database storage exposes data at rest to unauthorised access if the underlying physical media is compromised. Encryption is a fundamental data protection requirement.  
+**Change needed:** Add `storage_encrypted = true`. Optionally, specify a customer‑managed KMS key with `kms_key_id`; otherwise, the default AWS‑managed RDS key is used.
+
+---
+
+### 9. CKV_AWS_161 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** IAM database authentication is not enabled.  
+**Why it matters:** Same rationale as for the Postgres instance – static credentials are a security risk.  
+**Change needed:** Add `iam_database_authentication_enabled = true` to the `aws_db_instance.mysql` resource.
+
+---
+
+### 10. CKV_AWS_354 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Performance Insights is not encrypted with a customer‑managed KMS key.  
+**Why it matters:** Same as check #2.  
+**Change needed:** After enabling Performance Insights (see #12), set `performance_insights_kms_key_id` to a CMK ARN.
+
+---
+
+### 11. CKV_AWS_293 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as check #3.  
+**Change needed:** Add `deletion_protection = true`.
+
+---
+
+### 12. CKV_AWS_353 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Performance Insights is not enabled.  
+**Why it matters:** Same as check #4.  
+**Change needed:** Add `performance_insights_enabled = true`. This must be done before you can satisfy check #10.
+
+---
+
+### 13. CKV_AWS_157 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Multi‑AZ is not enabled.  
+**Why it matters:** Same as check #5.  
+**Change needed:** Add `multi_az = true`.
+
+---
+
+### 14. CKV_AWS_226 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Automatic minor version upgrades are not enabled.  
+**Why it matters:** Same as check #6.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+---
+
+### 15. CKV_AWS_118 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as check #7.  
+**Change needed:** Set `monitoring_interval` (e.g., `60`) and provide a valid `monitoring_role_arn`.
+
+---
+
+### 16. CKV_AWS_16 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Storage encryption at rest is not enabled.  
+**Why it matters:** Same as check #8.  
+**Change needed:** Add `storage_encrypted = true`. Optionally specify `kms_key_id`.
+
+---
+
+### 17. CKV_AWS_161 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** IAM database authentication is not enabled.  
+**Why it matters:** Same as check #1.  
+**Change needed:** Add `iam_database_authentication_enabled = true` to the `default` resource.
+
+---
+
+### 18. CKV_AWS_354 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Performance Insights is not encrypted with a customer‑managed KMS key.  
+**Why it matters:** Same as check #2.  
+**Change needed:** After enabling Performance Insights (see #20), set `performance_insights_kms_key_id` to a CMK ARN.
+
+---
+
+### 19. CKV_AWS_293 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as check #3.  
+**Change needed:** Add `deletion_protection = true`.
+
+---
+
+### 20. CKV_AWS_353 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Performance Insights is not enabled.  
+**Why it matters:** Same as check #4.  
+**Change needed:** Add `performance_insights_enabled = true`. This is required before check #18 can be addressed.
+
+---
+
+### 21. CKV_AWS_157 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Multi‑AZ is not enabled.  
+**Why it matters:** Same as check #5.  
+**Change needed:** Add `multi_az = true`.
+
+---
+
+### 22. CKV_AWS_129 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** No database logs are exported to CloudWatch.  
+**Why it matters:** Without log exports, you lose visibility into database activity, errors, and slow queries, hampering security monitoring and troubleshooting.  
+**Change needed:** Add an `enabled_cloudwatch_logs_exports` argument with the appropriate log types for MySQL: `["general", "error", "slowquery"]`. (The `mysql` resource already demonstrates the correct list.)
+
+---
+
+### 23. CKV_AWS_226 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Automatic minor version upgrades are not enabled.  
+**Why it matters:** Same as check #6.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+---
+
+### 24. CKV_AWS_118 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as check #7.  
+**Change needed:** Set `monitoring_interval` (e.g., `60`) and provide a valid `monitoring_role_arn`.
+
+---
+
+### 25. CKV_AWS_16 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Storage encryption at rest is not enabled.  
+**Why it matters:** Same as check #8.  
+**Change needed:** Add `storage_encrypted = true`. Optionally specify `kms_key_id`.
+
+---
+
+### 26. CKV_AWS_161 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** IAM database authentication is not enabled.  
+**Why it matters:** Same as check #1.  
+**Change needed:** Add `iam_database_authentication_enabled = true` to the `empty` resource.
+
+---
+
+### 27. CKV_AWS_354 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Performance Insights is not encrypted with a customer‑managed KMS key.  
+**Why it matters:** Same as check #2.  
+**Change needed:** After enabling Performance Insights (see #29), set `performance_insights_kms_key_id` to a CMK ARN.
+
+---
+
+### 28. CKV_AWS_293 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as check #3.  
+**Change needed:** Add `deletion_protection = true`.
+
+---
+
+### 29. CKV_AWS_353 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Performance Insights is not enabled.  
+**Why it matters:** Same as check #4.  
+**Change needed:** Add `performance_insights_enabled = true`. This is required before check #27 can be addressed.
+
+---
+
+### 30. CKV_AWS_157 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Multi‑AZ is not enabled.  
+**Why it matters:** Same as check #5.  
+**Change needed:** Add `multi_az = true`.
+
+---
+
+### 31. CKV_AWS_129 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** The `enabled_cloudwatch_logs_exports` list is empty, so no logs are exported.  
+**Why it matters:** Same as check #22.  
+**Change needed:** Replace the empty list with `["general", "error", "slowquery"]` (the engine is MySQL). Do not leave it as `[]`.
+
+---
+
+### 32. CKV_AWS_226 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Automatic minor version upgrades are not enabled.  
+**Why it matters:** Same as check #6.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+---
+
+### 33. CKV_AWS_118 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as check #7.  
+**Change needed:** Set `monitoring_interval` (e.g., `60`) and provide a valid `monitoring_role_arn`.
+
+---
+
+### 34. CKV_AWS_16 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Storage encryption at rest is not enabled.  
+**Why it matters:** Same as check #8.  
+**Change needed:** Add `storage_encrypted = true`. Optionally specify `kms_key_id`.
+
+---
+
+### 35. CKV2_AWS_60 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** Copying tags to snapshots is not enabled.  
+**Why it matters:** When tags are not copied to snapshots, you lose metadata used for cost allocation, access control, and automation on backup resources.  
+**Change needed:** Add `copy_tags_to_snapshot = true` to the `postgres` resource.
+
+---
+
+### 36. CKV2_AWS_60 on `aws_db_instance.mysql` (lines 13‑21)
+**What’s wrong:** Copying tags to snapshots is not enabled.  
+**Why it matters:** Same as check #35.  
+**Change needed:** Add `copy_tags_to_snapshot = true` to the `mysql` resource.
+
+---
+
+### 37. CKV2_AWS_60 on `aws_db_instance.default` (lines 25‑31)
+**What’s wrong:** Copying tags to snapshots is not enabled.  
+**Why it matters:** Same as check #35.  
+**Change needed:** Add `copy_tags_to_snapshot = true` to the `default` resource.
+
+---
+
+### 38. CKV2_AWS_60 on `aws_db_instance.empty` (lines 33‑41)
+**What’s wrong:** Copying tags to snapshots is not enabled.  
+**Why it matters:** Same as check #35.  
+**Change needed:** Add `copy_tags_to_snapshot = true` to the `empty` resource.
+
+---
+
+### 39. CKV2_AWS_30 on `aws_db_instance.postgres` (lines 3‑11)
+**What’s wrong:** PostgreSQL query logging is not fully enabled.  
+**Why it matters:** Although the instance exports the `postgresql` log group to CloudWatch, the database engine itself may not be configured to log queries. Without setting the appropriate parameters, query activity is not captured, weakening audit and forensic capabilities.  
+**Change needed:** Create a custom DB parameter group (e.g., `aws_db_parameter_group`) for Postgres that sets `log_statement` to `all` (or `mod`) and/or `log_min_duration_statement` to a threshold like `1` (to log all queries). Then associate that parameter group with the instance using the `parameter_group_name` attribute. The existing `enabled_cloudwatch_logs_exports` entry for `"postgresql"` is already correct and should remain.
+
+---
+
+All fixes are independent attribute additions; no destructive changes are required. Ensure that any KMS key ARN you reference (for storage encryption or Performance Insights) exists and that the monitoring IAM role ARN is correctly configured with the required trust policy.

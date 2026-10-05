@@ -1,0 +1,42 @@
+### Remediation Briefing
+
+Below are the failing checks, in the order they appear in the scanner output, with evidence from the provided Terraform file and clear, actionable remediation steps.
+
+---
+
+#### 1. CKV_AWS_269 on `aws_connect_instance_storage_config.pass` (lines 1–17)
+
+- **What triggers the check**  
+  The resource `aws_connect_instance_storage_config.pass` (lines 1–17) contains a `storage_config` block that defines an S3 configuration (lines 6–14). There is no `kinesis_video_stream_config` block anywhere in this resource.
+
+- **What is wrong**  
+  The check expects that any Kinesis Video Stream storage configuration uses a customer-managed KMS key (CMK). The resource does not contain a Kinesis Video Stream configuration at all, so the check is either failing because it cannot verify CMK usage for a non-existent Kinesis Video Stream config, or it is a false positive.
+
+- **Remediation**  
+  If the resource is intended to store chat transcripts in S3 only, no Kinesis Video Stream configuration is required. In that case, the finding can be suppressed as a false positive. If a Kinesis Video Stream storage configuration is actually needed, add a `kinesis_video_stream_config` block inside the `storage_config` block, and within it include an `encryption_config` block that specifies `encryption_type = "KMS"` and provides a valid `key_id` referencing a customer-managed KMS key ARN.
+
+---
+
+#### 2. CKV_AWS_270 on `aws_connect_instance_storage_config.fail` (lines 19–34)
+
+- **What triggers the check**  
+  The `s3_config` block (lines 24–33) contains an `encryption_config` block (lines 30–32) that sets `encryption_type = "KMS"` but does **not** include a `key_id` attribute.
+
+- **What is wrong**  
+  The S3 storage configuration enables KMS encryption but omits the key identifier. Without a `key_id`, the encryption will use an AWS-managed key rather than a customer-managed CMK, which violates the policy that requires a CMK.
+
+- **Remediation**  
+  Add a `key_id` argument inside the `encryption_config` block, referencing the ARN of a customer-managed KMS key (e.g., `key_id = aws_kms_key.example.arn`). This ensures that the S3 bucket’s server-side encryption uses the specified CMK.
+
+---
+
+#### 3. CKV_AWS_269 on `aws_connect_instance_storage_config.fail` (lines 19–34)
+
+- **What triggers the check**  
+  The resource `aws_connect_instance_storage_config.fail` (lines 19–34) contains a `storage_config` block with an S3 configuration only. There is no `kinesis_video_stream_config` block.
+
+- **What is wrong**  
+  As with the first finding, the check requires that any Kinesis Video Stream storage configuration uses a CMK. The resource does not define a Kinesis Video Stream configuration, so the check cannot verify CMK usage for it. This is likely a false positive given the resource’s actual content.
+
+- **Remediation**  
+  If the resource is only meant to store chat transcripts in S3, suppress the finding. If a Kinesis Video Stream storage configuration is required, add a `kinesis_video_stream_config` block with an `encryption_config` that sets `encryption_type = "KMS"` and provides a `key_id` pointing to a customer-managed KMS key ARN.

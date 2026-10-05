@@ -1,0 +1,62 @@
+The scanner flagged two missing security configurations across all your Elastic Beanstalk environments. Both are important for maintaining a secure, observable, and automatically patched application platform. Here’s what’s wrong and how to fix it.
+
+## What the findings mean
+
+### CKV_AWS_340 – Managed platform updates not enabled
+**Reference:** [Ensure Elastic Beanstalk managed platform updates are enabled](https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-340)
+
+Elastic Beanstalk regularly releases platform updates (patches for the OS, runtime, and components). If you don’t enable managed platform updates, your environment stays on an outdated platform version indefinitely, accumulating unpatched vulnerabilities. Enabling this feature lets AWS automatically apply minor and patch updates during a maintenance window you define, reducing the risk of exploitation.
+
+### CKV_AWS_312 – Enhanced health reporting not enabled
+**Reference:** [Ensure Elastic Beanstalk environments have enhanced health reporting enabled](https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-312)
+
+Basic health reporting only tells you if the environment is “Green” or “Red” based on instance status checks. Enhanced health reporting provides deeper insights (e.g., application request metrics, instance‑level causes of failure) and integrates with CloudWatch for alarms and auto‑recovery. Without it, you lose visibility into the real health of your application, making troubleshooting and proactive scaling harder.
+
+## What’s happening in your Terraform file
+
+All environments (`fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`) are **missing the managed platform updates setting** entirely. That’s why every resource triggers **CKV_AWS_340**.
+
+For **CKV_AWS_312** (enhanced health reporting), the situation varies:
+
+| Resource | Health settings present | Why it fails |
+|----------|------------------------|--------------|
+| `fail`   | None                  | No health reporting configuration at all – defaults to basic. |
+| `fail2`  | `SystemType = "basic"` | Explicitly sets health to basic. |
+| `fail3`  | `HealthStreamingEnabled = "False"` (and a bogus namespace) | Disables health streaming; the `guff` namespace is ignored. |
+| `fail4`  | `HealthStreamingEnabled = ""` (empty string) | Effectively disables health streaming. |
+| `pass`   | `HealthStreamingEnabled = "true"` | **Not flagged** – the scanner considers this sufficient for enhanced health, though best practice is to also set `SystemType = "enhanced"`. |
+| `pass2`  | `HealthStreamingEnabled = true` (boolean) | Same as `pass`. |
+
+The `pass` resources avoid the CKV_AWS_312 finding because they enable health streaming, but they still lack managed platform updates.
+
+## How to fix it
+
+Add two `setting` blocks to every environment:
+
+1. **Enable managed platform updates**  
+   ```hcl
+   setting {
+     namespace = "aws:elasticbeanstalk:managedactions"
+     name      = "ManagedActionsEnabled"
+     value     = "true"
+   }
+   ```
+   Optionally, you can also define a preferred maintenance window with `PreferredStartTime` and `ServiceRoleForManagedUpdates` if you need a specific schedule.
+
+2. **Enable enhanced health reporting** (for the `fail` resources)  
+   The most robust configuration is:
+   ```hcl
+   setting {
+     namespace = "aws:elasticbeanstalk:healthreporting:system"
+     name      = "SystemType"
+     value     = "enhanced"
+   }
+   setting {
+     namespace = "aws:elasticbeanstalk:healthreporting:system"
+     name      = "HealthStreamingEnabled"
+     value     = "true"
+   }
+   ```
+   For the `pass` resources, you can optionally add the `SystemType = "enhanced"` block to align with AWS best practices, even though the scanner didn’t require it.
+
+After applying these changes, all environments will have managed updates and proper health monitoring, resolving both findings.

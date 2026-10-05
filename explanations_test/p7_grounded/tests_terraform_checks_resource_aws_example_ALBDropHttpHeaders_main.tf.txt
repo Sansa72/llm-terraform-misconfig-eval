@@ -1,0 +1,111 @@
+The scanner has flagged multiple security misconfigurations across all load balancer resources in the provided Terraform file. Below is a breakdown of each check, the specific resources and lines affected, and what is missing based on the file content.
+
+---
+
+### CKV_AWS_150: Ensure that Load Balancer has deletion protection enabled
+
+**What it means:** The `enable_deletion_protection` attribute is not set to `true`. Without this, the load balancer can be deleted accidentally via API or console, leading to potential service disruption.
+
+**Affected resources (all load balancers in the file):**
+
+| Resource | Lines | Evidence |
+|----------|-------|----------|
+| `aws_lb.enabled` | 3–10 | No `enable_deletion_protection` argument present. |
+| `aws_alb.enabled` | 12–19 | No `enable_deletion_protection` argument present. |
+| `aws_lb.default` | 23–28 | No `enable_deletion_protection` argument present. |
+| `aws_alb.default` | 30–35 | No `enable_deletion_protection` argument present. |
+| `aws_lb.disabled` | 37–44 | No `enable_deletion_protection` argument present. |
+| `aws_alb.disabled` | 46–53 | No `enable_deletion_protection` argument present. |
+| `aws_lb.network` | 57–62 | No `enable_deletion_protection` argument present. |
+| `aws_lb.gateway` | 64–71 | No `enable_deletion_protection` argument present. |
+
+**Fix:** Add `enable_deletion_protection = true` to each resource block.
+
+---
+
+### CKV_AWS_91: Ensure the ELBv2 (Application/Network) has access logging enabled
+
+**What it means:** The load balancer does not have an `access_logs` block configured. Access logs are required for auditing and monitoring traffic.
+
+**Affected resources (all Application and Network Load Balancers):**
+
+| Resource | Lines | Evidence |
+|----------|-------|----------|
+| `aws_lb.enabled` | 3–10 | No `access_logs` block present. |
+| `aws_alb.enabled` | 12–19 | No `access_logs` block present. |
+| `aws_lb.default` | 23–28 | No `access_logs` block present. |
+| `aws_alb.default` | 30–35 | No `access_logs` block present. |
+| `aws_lb.disabled` | 37–44 | No `access_logs` block present. |
+| `aws_alb.disabled` | 46–53 | No `access_logs` block present. |
+| `aws_lb.network` | 57–62 | No `access_logs` block present. |
+
+*Note:* The Gateway Load Balancer (`aws_lb.gateway`) is **not** flagged for this check, as access logging is not applicable to that load balancer type.
+
+**Fix:** Add an `access_logs` block to each affected resource, specifying at least an S3 bucket (and optionally a prefix and/or encryption). Example:
+```hcl
+access_logs {
+  bucket  = "my-access-logs-bucket"
+  enabled = true
+}
+```
+
+---
+
+### CKV_AWS_131: Ensure that ALB drops HTTP headers
+
+**What it means:** The attribute `drop_invalid_header_fields` is either missing (defaults to `false`) or explicitly set to `false`. This allows invalid HTTP headers to be forwarded to targets, which can be exploited for request smuggling or other attacks.
+
+**Affected resources (Application Load Balancers only):**
+
+| Resource | Lines | Evidence |
+|----------|-------|----------|
+| `aws_lb.default` | 23–28 | `drop_invalid_header_fields` is not set → defaults to `false`. |
+| `aws_alb.default` | 30–35 | `drop_invalid_header_fields` is not set → defaults to `false`. |
+| `aws_lb.disabled` | 37–44 | `drop_invalid_header_fields = false` explicitly. |
+| `aws_alb.disabled` | 46–53 | `drop_invalid_header_fields = false` explicitly. |
+
+*Note:* The `enabled` resources (lines 3–10 and 12–19) have `drop_invalid_header_fields = true`, so they pass this check. The Network and Gateway load balancers are not flagged because this setting is only relevant for ALBs.
+
+**Fix:** Set `drop_invalid_header_fields = true` in the four affected resources.
+
+---
+
+### CKV_AWS_152: Ensure that Load Balancer (Network/Gateway) has cross-zone load balancing enabled
+
+**What it means:** The `cross_zone_load_balancing` attribute is not set to `true` for a Network or Gateway Load Balancer. Without it, traffic is not distributed evenly across all registered targets in all enabled Availability Zones, which can lead to uneven load and reduced resilience.
+
+**Affected resources:**
+
+| Resource | Lines | Evidence |
+|----------|-------|----------|
+| `aws_lb.network` | 57–62 | No `cross_zone_load_balancing` argument present. |
+| `aws_lb.gateway` | 64–71 | No `cross_zone_load_balancing` argument present. |
+
+**Fix:** Add `cross_zone_load_balancing = true` to both resources.
+
+---
+
+### CKV2_AWS_28: Ensure public facing ALB are protected by WAF
+
+**What it means:** The Application Load Balancers are internet‑facing (`internal = false`) but are not associated with an AWS WAF Web ACL. This leaves them exposed to common web exploits without protection.
+
+**Affected resources (all public‑facing ALBs):**
+
+| Resource | Lines | Evidence |
+|----------|-------|----------|
+| `aws_lb.enabled` | 3–10 | `internal = false`, no WAF association. |
+| `aws_alb.enabled` | 12–19 | `internal = false`, no WAF association. |
+| `aws_lb.default` | 23–28 | `internal = false`, no WAF association. |
+| `aws_alb.default` | 30–35 | `internal = false`, no WAF association. |
+| `aws_lb.disabled` | 37–44 | `internal = false`, no WAF association. |
+| `aws_alb.disabled` | 46–53 | `internal = false`, no WAF association. |
+
+*Note:* The Network and Gateway load balancers are not flagged because this check applies only to ALBs.
+
+**Fix:** Associate a WAF Web ACL with each ALB, either via the `aws_wafv2_web_acl_association` resource or by using the `aws_lb`/`aws_alb` resource’s `web_acl_id` argument (for Classic WAF) or the newer `aws_wafv2_web_acl_association` (recommended). The exact method depends on your WAF configuration.
+
+---
+
+### Additional observation on the file’s comments
+
+The file contains section comments `# pass`, `# failure`, and `# unknown`. Despite the `# pass` label, the `enabled` resources still fail **CKV_AWS_150**, **CKV_AWS_91**, and **CKV2_AWS_28**. The `# failure` resources fail those same checks plus **CKV_AWS_131**. The `# unknown` resources fail **CKV_AWS_150** and **CKV_AWS_152**. The comments do not reflect the scanner’s actual findings.

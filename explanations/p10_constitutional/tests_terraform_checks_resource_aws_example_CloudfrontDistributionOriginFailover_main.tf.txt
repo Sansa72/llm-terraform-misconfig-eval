@@ -1,0 +1,69 @@
+**Explanation of flagged misconfigurations**
+
+The scanner evaluated four `aws_cloudfront_distribution` resources. Below each finding is mapped to the exact configuration that triggered it.
+
+---
+
+### `aws_cloudfront_distribution.pass` (lines 1‑44)
+
+| Check ID | What the check requires | Why it failed (evidence from the file) |
+|----------|--------------------------|----------------------------------------|
+| CKV_AWS_216 | Distribution must be enabled | `enabled = false` on line 40 |
+| CKV_AWS_86 | Access logging must be enabled | No `logging_config` block is present |
+| CKV_AWS_174 | Viewer certificate must use TLS v1.2 | The `viewer_certificate` block (line 42) is empty. The scanner may require an explicit `minimum_protocol_version`; the empty block is flagged. |
+| CKV_AWS_68 | A WAF web ACL must be associated | No `web_acl_id` argument is set |
+| CKV_AWS_305 | A default root object must be configured | No `default_root_object` argument is set |
+| CKV2_AWS_42 | A custom SSL certificate must be used | The empty `viewer_certificate` block does not reference a custom certificate (no `acm_certificate_arn` or `iam_certificate_id`). The distribution falls back to the default CloudFront certificate. |
+| CKV2_AWS_32 | A response headers policy must be attached | The `default_cache_behavior` block (line 35) has no `response_headers_policy_id` |
+| CKV2_AWS_47 | The attached WAFv2 web ACL must include the Log4j managed rule | No `web_acl_id` is set, so no WAFv2 web ACL—and therefore no Log4j rule—can be associated |
+
+---
+
+### `aws_cloudfront_distribution.fail` (lines 46‑81)
+
+| Check ID | What the check requires | Why it failed (evidence from the file) |
+|----------|--------------------------|----------------------------------------|
+| CKV_AWS_86 | Access logging must be enabled | No `logging_config` block |
+| CKV_AWS_174 | Viewer certificate must use TLS v1.2 | The `viewer_certificate` block (line 78) sets `cloudfront_default_certificate = true` but does not include `minimum_protocol_version`. The scanner may interpret the missing explicit version as not guaranteeing TLS v1.2. |
+| CKV_AWS_68 | A WAF web ACL must be associated | No `web_acl_id` argument |
+| CKV_AWS_310 | Origin failover must be configured | Only a single origin is defined (lines 47‑55). No `origin_group` with failover criteria exists. |
+| CKV2_AWS_42 | A custom SSL certificate must be used | `cloudfront_default_certificate = true` means the default CloudFront certificate is used, not a custom one. |
+| CKV2_AWS_32 | A response headers policy must be attached | The `default_cache_behavior` block (line 60) has no `response_headers_policy_id` |
+| CKV2_AWS_47 | The attached WAFv2 web ACL must include the Log4j managed rule | No `web_acl_id` is set |
+
+---
+
+### `aws_cloudfront_distribution.fail2` (lines 83‑122)
+
+| Check ID | What the check requires | Why it failed (evidence from the file) |
+|----------|--------------------------|----------------------------------------|
+| CKV_AWS_216 | Distribution must be enabled | `enabled = false` on line 119 |
+| CKV_AWS_86 | Access logging must be enabled | No `logging_config` block |
+| CKV_AWS_174 | Viewer certificate must use TLS v1.2 | The `viewer_certificate` block (line 121) is empty (same uncertainty as `pass`) |
+| CKV_AWS_68 | A WAF web ACL must be associated | No `web_acl_id` argument |
+| CKV_AWS_310 | Origin failover must be configured | An `origin_group` is present (lines 84‑93) but it is missing the required `failover_criteria` block. Without it, failover is not properly configured. |
+| CKV_AWS_305 | A default root object must be configured | No `default_root_object` argument |
+| CKV2_AWS_42 | A custom SSL certificate must be used | Empty `viewer_certificate` block, no custom certificate |
+| CKV2_AWS_32 | A response headers policy must be attached | The `default_cache_behavior` block (line 109) has no `response_headers_policy_id` |
+| CKV2_AWS_47 | The attached WAFv2 web ACL must include the Log4j managed rule | No `web_acl_id` is set |
+
+---
+
+### `aws_cloudfront_distribution.fail3` (lines 124‑160)
+
+| Check ID | What the check requires | Why it failed (evidence from the file) |
+|----------|--------------------------|----------------------------------------|
+| CKV_AWS_216 | Distribution must be enabled | `enabled = false` on line 157 |
+| CKV_AWS_86 | Access logging must be enabled | No `logging_config` block |
+| CKV_AWS_174 | Viewer certificate must use TLS v1.2 | The `viewer_certificate` block (line 159) is empty (same uncertainty as `pass`) |
+| CKV_AWS_68 | A WAF web ACL must be associated | No `web_acl_id` argument |
+| CKV_AWS_310 | Origin failover must be configured | The `origin_group` block (lines 125‑130) contains `failover_criteria` but has no `member` blocks. An origin group with failover requires at least two members. |
+| CKV_AWS_305 | A default root object must be configured | No `default_root_object` argument |
+| CKV2_AWS_42 | A custom SSL certificate must be used | Empty `viewer_certificate` block, no custom certificate |
+| CKV2_AWS_32 | A response headers policy must be attached | The `default_cache_behavior` block (line 147) has no `response_headers_policy_id` |
+| CKV2_AWS_47 | The attached WAFv2 web ACL must include the Log4j managed rule | No `web_acl_id` is set |
+
+---
+
+**Note on CKV_AWS_174 (TLS v1.2):**  
+In all four resources the `viewer_certificate` block either is empty or sets only `cloudfront_default_certificate = true`. The default CloudFront certificate *does* support TLS v1.2, but the scanner flags these configurations. The most likely reason is that the check expects an explicit `minimum_protocol_version` argument (e.g., `TLSv1.2_2021`). The file provides no such explicit setting, so the finding is reported.

@@ -1,0 +1,9 @@
+The scanner flagged a misconfiguration in the `aws_codecommit_approval_rule_template` resource named `fail` (lines 1–16). The check **CKV_AWS_257** requires that branch changes in CodeCommit have at least two approvals before they can be merged.
+
+**Evidence in the file:**
+- The resource `aws_codecommit_approval_rule_template.fail` defines an approval rule template in its `content` argument (lines 6–15).
+- Inside the JSON policy, the `"Statements"` array contains an object with the key `"NumberOfApprovalsNeeded"` set to **`1`** (line 10).
+- The scanner expects this value to be `2` or greater, as demonstrated by the `pass` resource (line 24) which sets `"NumberOfApprovalsNeeded": 2` and would not be flagged.
+
+**What needs to change:**
+In the `fail` resource, update the `"NumberOfApprovalsNeeded"` field from `1` to at least `2` (line 10). This ensures that any pull request targeting the `refs/heads/master` branch requires a minimum of two approvals before it can be merged, satisfying the check.

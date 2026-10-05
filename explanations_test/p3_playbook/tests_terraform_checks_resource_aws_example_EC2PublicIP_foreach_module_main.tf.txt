@@ -1,0 +1,84 @@
+**Remediation Briefing: EC2 Instance Security Misconfigurations**
+
+Below are the failing checks in the order reported by the scanner, each with a concise explanation and the required change. All checks apply to the `aws_instance.poc_modules_foreach` resource, which uses `for_each` to create two instances (`key1` and `key2`). Where a fix is identical for both instances, it can be applied once in the resource block and will resolve the check for both.
+
+---
+
+### 1. CKV_AWS_79 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** The instance allows use of Instance Metadata Service Version 1 (IMDSv1).  
+**Why it matters:** IMDSv1 is vulnerable to server-side request forgery (SSRF) attacks that can expose the instance’s IAM credentials and other sensitive metadata.  
+**Change needed:** Add a `metadata_options` block inside the `aws_instance` resource with `http_tokens = "required"`. This enforces IMDSv2, which requires a session token for all metadata requests, blocking IMDSv1. The same block will also fix CKV_AWS_79 for `key2` (see item 6).
+
+---
+
+### 2. CKV_AWS_88 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** The instance is configured to receive a public IP address (`associate_public_ip_address = true`).  
+**Why it matters:** A public IP exposes the instance directly to the internet, increasing the attack surface and bypassing network controls like NAT gateways or load balancers.  
+**Change needed:** Set `associate_public_ip_address` to `false` for the `key1` instance. Since the value comes from `var.public["key1"]`, change the default in the `variable "public"` block from `true` to `false` for `"key1"`. If the variable is used elsewhere, ensure that change does not break other logic; in the provided file it is only used for this attribute, so it is safe.
+
+---
+
+### 3. CKV_AWS_126 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** Detailed (1-minute) CloudWatch monitoring is not enabled.  
+**Why it matters:** Without detailed monitoring, EC2 instance metrics are reported at 5-minute intervals, which can delay detection of performance issues or security anomalies.  
+**Change needed:** Add `monitoring = true` to the `aws_instance` resource. This enables detailed monitoring for all instances created by the `for_each`, resolving the check for both `key1` and `key2` (see item 7).
+
+---
+
+### 4. CKV_AWS_135 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** EBS optimization is not enabled for the instance.  
+**Why it matters:** EBS optimization provides dedicated throughput for EBS volumes, reducing contention between network and storage traffic and improving performance. It is supported on `t3.micro` and is a security best practice for consistent monitoring and logging.  
+**Change needed:** Add `ebs_optimized = true` to the `aws_instance` resource. This will also fix CKV_AWS_135 for `key2` (see item 8).
+
+---
+
+### 5. CKV_AWS_8 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** The root EBS volume (and any additional volumes) is not encrypted.  
+**Why it matters:** Unencrypted EBS volumes risk data exposure if the underlying physical storage is compromised, and they fail to meet compliance requirements for data-at-rest encryption.  
+**Change needed:** Add a `root_block_device` block with `encrypted = true`. If the instance uses additional EBS volumes via `ebs_block_device`, each of those must also include `encrypted = true`. This change will also resolve CKV_AWS_8 for `key2` (see item 9).
+
+---
+
+### 6. CKV_AWS_79 on `aws_instance.poc_modules_foreach["key2"]`
+**What is wrong:** Same as item 1 – IMDSv1 is allowed.  
+**Why it matters:** Same SSRF risk as for `key1`.  
+**Change needed:** The `metadata_options` block with `http_tokens = "required"` added for `key1` will automatically apply to `key2` because both instances share the same resource definition. No separate change is required.
+
+---
+
+### 7. CKV_AWS_126 on `aws_instance.poc_modules_foreach["key2"]`
+**What is wrong:** Detailed monitoring is not enabled.  
+**Why it matters:** Same monitoring gap as for `key1`.  
+**Change needed:** The `monitoring = true` setting added for `key1` will also enable detailed monitoring for `key2`. No additional action is needed.
+
+---
+
+### 8. CKV_AWS_135 on `aws_instance.poc_modules_foreach["key2"]`
+**What is wrong:** EBS optimization is not enabled.  
+**Why it matters:** Same performance and security considerations as for `key1`.  
+**Change needed:** The `ebs_optimized = true` setting added for `key1` will also apply to `key2`. No separate change is required.
+
+---
+
+### 9. CKV_AWS_8 on `aws_instance.poc_modules_foreach["key2"]`
+**What is wrong:** EBS volumes are unencrypted.  
+**Why it matters:** Same data-at-rest encryption risk as for `key1`.  
+**Change needed:** The `root_block_device` (and any `ebs_block_device`) encryption settings added for `key1` will also encrypt volumes for `key2`. No separate change is required.
+
+---
+
+### 10. CKV2_AWS_41 on `aws_instance.poc_modules_foreach["key1"]`
+**What is wrong:** No IAM role is attached to the instance.  
+**Why it matters:** Without an IAM role, applications on the instance cannot securely obtain temporary AWS credentials. This often leads to hard-coded credentials or overly permissive keys, increasing the risk of credential leakage.  
+**Change needed:** Attach an IAM instance profile by adding `iam_instance_profile = aws_iam_instance_profile.example.name` (or the ARN) to the `aws_instance` resource. You must first create an IAM role with the necessary permissions and an instance profile that references it. This change will also fix CKV2_AWS_41 for `key2` (see item 11).
+
+---
+
+### 11. CKV2_AWS_41 on `aws_instance.poc_modules_foreach["key2"]`
+**What is wrong:** Same as item 10 – no IAM role attached.  
+**Why it matters:** Same credential security risk as for `key1`.  
+**Change needed:** The `iam_instance_profile` attribute added for `key1` will attach the role to both instances. No separate change is required.
+
+---
+
+**Interaction note:** All fixes except CKV_AWS_88 are independent additions to the `aws_instance` resource block. They can be implemented together without conflict. The CKV_AWS_88 fix requires changing the default value of `var.public["key1"]`; verify that this variable is not used elsewhere in a way that would be broken by setting it to `false`. In the provided file, it is only used for `associate_public_ip_address`, so the change is safe.

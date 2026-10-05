@@ -1,0 +1,28 @@
+## Remediation Briefing
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.pass` (lines 3‑21)
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** Without explicit logging, build output and diagnostic information are not captured, making troubleshooting, security auditing, and compliance reporting impossible.  
+**Remediation:** Add a `logs_config` block inside the `environment` block. At minimum, configure CloudWatch Logs by setting `logs_config { cloudwatch_logs { status = "ENABLED" } }`. You may optionally specify a log group name and an S3 log destination. The existing `encryption_key` and `privileged_mode = false` settings are already compliant and do not need to change.
+
+### 2. CKV_AWS_314 on `aws_codebuild_project.pass2` (lines 23‑40)
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** Same as above – missing logs hinder auditing and operational visibility.  
+**Remediation:** Insert a `logs_config` block inside the `environment` block, identical to the fix for `pass`. For example, enable CloudWatch Logs with `cloudwatch_logs { status = "ENABLED" }`. The project already has an `encryption_key` and defaults to `privileged_mode = false`, so no other changes are required.
+
+### 3. CKV_AWS_314 on `aws_codebuild_project.fail` (lines 44‑60)
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** As with the previous resources, absent logging prevents capture of build events and security-relevant data.  
+**Remediation:** Add a `logs_config` block inside the `environment` block, enabling at least CloudWatch Logs (e.g., `cloudwatch_logs { status = "ENABLED" }`). This is the same structural change needed for the `pass` and `pass2` resources. Note that this resource also fails two other checks (see below); all three fixes can be applied together.
+
+### 4. CKV_AWS_316 on `aws_codebuild_project.fail` (lines 44‑60)
+**What is wrong:** The environment has `privileged_mode = true`.  
+**Why it matters:** Privileged mode grants the build container elevated Docker daemon access, which can be exploited to break out of the container or access the host. Disabling it follows the principle of least privilege and reduces the attack surface.  
+**Remediation:** Change `privileged_mode = true` to `privileged_mode = false` inside the `environment` block. This aligns the resource with the `pass` resource’s secure configuration.
+
+### 5. CKV_AWS_147 on `aws_codebuild_project.fail` (lines 44‑60)
+**What is wrong:** The project does not specify an `encryption_key`, so build artifacts and logs are encrypted with the default AWS-managed key instead of a customer-managed CMK.  
+**Why it matters:** Using a CMK gives you control over key rotation, access policies, and audit trails, which is essential for meeting regulatory requirements and maintaining data sovereignty.  
+**Remediation:** Add the `encryption_key` attribute at the top level of the resource, set to the ARN of a KMS CMK. The `pass` and `pass2` resources already demonstrate this pattern (e.g., `encryption_key = "aws_kms_key.scanner_key.id"`). Use the same key reference or a different CMK as appropriate.
+
+**Interactions:** All three fixes for the `fail` resource are independent and can be applied simultaneously. There are no dependencies between the logging, privileged mode, and encryption key changes. The `pass` and `pass2` resources only require the logging addition.

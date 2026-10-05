@@ -1,0 +1,5 @@
+**Check:** CKV_AWS_271 – Ensure DynamoDB table replica KMS encryption uses CMK  
+**Resource:** `aws_dynamodb_table_replica.fail` (lines 12–19)  
+**What is wrong:** The replica is not configured with a `kms_key_arn`, so it will use the default AWS-owned encryption key instead of a customer-managed key (CMK).  
+**Why it matters:** Without a CMK, you lose control over key rotation, access policies, and audit trails. Many compliance frameworks require data to be encrypted with keys that the organisation manages, not AWS defaults.  
+**Change needed:** Add a `kms_key_arn` argument to the `aws_dynamodb_table_replica.fail` resource, pointing to a valid KMS CMK ARN. The `pass` resource in the same file already demonstrates the correct pattern using `aws_kms_key.test.arn`. You can reuse that key or reference another existing CMK, but ensure the key exists in the same region as the replica and that the DynamoDB service has appropriate permissions to use it. No other resources in this file are affected by this change.

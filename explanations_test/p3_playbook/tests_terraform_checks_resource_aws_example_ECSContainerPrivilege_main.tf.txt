@@ -1,0 +1,29 @@
+**Remediation Briefing: ECS Task Definition Security Findings**
+
+---
+
+### 1. CKV_AWS_336 – `aws_ecs_task_definition.pass` (lines 1–41)
+**What’s wrong:** Neither container definition sets `readonlyRootFilesystem` to `true`.  
+**Why it matters:** Without a read-only root filesystem, a compromised container can write malicious binaries, modify configuration, or leave persistent backdoors on the container’s root filesystem. Enforcing read-only access reduces the attack surface and aligns with the principle of immutable infrastructure.  
+**Change required:** In the JSON-encoded container definitions for both `first` and `second`, add the key `"readonlyRootFilesystem": true`. This will mount the root filesystem as read-only for each container. If the application legitimately needs to write to certain paths, you will need to mount writable volumes (e.g., ephemeral storage or EFS) to those specific directories instead.
+
+---
+
+### 2. CKV_AWS_336 – `aws_ecs_task_definition.fail` (lines 43–84)
+**What’s wrong:** Neither container definition sets `readonlyRootFilesystem` to `true`.  
+**Why it matters:** Same as above – writable root filesystems increase the risk of persistent compromise and tampering.  
+**Change required:** Add `"readonlyRootFilesystem": true` to both container definitions in the `fail` task definition. As with the `pass` resource, ensure any required write paths are handled via volumes.
+
+---
+
+### 3. CKV_AWS_334 – `aws_ecs_task_definition.fail` (lines 43–84)
+**What’s wrong:** The second container definition has `privileged` set to `true`.  
+**Why it matters:** Privileged mode grants the container almost all the capabilities of the host, effectively breaking container isolation. This exposes the host to kernel exploits, allows access to host devices, and makes it trivial for an attacker to escape the container. It should be avoided unless absolutely necessary for a specific, well-understood use case.  
+**Change required:** Remove the `"privileged": true` line from the second container definition, or explicitly set it to `false`. If the container genuinely requires elevated capabilities, grant only the specific Linux capabilities needed via `linuxParameters` rather than using full privileged mode.
+
+---
+
+### Interactions
+- The two `CKV_AWS_336` findings are independent of each other (one per resource) and independent of the `CKV_AWS_334` finding.  
+- The `fail` resource requires both fixes: adding `readonlyRootFilesystem` to both containers and removing `privileged` from the second container. These changes do not conflict.  
+- The `pass` resource is misnamed – it currently fails the read-only root filesystem check. Its name should not be taken as an indication that it is already compliant.

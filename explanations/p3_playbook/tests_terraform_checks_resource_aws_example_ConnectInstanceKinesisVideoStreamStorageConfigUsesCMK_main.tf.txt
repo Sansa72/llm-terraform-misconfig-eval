@@ -1,0 +1,39 @@
+Here is the remediation briefing, covering each scanner finding in order.
+
+---
+
+### Finding 1: CKV_AWS_270 on `aws_connect_instance_storage_config.pass` (lines 1–17)
+
+**What is wrong:** The scanner expects any S3 storage configuration for this Connect instance to use a customer-managed key (CMK), but the resource does not contain an S3 storage configuration at all—it only defines a Kinesis Video Stream storage config.
+
+**Why it matters:** If an S3 storage config were present without a CMK, call recordings and chat transcripts would be encrypted with an AWS-owned key, reducing your control over key rotation, access policies, and auditability. The check is likely a false positive for this specific resource because the storage type is `KINESIS_VIDEO_STREAM`, not `S3`. However, the finding still appears because the scanner evaluates the resource’s overall compliance posture.
+
+**Remediation:** Since the resource is already correctly using a CMK for its Kinesis Video Stream encryption (via the `encryption_config` block with `key_id`), no change to the Terraform is required for the actual storage type. To clear the finding, you have two options:
+- If you plan to add an S3 storage config later, ensure it includes a `kms_key_id` attribute referencing a CMK.
+- If S3 storage is not needed, suppress the finding for this resource using a scanner-specific skip rule (e.g., a `checkov:skip` comment) with a justification that the resource type is `MEDIA_STREAMS` and uses Kinesis Video Stream, not S3.
+
+---
+
+### Finding 2: CKV_AWS_270 on `aws_connect_instance_storage_config.fail` (lines 20–35)
+
+**What is wrong:** Same as above—the scanner flags a missing CMK for S3 storage, but the resource is configured for Kinesis Video Stream storage, not S3.
+
+**Why it matters:** Identical to the previous finding. The check is likely a false positive for this resource’s actual storage type, but the absence of a CMK in any S3 config that might be added later would be a security concern.
+
+**Remediation:** The immediate misconfiguration is not in S3 storage but in the Kinesis Video Stream encryption (see next finding). For this specific check, you can either:
+- Add an S3 storage config block with a CMK if you intend to use S3 storage for this instance.
+- Suppress the finding with a comment explaining that the resource uses `KINESIS_VIDEO_STREAM` storage, not S3.
+
+---
+
+### Finding 3: CKV_AWS_269 on `aws_connect_instance_storage_config.fail` (lines 20–35)
+
+**What is wrong:** The Kinesis Video Stream storage configuration has `encryption_type = "KMS"` but does not specify a `key_id`. This means it will use an AWS-managed KMS key instead of a customer-managed CMK.
+
+**Why it matters:** Without a customer-managed CMK, you lose the ability to control key lifecycle, enforce granular access policies, and audit usage independently. AWS-managed keys are automatically rotated but offer no user control over rotation schedules or permissions. For sensitive media streams, using a CMK is a best practice for data sovereignty and compliance.
+
+**Remediation:** In the `encryption_config` block of the `kinesis_video_stream_config`, add a `key_id` attribute that references the ARN of a KMS CMK. The key must be created in the same region and have a policy that allows the Connect service to use it. The change is to add `key_id = aws_kms_key.example.arn` (or the appropriate key reference) alongside the existing `encryption_type = "KMS"` line. This will ensure the video streams are encrypted under a customer-controlled key.
+
+---
+
+**Interactions between fixes:** The two resources are independent; changes to one do not affect the other. The only interaction is conceptual: both resources demonstrate the same pattern for Kinesis Video Stream encryption, and the `pass` resource already shows the correct configuration (including `key_id`). The `fail` resource should be aligned with that pattern to resolve CKV_AWS_269. The CKV_AWS_270 findings on both resources are unrelated to the actual storage type and can be addressed through suppression or by adding an S3 storage config with a CMK if S3 storage is required.

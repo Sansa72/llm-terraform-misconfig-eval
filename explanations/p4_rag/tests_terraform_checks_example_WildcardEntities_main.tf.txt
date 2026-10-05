@@ -1,0 +1,146 @@
+The scanner flagged several missing security controls in your Terraform configuration. I’ll walk through each finding, explain why it matters, and show exactly what needs to change in the file.
+
+---
+
+### IAM Password Policy (`aws_iam_account_password_policy.password-policy`)
+
+**1. CKV_AWS_9 – Password expiration**  
+*Reference: Ensure IAM password policy expires passwords within 90 days or less*
+
+Your password policy currently sets a strong minimum length and complexity, but it never forces users to change their passwords. Without a maximum password age, a compromised password remains valid forever. The policy requires that passwords expire after 90 days or fewer.
+
+**Fix:** Add `max_password_age = 90` (or a lower value) to the `password-policy` resource.
+
+**2. CKV_AWS_13 – Password reuse prevention**  
+*Reference: Ensure IAM password policy prevents password reuse*
+
+The policy also lacks a password history check. If users can immediately reuse old passwords, the benefit of forced rotation is lost. The standard is to remember the last 24 passwords.
+
+**Fix:** Add `password_reuse_prevention = 24` to the same resource.
+
+---
+
+### S3 Bucket (`aws_s3_bucket.template_bucket`)
+
+The bucket is defined with only `region`, `bucket`, `acl`, and `force_destroy`. Several essential security and management features are missing.
+
+**3. CKV_AWS_21 – Versioning**  
+*Reference: Ensure all data stored in the S3 bucket have versioning enabled*  
+Versioning protects against accidental overwrites and deletions by keeping multiple variants of an object. Without it, a single mistake can permanently destroy data.
+
+**Fix:** Add a `versioning` block:
+```hcl
+versioning {
+  enabled = true
+}
+```
+
+**4. CKV_AWS_145 – Default encryption with KMS**  
+*Reference: Ensure that S3 buckets are encrypted with KMS by default*  
+Server-side encryption is not configured. While S3 can apply AES‑256 by default, using a KMS key gives you control over key rotation, access auditing, and separation of duties. The bucket must be set to use `aws:kms` as the default encryption algorithm.
+
+**Fix:** Add a `server_side_encryption_configuration` block:
+```hcl
+server_side_encryption_configuration {
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.your_key.arn   # you’ll need to create or reference a KMS key
+    }
+  }
+}
+```
+
+**5. CKV2_AWS_6 – Public Access Block**  
+*Reference: Ensure that S3 bucket has a Public Access block*  
+The bucket currently has no block against public access. Even if the bucket ACL or policy is accidentally set to allow public access, a public access block can override those settings and prevent data exposure.
+
+**Fix:** Add a separate `aws_s3_bucket_public_access_block` resource (or use the `aws_s3_bucket_public_access_block` block if your provider version supports it):
+```hcl
+resource "aws_s3_bucket_public_access_block" "template_bucket_block" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+**6. CKV_AWS_18 – Access logging**  
+*Reference: Ensure the S3 bucket has access logging enabled*  
+Server access logs record every request made to the bucket, which is critical for security audits and incident investigation. Currently no logging is configured.
+
+**Fix:** You need a target bucket for logs (often a separate logging bucket). Then add a `logging` block:
+```hcl
+logging {
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/"
+}
+```
+
+**7. CKV2_AWS_61 – Lifecycle configuration**  
+*Reference: Ensure that an S3 bucket has a lifecycle configuration*  
+Lifecycle rules help manage storage costs and enforce data retention policies by automatically transitioning objects to cheaper storage classes or expiring them. Without it, objects may accumulate indefinitely.
+
+**Fix:** Add a `lifecycle_rule` block appropriate to your data. For example, to expire old versions after 90 days:
+```hcl
+lifecycle_rule {
+  enabled = true
+
+  noncurrent_version_expiration {
+    days = 90
+  }
+}
+```
+
+**8. CKV2_AWS_62 – Event notifications**  
+*Reference: Ensure S3 buckets should have event notifications enabled*  
+Event notifications allow you to trigger workflows (e.g., Lambda, SQS, SNS) when objects are created or deleted. This is important for monitoring, replication, and automated processing.
+
+**Fix:** Add an `event_notification` block (or use `aws_s3_bucket_notification` resource) to send events to a queue or topic. For example:
+```hcl
+event_notification {
+  events = ["s3:ObjectCreated:*"]
+  lambda_function_arn = aws_lambda_function.my_func.arn
+}
+```
+
+**9. CKV_AWS_144 – Cross‑region replication**  
+*Reference: Ensure that S3 bucket has cross‑region replication enabled*  
+Replication to another region provides disaster recovery and compliance benefits. Without it, a regional outage or accidental deletion could cause permanent data loss.
+
+**Fix:** Add a `replication_configuration` block. This requires a destination bucket in a different region and an IAM role with replication permissions. Example:
+```hcl
+replication_configuration {
+  role = aws_iam_role.replication.arn
+
+  rules {
+    id     = "replicate-all"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.destination.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+---
+
+### Summary of required changes
+
+| Resource | Missing setting | What to add |
+|----------|----------------|-------------|
+| `aws_iam_account_password_policy.password-policy` | `max_password_age` | `max_password_age = 90` |
+| | `password_reuse_prevention` | `password_reuse_prevention = 24` |
+| `aws_s3_bucket.template_bucket` | Versioning | `versioning { enabled = true }` |
+| | Default KMS encryption | `server_side_encryption_configuration` block with `aws:kms` |
+| | Public access block | `aws_s3_bucket_public_access_block` resource |
+| | Access logging | `logging` block pointing to a log bucket |
+| | Lifecycle configuration | `lifecycle_rule` block(s) |
+| | Event notifications | `event_notification` block or separate resource |
+| | Cross‑region replication | `replication_configuration` block |
+
+Each of these additions directly addresses a specific security or compliance requirement. The IAM password policy changes are quick wins; the S3 bucket changes will need a bit more planning (e.g., creating a KMS key, a log bucket, a replication destination, and an IAM role for replication). Let me know if you need help with the full Terraform snippets for any of these.

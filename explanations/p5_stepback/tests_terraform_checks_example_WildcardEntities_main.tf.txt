@@ -1,0 +1,58 @@
+The following explains each flagged issue, why it matters, and exactly what to change in your Terraform configuration.
+
+---
+
+### IAM Account Password Policy (`aws_iam_account_password_policy.password-policy`)
+
+**CKV_AWS_9 – Ensure password expiration is set to 90 days or less**  
+*Principle*: Regular password rotation limits the time an attacker can use a compromised credential.  
+*Violation*: The policy does not set `max_password_age`, so passwords never expire.  
+*Fix*: Add `max_password_age = 90` (or a lower value) to the resource.
+
+**CKV_AWS_13 – Ensure password reuse is prevented**  
+*Principle*: Preventing reuse of recent passwords stops users from cycling back to a known, possibly compromised password.  
+*Violation*: The policy omits `password_reuse_prevention`, allowing immediate reuse of old passwords.  
+*Fix*: Add `password_reuse_prevention = 24` (or another value ≥1) to the resource.
+
+---
+
+### S3 Bucket `aws_s3_bucket.template_bucket`
+
+**CKV_AWS_21 – Enable bucket versioning**  
+*Principle*: Versioning preserves every object version, protecting against accidental deletion and enabling rollback.  
+*Violation*: The bucket has no `versioning` block.  
+*Fix*: Add a `versioning` block with `enabled = true` inside the bucket resource.
+
+**CKV_AWS_145 – Encrypt with KMS by default**  
+*Principle*: Default encryption using a customer-managed KMS key provides stronger control, auditing, and key rotation compared to SSE-S3.  
+*Violation*: No `server_side_encryption_configuration` block is present.  
+*Fix*: Add a `server_side_encryption_configuration` block with `sse_algorithm = "aws:kms"` and optionally a `kms_master_key_id`.
+
+**CKV2_AWS_6 – Block public access**  
+*Principle*: Explicitly blocking public ACLs and policies prevents accidental data exposure.  
+*Violation*: The bucket lacks a public access block configuration.  
+*Fix*: Attach an `aws_s3_bucket_public_access_block` resource to the bucket with all four block settings enabled (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`).
+
+**CKV_AWS_18 – Enable access logging**  
+*Principle*: Server access logs provide an audit trail of requests, essential for security analysis and compliance.  
+*Violation*: No logging configuration is defined.  
+*Fix*: Add a `logging` block inside the bucket resource (or use a separate `aws_s3_bucket_logging` resource) pointing to a target bucket for log delivery.
+
+**CKV2_AWS_61 – Define a lifecycle configuration**  
+*Principle*: Lifecycle rules manage data retention, transition objects to cheaper storage, and expire unneeded data, reducing cost and risk.  
+*Violation*: The bucket has no lifecycle rules.  
+*Fix*: Add a `lifecycle_rule` block (or use `aws_s3_bucket_lifecycle_configuration`) with appropriate transition/expiration actions.
+
+**CKV2_AWS_62 – Enable event notifications**  
+*Principle*: Event notifications allow automated responses to object changes, supporting monitoring, security alerting, and data processing.  
+*Violation*: No event notification configuration is present.  
+*Fix*: Define an `aws_s3_bucket_notification` resource to send events (e.g., `s3:ObjectCreated:*`) to an SNS topic, SQS queue, or Lambda function.
+
+**CKV_AWS_144 – Enable cross-region replication**  
+*Principle*: Cross-region replication provides geographic redundancy for disaster recovery and compliance.  
+*Violation*: The bucket has no replication configuration.  
+*Fix*: Add a `replication_configuration` block (or use `aws_s3_bucket_replication_configuration`) specifying a destination bucket in a different region and an IAM role with appropriate permissions.
+
+---
+
+All changes should be applied to the existing resources in your Terraform file. For the S3 bucket, you may need to add separate resources (e.g., `aws_s3_bucket_public_access_block`, `aws_s3_bucket_notification`) or inline blocks depending on the provider version you are using.

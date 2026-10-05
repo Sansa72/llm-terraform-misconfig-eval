@@ -1,0 +1,81 @@
+The scanner flagged several missing security and observability features on both API Gateway stage resources. I’ll break down what’s missing, why it matters, and exactly what you need to add to the Terraform to fix each finding.
+
+---
+
+### 1. X-Ray Tracing (CKV_AWS_73)
+**What’s missing:** `xray_tracing_enabled = true`  
+**Why:** X-Ray provides end‑to‑end tracing of requests through your API, downstream services, and AWS integrations. Without it, you lose visibility into latency, errors, and bottlenecks.  
+**Fix:** Add `xray_tracing_enabled = true` to both `aws_api_gateway_stage.pass` and `aws_api_gateway_stage.fail`.
+
+---
+
+### 2. Access Logging (CKV_AWS_76) and Logging Level (CKV2_AWS_4)
+These two findings are related but distinct:
+
+- **CKV_AWS_76** requires **access logging** to be enabled, which sends detailed request/response logs to CloudWatch or another destination.  
+  **Fix:** Add an `access_log_settings` block to each stage, specifying a destination ARN (e.g., a CloudWatch Logs log group) and a log format. Example:
+  ```hcl
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format          = "$context.identity.sourceIp ..."  # choose a format
+  }
+  ```
+
+- **CKV2_AWS_4** requires that the stage’s **execution logging level** is set appropriately (e.g., `ERROR` or `INFO`). This controls the verbosity of logs sent to CloudWatch for troubleshooting.  
+  **Fix:** Add a `method_settings` block to each stage with `logging_level` set to a value like `"ERROR"` or `"INFO"`. Example:
+  ```hcl
+  method_settings {
+    metrics_enabled = true
+    logging_level   = "ERROR"
+    http_method     = "*"
+    resource_path  = "/*"
+  }
+  ```
+
+---
+
+### 3. API Gateway Caching (CKV_AWS_120)
+**What’s missing:** The `fail` stage has no `cache_cluster_enabled` attribute.  
+**Why:** Caching reduces latency and backend load, but more importantly, it can be a security control by limiting the exposure of your backend to excessive or abusive requests.  
+**Fix:** Add `cache_cluster_enabled = true` (and optionally `cache_cluster_size`) to the `fail` stage. The `pass` stage already has this, so it’s not flagged.
+
+---
+
+### 4. Client Certificate Authentication (CKV2_AWS_51)
+**What’s missing:** Neither stage references a client certificate via `client_certificate_id`.  
+**Why:** Client certificates provide mutual TLS (mTLS) authentication, ensuring that only clients presenting a valid certificate can invoke your API. This prevents unauthorized access even if the endpoint is publicly reachable.  
+**Fix:** Generate an `aws_api_gateway_client_certificate` resource and reference its `id` in the stage’s `client_certificate_id` argument. Example:
+```hcl
+resource "aws_api_gateway_client_certificate" "example" {
+  description = "Client certificate for API Gateway"
+}
+
+resource "aws_api_gateway_stage" "pass" {
+  ...
+  client_certificate_id = aws_api_gateway_client_certificate.example.id
+}
+```
+
+---
+
+### 5. WAF Protection (CKV2_AWS_29)
+**What’s missing:** Neither stage is associated with a Web Application Firewall (WAF).  
+**Why:** A public API Gateway endpoint without WAF is exposed to common web exploits (SQL injection, XSS, bot traffic, etc.). WAF provides a layer of defense that can block malicious requests before they reach your backend.  
+**Fix:** Create an `aws_wafv2_web_acl` (or `aws_wafregional_web_acl`) and associate it with the API Gateway stage using `aws_wafv2_web_acl_association` (or `aws_wafregional_web_acl_association`). The association resource links the WAF ACL to the stage’s ARN. Example:
+```hcl
+resource "aws_wafv2_web_acl_association" "pass" {
+  resource_arn = aws_api_gateway_stage.pass.arn
+  web_acl_arn  = aws_wafv2_web_acl.example.arn
+}
+```
+
+---
+
+### Summary of changes needed
+
+| Resource | Missing Attributes |
+|----------|-------------------|
+| `aws_api_gateway_stage.pass` | `xray_tracing_enabled`, `access_log_settings`, `method_settings` (logging level), `client_certificate_id`, WAF association |
+| `aws_api_gateway_stage.fail` | `cache_cluster_enabled`, `xray_tracing_enabled`, `access_log_settings`, `method_settings` (logging level), `client_certificate_id`, WAF association |
+
+Both stages are currently defined with only a `name` (and caching for `pass`). You’ll need to add the missing arguments and create the supporting resources (CloudWatch log group, client certificate, WAF ACL) to satisfy all the flagged rules.

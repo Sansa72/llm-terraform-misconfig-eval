@@ -1,0 +1,9 @@
+The `aws_api_gateway_method_settings` resource named `fail` has two security issues:
+
+1. **Data trace is enabled** (`data_trace_enabled = true`). This causes the full request and response payloads to be logged to CloudWatch, which can expose sensitive data. The scanner expects this to be disabled.  
+   **Fix:** Set `data_trace_enabled = false` in the `settings` block.
+
+2. **Caching is not enabled and not encrypted.** The scanner flags all three resources (`fail`, `pass_explicit`, `pass_implicit`) because none of them define `caching_enabled` or `cache_data_encrypted`. The default values are `false`, meaning caching is off and, even if enabled, would not be encrypted.  
+   **Fix:** Add `caching_enabled = true` and `cache_data_encrypted = true` to the `settings` block of each resource that should use caching. If caching is intentionally disabled for a method, the finding can be suppressed with a justification.
+
+The `pass_explicit` resource already sets `data_trace_enabled = false`, so it passes that check. The `pass_implicit` resource omits the setting entirely; the provider default is `false`, so it also passes the data trace check. Both still need the caching configuration to resolve the remaining findings.

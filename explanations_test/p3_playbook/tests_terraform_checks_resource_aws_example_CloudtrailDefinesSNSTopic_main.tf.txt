@@ -1,0 +1,125 @@
+Below is a remediation briefing for each failing check, in the order they appear in the scanner output. The file defines two CloudTrail trails (`aws_cloudtrail.fail` and `aws_cloudtrail.pass`) and one SNS topic (`aws_sns_topic.notes`). Fixes often apply to both trails; interactions are noted where the existing configuration makes them relevant.
+
+---
+
+### 1. CKV_AWS_252 on `aws_cloudtrail.fail` – Ensure CloudTrail defines an SNS Topic
+
+**What is wrong:** The `fail` trail has no `sns_topic_name` argument, so it does not send notifications to an SNS topic.
+
+**Why it matters:** Without an SNS topic, you lose real-time alerts for critical CloudTrail events (e.g., management events, log file delivery failures). This delays incident detection and response.
+
+**Change needed:** Add an `sns_topic_name` argument to the `aws_cloudtrail.fail` resource, pointing to a valid SNS topic ARN. The file already defines `aws_sns_topic.notes`; you can reuse that topic by setting `sns_topic_name = aws_sns_topic.notes.arn`. If you prefer a separate topic for this trail, create a new `aws_sns_topic` resource and reference its ARN. Note that the SNS topic itself must be encrypted (see CKV_AWS_26 below), so whichever topic you use will need that fix as well.
+
+---
+
+### 2. CKV_AWS_36 on `aws_cloudtrail.fail` – Ensure CloudTrail log file validation is enabled
+
+**What is wrong:** The `fail` trail does not have `enable_log_file_validation` set, so it defaults to `false`.
+
+**Why it matters:** Log file validation adds a digest file that can be used to prove that log files have not been tampered with after delivery. Without it, you cannot cryptographically verify the integrity of your CloudTrail logs.
+
+**Change needed:** Set `enable_log_file_validation = true` in the `aws_cloudtrail.fail` resource. This change is independent of other fixes.
+
+---
+
+### 3. CKV_AWS_251 on `aws_cloudtrail.fail` – Ensure CloudTrail logging is enabled
+
+**What is wrong:** The `fail` trail explicitly sets `enable_logging = false`, which disables the trail from recording API activity.
+
+**Why it matters:** A trail with logging disabled does not capture any events, making it useless for auditing, security analysis, or compliance. This is the most fundamental CloudTrail misconfiguration.
+
+**Change needed:** Change `enable_logging` from `false` to `true` in the `aws_cloudtrail.fail` resource. This must be done for the trail to actually record events.
+
+---
+
+### 4. CKV_AWS_67 on `aws_cloudtrail.fail` – Ensure CloudTrail is enabled in all Regions
+
+**What is wrong:** The `fail` trail has `is_multi_region_trail = false`, so it only logs events from the region where the trail is created.
+
+**Why it matters:** A single-region trail misses API activity in other AWS regions, creating a blind spot for security monitoring and incident investigation. Multi-region trails are a foundational best practice.
+
+**Change needed:** Set `is_multi_region_trail = true` in the `aws_cloudtrail.fail` resource. This ensures the trail captures events from all regions, including new ones added later.
+
+---
+
+### 5. CKV_AWS_35 on `aws_cloudtrail.fail` – Ensure CloudTrail logs are encrypted at rest using KMS CMKs
+
+**What is wrong:** The `fail` trail does not specify a `kms_key_id`, so logs are encrypted with the default S3-SSE (Amazon S3-managed keys) rather than a customer-managed KMS key.
+
+**Why it matters:** Using a KMS CMK gives you control over key rotation, access policies, and audit trails for encryption operations. It also helps meet compliance requirements that mandate customer-managed encryption keys.
+
+**Change needed:** Add a `kms_key_id` argument to the `aws_cloudtrail.fail` resource, referencing an existing KMS key ARN. You will need to create a KMS key (or use an existing one) and ensure the CloudTrail service and the S3 bucket policy have appropriate permissions to use it. This change is independent of the SNS topic fix.
+
+---
+
+### 6. CKV_AWS_36 on `aws_cloudtrail.pass` – Ensure CloudTrail log file validation is enabled
+
+**What is wrong:** The `pass` trail does not set `enable_log_file_validation`, so it defaults to `false`.
+
+**Why it matters:** Same as for the `fail` trail – without validation, you cannot prove log integrity.
+
+**Change needed:** Add `enable_log_file_validation = true` to the `aws_cloudtrail.pass` resource. This is a simple attribute addition.
+
+---
+
+### 7. CKV_AWS_251 on `aws_cloudtrail.pass` – Ensure CloudTrail logging is enabled
+
+**What is wrong:** The `pass` trail also has `enable_logging = false`, so it is not recording any events.
+
+**Why it matters:** A trail that is not logging provides no audit data, defeating its purpose.
+
+**Change needed:** Change `enable_logging` from `false` to `true` in the `aws_cloudtrail.pass` resource. This is essential for the trail to function.
+
+---
+
+### 8. CKV_AWS_67 on `aws_cloudtrail.pass` – Ensure CloudTrail is enabled in all Regions
+
+**What is wrong:** The `pass` trail has `is_multi_region_trail = false`, limiting it to a single region.
+
+**Why it matters:** As with the `fail` trail, a single-region trail leaves regional activity unmonitored.
+
+**Change needed:** Set `is_multi_region_trail = true` in the `aws_cloudtrail.pass` resource.
+
+---
+
+### 9. CKV_AWS_35 on `aws_cloudtrail.pass` – Ensure CloudTrail logs are encrypted at rest using KMS CMKs
+
+**What is wrong:** The `pass` trail does not specify a `kms_key_id`, so logs are encrypted with S3-SSE instead of a KMS CMK.
+
+**Why it matters:** Same as for the `fail` trail – lack of customer-managed encryption reduces control and may violate policy.
+
+**Change needed:** Add a `kms_key_id` argument to the `aws_cloudtrail.pass` resource, referencing a KMS key ARN. You can use the same key as for the `fail` trail or a different one, but ensure the key policy allows CloudTrail to use it.
+
+---
+
+### 10. CKV_AWS_26 on `aws_sns_topic.notes` – Ensure all data stored in the SNS topic is encrypted
+
+**What is wrong:** The SNS topic `aws_sns_topic.notes` does not have a `kms_master_key_id` set, so messages are not encrypted at rest with a KMS key.
+
+**Why it matters:** SNS topics used for CloudTrail notifications may contain sensitive information (e.g., log file names, account IDs). Encrypting the topic at rest protects this data and aligns with the principle of defense in depth.
+
+**Change needed:** Add a `kms_master_key_id` argument to the `aws_sns_topic.notes` resource, referencing a KMS key ARN. The key must have a policy that allows the SNS service to use it for encryption. **Interaction:** Because `aws_cloudtrail.pass` already references this SNS topic via `sns_topic_name`, fixing this check will automatically secure the notification channel for that trail. If you also point `aws_cloudtrail.fail` to the same topic (as suggested in CKV_AWS_252), both trails will benefit from the encrypted SNS topic.
+
+---
+
+### 11. CKV2_AWS_10 on `aws_cloudtrail.fail` – Ensure CloudTrail trails are integrated with CloudWatch Logs
+
+**What is wrong:** The `fail` trail does not define a `cloud_watch_logs_group_arn` or `cloud_watch_logs_role_arn`, so it does not send logs to CloudWatch Logs.
+
+**Why it matters:** CloudWatch Logs integration enables real-time monitoring, alerting, and automated response based on CloudTrail events. Without it, you cannot easily set up metric filters or alarms for suspicious API activity.
+
+**Change needed:** Add both `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` arguments to the `aws_cloudtrail.fail` resource. You will need to create a CloudWatch Logs log group and an IAM role that grants CloudTrail permission to deliver logs to that group. The role ARN and log group ARN must then be referenced in the trail. This change is independent of the SNS and encryption fixes but is required for full monitoring coverage.
+
+---
+
+### 12. CKV2_AWS_10 on `aws_cloudtrail.pass` – Ensure CloudTrail trails are integrated with CloudWatch Logs
+
+**What is wrong:** The `pass` trail also lacks `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`.
+
+**Why it matters:** Same as above – without CloudWatch Logs integration, you cannot effectively monitor or alert on the trail’s events.
+
+**Change needed:** Add the same two arguments (`cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`) to the `aws_cloudtrail.pass` resource. You can reuse the same CloudWatch Logs group and IAM role created for the `fail` trail, or create separate ones. Ensure the IAM role’s trust policy allows CloudTrail from the relevant regions to assume it.
+
+---
+
+All fixes are additive and do not conflict. The only shared dependency is the SNS topic: if you point both trails to the same `aws_sns_topic.notes`, encrypting that topic (CKV_AWS_26) will satisfy the SNS encryption requirement for both. The CloudWatch Logs integration and KMS key for trail encryption can be shared or kept separate as desired.

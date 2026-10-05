@@ -1,0 +1,55 @@
+## Remediation Briefing
+
+Below are the failing checks in the order they appear in the scanner output. Each section identifies the check, the resource, the exact lines that trigger it, a concise statement of the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.enabled` (lines 3–20)
+
+**Check ID:** CKV_AWS_314  
+**Resource:** `aws_codebuild_project.enabled`  
+**Triggering lines:** The entire resource block (lines 3–20), specifically the `environment` block (lines 13–17) which lacks a `logs` sub-block.
+
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** Without a logging configuration, build output logs are not captured, reducing visibility into build execution and making troubleshooting or audit of build activities impossible.
+
+**Change needed:** Add a `logs_config` block inside the `environment` block. At minimum, specify a destination for the logs—typically a CloudWatch Logs group and stream name, or an S3 bucket. This will satisfy the requirement that the project environment has a logging configuration.
+
+---
+
+### 2. CKV_AWS_314 on `aws_codebuild_project.default` (lines 24–39)
+
+**Check ID:** CKV_AWS_314  
+**Resource:** `aws_codebuild_project.default`  
+**Triggering lines:** The entire resource block (lines 24–39), specifically the `environment` block (lines 32–36) which lacks a `logs` sub-block.
+
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** Same as above—no logs are captured, eliminating visibility into build runs.
+
+**Change needed:** Add a `logs_config` block inside the `environment` block, defining a log destination (e.g., CloudWatch Logs group/stream or S3). This will make the check pass.
+
+---
+
+### 3. CKV_AWS_147 on `aws_codebuild_project.default` (lines 24–39)
+
+**Check ID:** CKV_AWS_147  
+**Resource:** `aws_codebuild_project.default`  
+**Triggering lines:** The resource block (lines 24–39) does not contain an `encryption_key` attribute.
+
+**What is wrong:** The CodeBuild project is not configured to use a customer-managed KMS key (CMK).  
+**Why it matters:** Without an explicit `encryption_key`, the project uses the default AWS-managed key for encrypting build artifacts and cache. This may not meet organizational policies that require customer-managed keys for data encryption.
+
+**Change needed:** Add the `encryption_key` attribute to the resource, referencing the ARN of a customer-managed KMS key (e.g., `encryption_key = aws_kms_key.my_key.arn`). This will ensure the project uses a CMK for encryption.
+
+---
+
+### 4. CKV_AWS_314 on `aws_codebuild_project.no_artifacts` (lines 43–58)
+
+**Check ID:** CKV_AWS_314  
+**Resource:** `aws_codebuild_project.no_artifacts`  
+**Triggering lines:** The entire resource block (lines 43–58), specifically the `environment` block (lines 51–55) which lacks a `logs` sub-block.
+
+**What is wrong:** The CodeBuild project environment has no logging configuration.  
+**Why it matters:** As with the other projects, build logs are not captured, preventing monitoring and auditing of build activities.
+
+**Change needed:** Add a `logs_config` block inside the `environment` block, specifying a log destination (e.g., CloudWatch Logs group/stream or S3). This will provide the required logging configuration.

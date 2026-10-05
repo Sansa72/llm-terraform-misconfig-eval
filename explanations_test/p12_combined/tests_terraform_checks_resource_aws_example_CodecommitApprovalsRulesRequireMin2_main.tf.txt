@@ -1,0 +1,9 @@
+**Check ID:** CKV_AWS_257  
+**Resource:** `aws_codecommit_approval_rule_template.fail`  
+**Triggering lines:** 1–16, specifically the `content` JSON on lines 6–14, and the value `"NumberOfApprovalsNeeded": 1` on line 11.
+
+**What is wrong:** The approval rule template requires only 1 approval for branch changes. The check requires at least 2 approvals to pass.
+
+**Why it matters:** A single approval is insufficient to ensure that changes are reviewed by more than one person before they are merged. This weakens the code review process and could allow unreviewed or malicious changes to reach the protected branch.
+
+**Remediation:** In the `content` JSON of the `aws_codecommit_approval_rule_template` resource named `fail`, change the `NumberOfApprovalsNeeded` field from `1` to `2` (or a higher number). The `pass` resource in the same file already demonstrates the correct value. No other changes are needed.

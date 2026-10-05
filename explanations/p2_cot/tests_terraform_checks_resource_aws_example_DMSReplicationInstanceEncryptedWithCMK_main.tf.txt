@@ -1,0 +1,76 @@
+The scanner identified three misconfigurations across the two DMS replication instances defined in your Terraform. Here’s what each finding means and how to fix it while keeping the intended functionality.
+
+---
+
+### 1. Public accessibility (`CKV_AWS_89`)
+
+**What’s wrong**  
+Both `aws_dms_replication_instance.pass` and `aws_dms_replication_instance.fail` have `publicly_accessible = true`. This assigns a public IP address to the instance and makes it reachable from the internet.
+
+**Why it matters**  
+A publicly accessible DMS instance increases the attack surface. Even if security groups restrict access, the instance is still exposed to the internet, making it more susceptible to unauthorised connection attempts, brute‑force attacks, and exploitation of any network‑level vulnerabilities.
+
+**How to fix**  
+Set `publicly_accessible = false`. If the instance must communicate with on‑premises databases or other VPCs, use VPC peering, AWS PrivateLink, or a VPN instead of opening it to the public internet.
+
+---
+
+### 2. Automatic minor version upgrades (`CKV_AWS_222`)
+
+**What’s wrong**  
+Neither instance explicitly sets `auto_minor_version_upgrade`. In Terraform, the default for this argument is `false`, meaning minor version upgrades (e.g., security patches) are **not** applied automatically during the maintenance window.
+
+**Why it matters**  
+Without automatic minor upgrades, the DMS engine may remain on a version with known vulnerabilities, increasing the risk of exploitation. Enabling this ensures the instance receives security and bug fixes without manual intervention.
+
+**How to fix**  
+Add `auto_minor_version_upgrade = true` to both resources.
+
+---
+
+### 3. EBS volume encryption with a customer-managed key (`CKV_AWS_212`)
+
+**What’s wrong**  
+`aws_dms_replication_instance.fail` does not specify a `kms_key_arn`. The `pass` instance already uses a CMK (`aws_kms_key.example.arn`), so it is compliant. When no key is provided, DMS encrypts the underlying EBS volumes with the default AWS‑managed key for the service.
+
+**Why it matters**  
+AWS‑managed keys are functional but limit your control. A customer‑managed key (CMK) allows you to:
+- Define and enforce key policies (who can use or administer the key).
+- Enable automatic key rotation.
+- Audit usage via AWS CloudTrail.
+- Revoke access instantly if needed.
+
+Using a CMK gives you full control over the encryption of your replication instance’s data at rest.
+
+**How to fix**  
+Set `kms_key_arn` to the ARN of a CMK, exactly as done in the `pass` resource. Ensure the DMS service is granted the necessary permissions in the key policy.
+
+---
+
+### Corrected Terraform
+
+Apply these changes to both resources:
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  engine_version             = "3.1.4"
+  multi_az                  = false
+  publicly_accessible       = false                # was true
+  replication_instance_class = "dms.t2.micro"
+  replication_instance_id    = "test-dms-replication-instance-tf"
+  kms_key_arn               = aws_kms_key.example.arn
+  auto_minor_version_upgrade = true                # was missing (default false)
+}
+
+resource "aws_dms_replication_instance" "fail" {
+  engine_version             = "3.1.4"
+  multi_az                  = false
+  publicly_accessible       = false                # was true
+  replication_instance_class = "dms.t2.micro"
+  replication_instance_id    = "test-dms-replication-instance-tf"
+  kms_key_arn               = aws_kms_key.example.arn  # was missing
+  auto_minor_version_upgrade = true                # was missing (default false)
+}
+```
+
+After applying, all three checks will pass.

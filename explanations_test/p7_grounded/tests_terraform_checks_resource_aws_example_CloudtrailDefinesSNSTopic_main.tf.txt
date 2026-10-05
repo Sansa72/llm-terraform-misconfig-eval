@@ -1,0 +1,91 @@
+The scanner has flagged multiple misconfigurations across three resources. Below is a breakdown of each finding, the exact resource and lines it references, and what the Terraform file shows that triggers the check.
+
+---
+
+### Findings on `aws_cloudtrail.fail` (lines 1–8)
+
+**1. CKV_AWS_252 – Ensure CloudTrail defines an SNS Topic**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** The resource block contains no `sns_topic_name` argument. The check expects a CloudTrail trail to be associated with an SNS topic for notifications.  
+- **Lines:** The entire block (1–8) lacks this attribute.
+
+**2. CKV_AWS_36 – Ensure CloudTrail log file validation is enabled**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** There is no `enable_log_file_validation` argument. In Terraform, omitting this argument defaults to `false`. The check requires it to be explicitly set to `true`.  
+- **Lines:** The block (1–8) does not include `enable_log_file_validation`.
+
+**3. CKV_AWS_251 – Ensure CloudTrail logging is enabled**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** Line 5 explicitly sets `enable_logging = false`. The check requires logging to be enabled.  
+- **Line:** 5 (`enable_logging = false`)
+
+**4. CKV_AWS_67 – Ensure CloudTrail is enabled in all Regions**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** Line 6 sets `is_multi_region_trail = false`. The check expects a multi-region trail to capture activity across all AWS regions.  
+- **Line:** 6 (`is_multi_region_trail = false`)
+
+**5. CKV_AWS_35 – Ensure CloudTrail logs are encrypted at rest using KMS CMKs**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** No `kms_key_id` argument is present. Without it, CloudTrail uses default SSE-S3 encryption, not a customer-managed KMS key. The check requires a KMS CMK.  
+- **Lines:** The block (1–8) lacks `kms_key_id`.
+
+**6. CKV2_AWS_10 – Ensure CloudTrail trails are integrated with CloudWatch Logs**  
+- **Resource:** `aws_cloudtrail.fail` (lines 1–8)  
+- **Evidence:** The resource does not define `cloud_watch_logs_group_arn` or `cloud_watch_logs_role_arn`. The check requires CloudWatch Logs integration.  
+- **Lines:** The block (1–8) contains neither argument.
+
+---
+
+### Findings on `aws_cloudtrail.pass` (lines 10–18)
+
+Despite its name, this resource also fails several checks:
+
+**1. CKV_AWS_36 – Ensure CloudTrail log file validation is enabled**  
+- **Resource:** `aws_cloudtrail.pass` (lines 10–18)  
+- **Evidence:** No `enable_log_file_validation` argument is present (defaults to `false`).  
+- **Lines:** The block (10–18) lacks this attribute.
+
+**2. CKV_AWS_251 – Ensure CloudTrail logging is enabled**  
+- **Resource:** `aws_cloudtrail.pass` (lines 10–18)  
+- **Evidence:** Line 14 sets `enable_logging = false`.  
+- **Line:** 14 (`enable_logging = false`)
+
+**3. CKV_AWS_67 – Ensure CloudTrail is enabled in all Regions**  
+- **Resource:** `aws_cloudtrail.pass` (lines 10–18)  
+- **Evidence:** Line 15 sets `is_multi_region_trail = false`.  
+- **Line:** 15 (`is_multi_region_trail = false`)
+
+**4. CKV_AWS_35 – Ensure CloudTrail logs are encrypted at rest using KMS CMKs**  
+- **Resource:** `aws_cloudtrail.pass` (lines 10–18)  
+- **Evidence:** No `kms_key_id` argument is present.  
+- **Lines:** The block (10–18) lacks `kms_key_id`.
+
+**5. CKV2_AWS_10 – Ensure CloudTrail trails are integrated with CloudWatch Logs**  
+- **Resource:** `aws_cloudtrail.pass` (lines 10–18)  
+- **Evidence:** No `cloud_watch_logs_group_arn` or `cloud_watch_logs_role_arn` arguments are defined.  
+- **Lines:** The block (10–18) contains neither.
+
+---
+
+### Finding on `aws_sns_topic.notes` (line 20)
+
+**CKV_AWS_26 – Ensure all data stored in the SNS topic is encrypted**  
+- **Resource:** `aws_sns_topic.notes` (line 20)  
+- **Evidence:** The resource block is empty (`resource "aws_sns_topic" "notes" {}`). It does not specify a `kms_master_key_id`. The check expects server-side encryption using a customer-managed KMS key.  
+- **Line:** 20 (the entire resource definition).
+
+---
+
+### Summary of required fixes
+
+To resolve all findings, the engineer must modify the Terraform file to:
+
+- Add `sns_topic_name` to `aws_cloudtrail.fail` (or remove the resource if it is not needed).  
+- Set `enable_log_file_validation = true` in both CloudTrail resources.  
+- Set `enable_logging = true` in both CloudTrail resources.  
+- Set `is_multi_region_trail = true` in both CloudTrail resources.  
+- Add a `kms_key_id` (pointing to a KMS CMK) to both CloudTrail resources.  
+- Add `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` to both CloudTrail resources to enable CloudWatch Logs integration.  
+- Add a `kms_master_key_id` to `aws_sns_topic.notes` to enable encryption with a customer-managed key.
+
+The findings are based solely on the absence or explicit false values of these arguments in the given file. No other resources or external dependencies are evidenced.

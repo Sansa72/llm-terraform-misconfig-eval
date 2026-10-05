@@ -1,0 +1,35 @@
+The scanner flagged seven separate security misconfigurations on the same `aws_s3_bucket` resource. All findings point to the same block of code (lines 1–3), which defines the bucket with only a name and no additional security settings. Here is what each check requires and why the current configuration fails it.
+
+---
+
+### 1. CKV2_AWS_61 – Missing lifecycle configuration
+- **What it expects:** A `lifecycle_rule` block (or a separate `aws_s3_bucket_lifecycle_configuration` resource, depending on provider version) that defines expiration or transition rules for objects.
+- **Evidence in the file:** The resource contains only `bucket = "module-bucket"`. There is no `lifecycle_rule` block, no `lifecycle_configuration` attribute, and no associated lifecycle resource. Therefore the check fails.
+
+### 2. CKV_AWS_18 – Access logging not enabled
+- **What it expects:** Server access logging configured, typically via a `logging` block or a separate `aws_s3_bucket_logging` resource pointing to a target bucket.
+- **Evidence in the file:** No `logging` block is present. The bucket definition has no logging configuration, so the check triggers.
+
+### 3. CKV2_AWS_62 – Event notifications not enabled
+- **What it expects:** The bucket should have event notifications configured (e.g., via `aws_s3_bucket_notification` or inline `event_notification` blocks) to send events to SNS, SQS, or Lambda.
+- **Evidence in the file:** There is no notification configuration anywhere in the provided code. The check fails because event notifications are completely absent.
+
+### 4. CKV2_AWS_6 – Public Access Block not configured
+- **What it expects:** A public access block configuration that restricts public access to the bucket, either through the `aws_s3_bucket_public_access_block` resource or inline settings.
+- **Evidence in the file:** No public access block resource or inline block is present. The bucket is defined without any public access restrictions, so the check fails.
+
+### 5. CKV_AWS_145 – Default encryption not using KMS
+- **What it expects:** The bucket’s default encryption should use AWS KMS (SSE-KMS), not just SSE-S3. This is typically set via `server_side_encryption_configuration` with `kms_master_key_id`.
+- **Evidence in the file:** There is no encryption configuration at all. The bucket has no `server_side_encryption_configuration` block, so the check fails.
+
+### 6. CKV_AWS_144 – Cross-region replication not enabled
+- **What it expects:** The bucket should have cross-region replication configured, usually through a `aws_s3_bucket_replication_configuration` resource.
+- **Evidence in the file:** No replication configuration is present. The file only declares the bucket itself, so the check fails.
+
+### 7. CKV_AWS_21 – Versioning not enabled
+- **What it expects:** The bucket must have versioning enabled, either via a `versioning` block or a separate `aws_s3_bucket_versioning` resource.
+- **Evidence in the file:** The resource definition lacks any versioning configuration. The check fails because versioning is not enabled.
+
+---
+
+**Summary:** All seven findings are raised because the Terraform configuration at lines 1–3 defines an S3 bucket with only a name. It does not include any of the required security controls (lifecycle rules, logging, event notifications, public access block, KMS encryption, cross-region replication, or versioning). To resolve these, you need to add the corresponding resource blocks or inline configurations as appropriate for your provider version.

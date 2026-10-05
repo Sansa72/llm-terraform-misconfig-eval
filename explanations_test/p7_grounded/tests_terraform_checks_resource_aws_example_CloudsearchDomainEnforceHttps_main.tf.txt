@@ -1,0 +1,83 @@
+The scanner flagged two security misconfigurations on two CloudSearch domain resources. Here’s what the evidence shows and what needs to change.
+
+---
+
+### Finding CKV_AWS_220 – Ensure that Cloudsearch is using https
+
+**Flagged resources:**
+- `aws_cloudsearch_domain.fail` (lines 1–30)
+- `aws_cloudsearch_domain.fail2` (lines 31–58)
+
+**What the check requires:**  
+The `endpoint_options` block must have `enforce_https = true`.
+
+**What the file contains:**
+
+- **`fail`** – line 27 explicitly sets `enforce_https = false`.  
+  ```terraform
+  endpoint_options {
+    enforce_https       = false   # <-- line 27
+    tls_security_policy = "Policy-Min-TLS-1-0-2019-07"
+  }
+  ```
+
+- **`fail2`** – the `endpoint_options` block is empty (lines 55–56).  
+  ```terraform
+  endpoint_options {
+  }
+  ```
+  When `enforce_https` is omitted, the AWS provider defaults it to `false`. This is confirmed by the fact that the resource is flagged identically to `fail`.
+
+**Evidence of the correct setting:**  
+The resource `aws_cloudsearch_domain.pass` (lines 60–end) is **not** flagged. It sets:
+```terraform
+endpoint_options {
+  enforce_https       = true    # <-- line 82
+  tls_security_policy = "Policy-Min-TLS-1-2-2019-07"
+}
+```
+This demonstrates the expected value for `enforce_https`.
+
+---
+
+### Finding CKV_AWS_218 – Ensure that Cloudsearch is using latest TLS
+
+**Flagged resources:**
+- `aws_cloudsearch_domain.fail` (lines 1–30)
+- `aws_cloudsearch_domain.fail2` (lines 31–58)
+
+**What the check requires:**  
+The `tls_security_policy` must be set to the latest available policy, which the `pass` resource shows as `"Policy-Min-TLS-1-2-2019-07"`.
+
+**What the file contains:**
+
+- **`fail`** – line 28 sets an outdated policy:  
+  ```terraform
+  tls_security_policy = "Policy-Min-TLS-1-0-2019-07"   # <-- line 28
+  ```
+
+- **`fail2`** – the empty `endpoint_options` block (lines 55–56) omits `tls_security_policy`. The AWS provider default is `"Policy-Min-TLS-1-0-2019-07"`, which is the same outdated policy used in `fail`. The scanner correctly identifies this as non-compliant.
+
+**Evidence of the correct setting:**  
+Again, the un-flagged `pass` resource sets:
+```terraform
+tls_security_policy = "Policy-Min-TLS-1-2-2019-07"   # <-- line 83
+```
+
+---
+
+### Required fix
+
+Update the `endpoint_options` block in both `fail` and `fail2` to match the configuration in `pass`:
+
+```terraform
+endpoint_options {
+  enforce_https       = true
+  tls_security_policy = "Policy-Min-TLS-1-2-2019-07"
+}
+```
+
+- For `fail`, replace lines 26–29 with the block above.
+- For `fail2`, replace the empty block (lines 55–56) with the same block.
+
+No other changes are indicated by these findings.

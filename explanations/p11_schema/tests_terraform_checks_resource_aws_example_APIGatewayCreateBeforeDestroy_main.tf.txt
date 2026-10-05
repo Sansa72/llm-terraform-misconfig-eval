@@ -1,0 +1,24 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_237",
+      "resource": "aws_api_gateway_rest_api.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_rest_api\" \"fail\" {\n  name = \"example\"\n  tags = { test = \"Fail\" }\n  # lifecycle {\n  #   create_before_destroy=true\n  # }\n}"
+      ],
+      "risk": "Without create_before_destroy, replacing the API Gateway resource destroys the existing API before creating the new one, causing downtime.",
+      "remediation": "Uncomment the lifecycle block and set create_before_destroy to true, or add a lifecycle block with create_before_destroy = true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_237",
+      "resource": "aws_api_gateway_rest_api.fail2",
+      "evidence": [
+        "resource \"aws_api_gateway_rest_api\" \"fail2\" {\n  name = \"example\"\n  tags = { test = \"Fail\" }\n  lifecycle {\n    create_before_destroy = false\n  }\n}"
+      ],
+      "risk": "Explicitly setting create_before_destroy to false causes the old API to be destroyed before the new one is created, leading to downtime during replacement.",
+      "remediation": "Change the lifecycle block to set create_before_destroy = true.",
+      "confidence": "high"
+    }
+  ]
+}

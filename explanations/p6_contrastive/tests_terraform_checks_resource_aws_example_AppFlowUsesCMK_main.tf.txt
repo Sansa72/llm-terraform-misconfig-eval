@@ -1,0 +1,19 @@
+**Check: CKV_AWS_263 – Ensure AppFlow flow uses CMK**
+
+**What the current (failing) configuration does**  
+The `aws_appflow_flow.fail` resource does not include the `kms_arn` argument. As a result, AWS AppFlow will encrypt the flow’s data at rest using the default AWS-managed KMS key for the service. The user has no control over that key’s policy, rotation, or lifecycle.
+
+**What a passing configuration would do**  
+The `aws_appflow_flow.pass` resource explicitly sets `kms_arn = aws_kms_key.example.arn`. This instructs AppFlow to use a customer-managed KMS key (CMK) for encrypting the flow’s data. The CMK is owned and managed by the account, allowing custom key policies, manual or automatic rotation, and full audit logging of key usage.
+
+**Precise difference**  
+The only difference between the two resources is the presence of the `kms_arn` attribute. In the failing resource it is absent; in the passing resource it is set to a valid CMK ARN. All other configuration (source, destination, tasks, trigger) remains identical.
+
+**Why this difference matters for security**  
+- **Control**: A CMK lets you define fine-grained IAM/key policies that restrict which principals can use the key for encryption/decryption, enforcing least privilege.  
+- **Compliance**: Many regulatory frameworks require the use of customer-managed keys so that you can demonstrate control over data encryption, key rotation, and access auditing.  
+- **Auditability**: All cryptographic operations with a CMK are logged in AWS CloudTrail, providing a clear record of who accessed the key and when.  
+- **Key rotation**: You can enable automatic annual rotation for a CMK, reducing the risk of long-lived keys. AWS-managed keys are rotated automatically but on a schedule you cannot control or verify.
+
+**What the engineer must change**  
+Add the `kms_arn` argument to the `aws_appflow_flow.fail` resource, pointing it to the ARN of a customer-managed KMS key (e.g., `aws_kms_key.example.arn`). This single property change moves the flow from default encryption to customer-controlled encryption, satisfying the check and improving the security posture.

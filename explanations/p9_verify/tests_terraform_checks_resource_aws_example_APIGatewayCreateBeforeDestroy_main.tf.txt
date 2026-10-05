@@ -1,0 +1,22 @@
+The two flagged resources (`aws_api_gateway_rest_api.fail` and `aws_api_gateway_rest_api.fail2`) are missing the `create_before_destroy = true` lifecycle setting.  
+- `fail` has no `lifecycle` block at all, so it uses the default Terraform behavior: destroy the existing API Gateway before creating a replacement.  
+- `fail2` explicitly sets `create_before_destroy = false`, which enforces the same destroy-then-create order.  
+
+When an API Gateway must be replaced (for example, due to a name change or other force-new attribute), the default destroy-before-create order causes downtime because the old API is deleted before the new one is provisioned. Setting `create_before_destroy = true` ensures the new API is created first, and only then is the old one destroyed, avoiding a service interruption.  
+
+The scanner (CKV_AWS_237) flags any `aws_api_gateway_rest_api` resource that does not have `create_before_destroy = true`. The `pass` resource in the same file demonstrates the correct configuration.  
+
+**Fix:** Add a `lifecycle` block with `create_before_destroy = true` to both `fail` and `fail2`. For example:  
+
+```hcl
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```  
+
+Apply the same change to `fail2`, replacing the existing `lifecycle` block.

@@ -1,0 +1,48 @@
+The scanner flagged three EFS file system resources for not meeting encryption requirements. Here’s what each finding means, based strictly on the provided file and check descriptions.
+
+---
+
+### Resource: `aws_efs_file_system.enabled` (lines 3–7)
+
+**Finding:** CKV_AWS_184  
+**What it means:** The resource is encrypted, but it does not use a customer-managed KMS key (CMK).  
+**Evidence in the file:**  
+- Line 5: `encrypted = true` – encryption is enabled.  
+- No `kms_key_id` argument is present. This means the file system will use the default AWS-managed key for EFS, not a customer-managed key.  
+- CKV_AWS_42 is **not** raised on this resource, confirming that the scanner considers encryption itself to be properly enabled.
+
+---
+
+### Resource: `aws_efs_file_system.default` (lines 11–13)
+
+**Findings:** CKV_AWS_184 and CKV_AWS_42  
+**What they mean:**  
+- CKV_AWS_42: The resource is not considered “securely encrypted.” The file does not explicitly set `encrypted = true`. (Although EFS encrypts by default, the check appears to require an explicit declaration.)  
+- CKV_AWS_184: Even if encryption is enabled by default, no `kms_key_id` is provided, so it would use the AWS-managed key, not a CMK.  
+**Evidence in the file:**  
+- Lines 11–13 contain only `creation_token = "example"`. No `encrypted` or `kms_key_id` arguments are present.
+
+---
+
+### Resource: `aws_efs_file_system.disabled` (lines 15–19)
+
+**Findings:** CKV_AWS_184 and CKV_AWS_42  
+**What they mean:**  
+- CKV_AWS_42: Encryption is explicitly disabled (`encrypted = false`), so the resource is not securely encrypted.  
+- CKV_AWS_184: Because encryption is disabled, the question of using a CMK is moot, but the check still flags the absence of a customer-managed key configuration.  
+**Evidence in the file:**  
+- Line 17: `encrypted = false` – encryption is turned off.  
+- No `kms_key_id` argument is present.
+
+---
+
+### What needs to be fixed
+
+To resolve both checks for all three resources, you need to:
+
+1. **Set `encrypted = true`** (explicitly) on every `aws_efs_file_system` resource. This satisfies CKV_AWS_42.  
+2. **Add a `kms_key_id` argument** pointing to a customer-managed KMS key ARN. This satisfies CKV_AWS_184.
+
+For example, the `enabled` resource already has `encrypted = true`; it only needs the `kms_key_id`. The `default` resource needs both `encrypted = true` and `kms_key_id`. The `disabled` resource needs to change `encrypted` to `true` and add `kms_key_id`.
+
+The exact ARN of the customer-managed key is not shown in the file; you will need to provide a valid KMS key ARN from your environment.

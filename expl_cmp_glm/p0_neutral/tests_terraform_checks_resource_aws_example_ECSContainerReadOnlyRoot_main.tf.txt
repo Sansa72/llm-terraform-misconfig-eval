@@ -1,0 +1,33 @@
+### 1. What the misconfiguration is
+
+Checkov flagged the following issues across two ECS task definitions:
+
+*   **`aws_ecs_task_definition.fail`**: The "second" container definition does not set `readonlyRootFilesystem`, meaning it defaults to a writable root filesystem. 
+*   **`aws_ecs_task_definition.fail2`**: 
+    *   Both the "first" and "second" containers explicitly set `readonlyRootFilesystem = false`.
+    *   The "second" container is configured with `privilege = true`, enabling privileged mode.
+    *   The "second" container is configured with `pidMode = "host"`, sharing the host instance's process namespace.
+
+### 2. Why it matters (security risk / blast radius)
+
+These configurations weaken container isolation, increasing the blast radius if the container is compromised:
+
+*   **Writable root filesystem (CKV_AWS_336)**: Allows an attacker who gains code execution within the container to download malicious payloads, modify application binaries, and establish persistence on the container's filesystem.
+*   **Privileged mode (CKV_AWS_334)**: Grants the container nearly all the capabilities of the root user on the underlying host EC2 instance. This drastically lowers the barrier for container escape, allowing an attacker to manipulate host devices and kernel features.
+*   **Host PID namespace (CKV_AWS_335)**: Allows the container to see and interact with all processes running on the host EC2 instance, providing an attacker with visibility into other tasks and the ability to target host-level processes.
+
+Combined in `fail2`, a compromise of the "second" container provides a direct path to escaping the container and taking over the underlying host and any other tasks running on it.
+
+### 3. How to fix it safely
+
+Update the Terraform definitions to enforce least privilege. If the applications legitimately need to write data to disk, use explicit volume mounts rather than making the entire root filesystem writable.
+
+**For `aws_ecs_task_definition.fail`:**
+Add `readonlyRootFilesystem = true` to the "second" container block.
+
+**For `aws_ecs_task_definition.fail2`:**
+1. Set `readonlyRootFilesystem = true` for both the "first" and "second" containers.
+2. Remove the `privilege = true` line from the "second" container (or explicitly set it to `false`).
+3. Remove the `pidMode = "host"` line from the "second" container (or set it to `"task"` to share the PID namespace only with other containers in the same task, rather than the host).
+
+**Safety Note on Writable Storage:** Because the root filesystem will be read-only, ensure the applications in these containers only write to explicitly defined volumes, such as the already-defined `service-storage` volume, mapped to the appropriate mount points in the container definitions.

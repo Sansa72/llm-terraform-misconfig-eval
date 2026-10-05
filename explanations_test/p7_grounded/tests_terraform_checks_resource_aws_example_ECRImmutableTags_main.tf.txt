@@ -1,0 +1,91 @@
+The scanner flagged several misconfigurations across three ECR repositories defined in your Terraform file. Below I break down each finding, the specific check it violates, and the exact lines of code that trigger it.
+
+---
+
+### Resource: `aws_ecr_repository.enabled` (lines 3–7)
+**File evidence:**
+```terraform
+resource "aws_ecr_repository" "enabled" {
+  name = "example"
+
+  image_tag_mutability = "IMMUTABLE"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Ensure ECR image scanning on push is enabled  
+  The resource does not contain an `image_scanning_configuration` block. To enable scan on push, you must add:
+  ```
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  ```
+- **CKV_AWS_136** – Ensure ECR repositories are encrypted using KMS  
+  The resource does not contain an `encryption_configuration` block. By default, ECR uses AES256 encryption, but the check requires explicit KMS encryption. You need to add:
+  ```
+  encryption_configuration {
+    encryption_type = "KMS"
+    # optionally specify a KMS key
+  }
+  ```
+
+Note: The comment `# pass` above this resource is misleading; it only passes the immutability check (CKV_AWS_51) because `image_tag_mutability` is set to `"IMMUTABLE"`. The other two controls are still failing.
+
+---
+
+### Resource: `aws_ecr_repository.default` (lines 11–13)
+**File evidence:**
+```terraform
+resource "aws_ecr_repository" "default" {
+  name = "example"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – Missing `image_scanning_configuration` block (scan on push not enabled).
+- **CKV_AWS_136** – Missing `encryption_configuration` block (no KMS encryption).
+- **CKV_AWS_51** – Ensure ECR Image Tags are immutable.  
+  The `image_tag_mutability` argument is not set; it defaults to `"MUTABLE"`, which violates the check. You must explicitly set `image_tag_mutability = "IMMUTABLE"`.
+
+All three controls are failing because the resource definition contains only the `name` argument.
+
+---
+
+### Resource: `aws_ecr_repository.disabled` (lines 15–19)
+**File evidence:**
+```terraform
+resource "aws_ecr_repository" "disabled" {
+  name = "example"
+
+  image_tag_mutability = "MUTABLE"
+}
+```
+
+**Findings:**
+- **CKV_AWS_163** – No `image_scanning_configuration` block; scan on push is not enabled.
+- **CKV_AWS_136** – No `encryption_configuration` block; KMS encryption is not configured.
+- **CKV_AWS_51** – `image_tag_mutability` is explicitly set to `"MUTABLE"` (line 18), which directly violates the immutability requirement.
+
+---
+
+### Summary of required changes
+For each repository to pass all checks, the Terraform resource must include:
+
+1. **Image scanning on push**  
+   ```terraform
+   image_scanning_configuration {
+     scan_on_push = true
+   }
+   ```
+2. **KMS encryption**  
+   ```terraform
+   encryption_configuration {
+     encryption_type = "KMS"
+   }
+   ```
+3. **Immutable image tags**  
+   ```terraform
+   image_tag_mutability = "IMMUTABLE"
+   ```
+
+The resource `aws_ecr_repository.enabled` already satisfies requirement 3 but is missing 1 and 2. The other two resources are missing all three.

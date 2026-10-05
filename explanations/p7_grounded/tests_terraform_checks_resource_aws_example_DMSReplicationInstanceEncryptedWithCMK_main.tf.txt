@@ -1,0 +1,73 @@
+The scanner flagged several misconfigurations across both DMS replication instances. Below is a breakdown of each finding, the exact resource and lines that trigger it, and what needs to change.
+
+---
+
+### 1. CKV_AWS_89 – DMS replication instance should not be publicly accessible
+
+**Affected resources:**  
+- `aws_dms_replication_instance.pass` (lines 1–9)  
+- `aws_dms_replication_instance.fail` (lines 12–20)
+
+**Evidence:**  
+Both resources contain the following line:  
+`publicly_accessible = true`  
+- Line 4 in the `pass` resource  
+- Line 15 in the `fail` resource
+
+**Problem:**  
+Setting `publicly_accessible` to `true` makes the DMS instance reachable from the internet. The check requires this to be `false` (or omitted, as the default is `false`).
+
+**Fix:**  
+Change the attribute to `false` or remove the line entirely:  
+`publicly_accessible = false`
+
+---
+
+### 2. CKV_AWS_222 – Ensure DMS instance gets all minor upgrade automatically
+
+**Affected resources:**  
+- `aws_dms_replication_instance.pass` (lines 1–9)  
+- `aws_dms_replication_instance.fail` (lines 12–20)
+
+**Evidence:**  
+In both resources, the `auto_minor_version_upgrade` attribute is commented out:  
+- Line 8: `# auto_minor_version_upgrade=false`  
+- Line 19: `# auto_minor_version_upgrade=false`
+
+Because the attribute is not explicitly set, Terraform uses the default value `false`. The check requires it to be `true`.
+
+**Fix:**  
+Uncomment the line and set the value to `true`:  
+`auto_minor_version_upgrade = true`
+
+---
+
+### 3. CKV_AWS_212 – Ensure EBS Volume is encrypted by KMS using a customer managed key (CMK)
+
+**Affected resource:**  
+- `aws_dms_replication_instance.fail` (lines 12–20)
+
+**Evidence:**  
+In the `fail` resource, the `kms_key_arn` attribute is commented out:  
+`# kms_key_arn = ""` (line 19).  
+No other KMS key configuration is present. The `pass` resource (line 7) explicitly sets `kms_key_arn = aws_kms_key.example.arn` and is **not** flagged for this check.
+
+**Problem:**  
+Without a `kms_key_arn` pointing to a customer managed key, the DMS instance’s underlying EBS volume is encrypted using the default AWS managed key. The check requires a customer managed key (CMK).
+
+**Fix:**  
+Provide a valid customer managed KMS key ARN, for example:  
+`kms_key_arn = aws_kms_key.example.arn`  
+(assuming `aws_kms_key.example` is defined elsewhere in the configuration).
+
+---
+
+**Summary of required changes:**
+
+| Resource | Line(s) | Current Value | Required Value |
+|----------|---------|---------------|----------------|
+| `aws_dms_replication_instance.pass` | 4 | `publicly_accessible = true` | `false` |
+| `aws_dms_replication_instance.pass` | 8 | `# auto_minor_version_upgrade=false` | `auto_minor_version_upgrade = true` |
+| `aws_dms_replication_instance.fail` | 15 | `publicly_accessible = true` | `false` |
+| `aws_dms_replication_instance.fail` | 19 | `# auto_minor_version_upgrade=false` | `auto_minor_version_upgrade = true` |
+| `aws_dms_replication_instance.fail` | 19 | `# kms_key_arn = ""` | `kms_key_arn = aws_kms_key.example.arn` (or another CMK ARN) |

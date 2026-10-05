@@ -1,0 +1,52 @@
+**Remediation Briefing: AMI Copy Encryption and Key Management**
+
+Below are the failing checks, in the order they appear in the scanner output, with the exact evidence from the provided Terraform file and the required change.
+
+---
+
+### 1. CKV_AWS_235 on `aws_ami_copy.fail` (lines 2–12)
+
+- **Trigger:** Line 7: `encrypted = false`
+- **What is wrong:** The AMI copy is explicitly set to be unencrypted. The check requires that copied AMIs are encrypted.
+- **Why it matters:** An unencrypted AMI means its underlying snapshots are stored without encryption, which can lead to unintended data exposure if the snapshots are shared or accessed.
+- **Remediation:** Change the `encrypted` argument to `true`. If you also need to meet the CMK requirement (see next finding), you will additionally need to specify a `kms_key_id`.
+
+---
+
+### 2. CKV_AWS_236 on `aws_ami_copy.fail` (lines 2–12)
+
+- **Trigger:** The resource has `encrypted = false` and no `kms_key_id` argument is present.
+- **What is wrong:** The AMI copy does not use a customer-managed KMS key (CMK). Even if encryption were enabled, the absence of `kms_key_id` means the copy would use the default AWS-managed key, which does not satisfy the requirement for a CMK.
+- **Why it matters:** Using a CMK gives you control over key rotation, access policies, and auditing. The check enforces that copied AMIs are encrypted with a key you manage.
+- **Remediation:** Add a `kms_key_id` argument referencing the ARN of a customer-managed KMS key, and set `encrypted = true` (or remove the `encrypted` line, as specifying `kms_key_id` implies encryption, but explicit is safer).
+
+---
+
+### 3. CKV_AWS_235 on `aws_ami_copy.fail2` (lines 15–24)
+
+- **Trigger:** The `encrypted` argument is completely omitted. As noted in the comment on the `fail` resource (line 7), the default is `false`.
+- **What is wrong:** The AMI copy is not encrypted because the `encrypted` attribute defaults to `false` when not set.
+- **Why it matters:** Same as check 1 – unencrypted AMIs expose snapshot data.
+- **Remediation:** Add `encrypted = true` to the resource block.
+
+---
+
+### 4. CKV_AWS_236 on `aws_ami_copy.fail2` (lines 15–24)
+
+- **Trigger:** No `kms_key_id` argument is present, and encryption is not enabled (the `encrypted` attribute is missing, defaulting to `false`).
+- **What is wrong:** The AMI copy does not use a customer-managed KMS key. Without a CMK, the copy either remains unencrypted or uses the default AWS-managed key, neither of which meets the check.
+- **Why it matters:** A CMK is required for full control over encryption key lifecycle and access policies.
+- **Remediation:** Add both `encrypted = true` and a `kms_key_id` argument that points to a valid CMK ARN.
+
+---
+
+### 5. CKV_AWS_236 on `aws_ami_copy.pass` (lines 27–37)
+
+- **Trigger:** Line 32 sets `encrypted = true`, but no `kms_key_id` is specified.
+- **What is wrong:** The AMI copy is encrypted, but it uses the default AWS-managed KMS key instead of a customer-managed key (CMK). The check requires a CMK.
+- **Why it matters:** Without a CMK, you lack the ability to manage the key’s access policies, rotation, and auditing independently.
+- **Remediation:** Add a `kms_key_id` argument with the ARN of a customer-managed KMS key. The `encrypted = true` line can remain as-is.
+
+---
+
+All changes should be applied to the respective `aws_ami_copy` resources in the Terraform configuration. After updating, run `terraform plan` to verify the changes and ensure no other arguments are inadvertently altered.

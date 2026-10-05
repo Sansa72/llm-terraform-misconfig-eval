@@ -1,0 +1,105 @@
+## Remediation Briefing: CloudTrail Misconfigurations
+
+The scanner evaluated three `aws_cloudtrail` resources: `fail` (lines 1–6), `pass` (lines 8–14), and `pass2` (lines 16–21). Below are the failing checks, grouped by resource and presented in the order they appear in the finding. Each entry identifies the exact trigger, states the problem, and describes the required change.
+
+---
+
+### 1. CKV_AWS_252 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** The resource block (lines 1–6) contains no `sns_topic_arn` argument.  
+**Problem:** The trail does not define an SNS topic for notifications. Without it, you lose the ability to receive real-time alerts on trail activity.  
+**Change:** Add an `sns_topic_arn` argument referencing a valid SNS topic ARN.
+
+---
+
+### 2. CKV_AWS_36 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** The resource block (lines 1–6) does not include `enable_log_file_validation`.  
+**Problem:** Log file validation is not enabled (defaults to `false`). This means you cannot verify that log files have not been tampered with after delivery.  
+**Change:** Set `enable_log_file_validation = true` inside the resource block.
+
+---
+
+### 3. CKV_AWS_251 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** Line 6 explicitly sets `enable_logging = false`.  
+**Problem:** Logging is disabled, so the trail will not record any API activity or events.  
+**Change:** Set `enable_logging = true` (or remove the line, as the default is `true`).
+
+---
+
+### 4. CKV_AWS_67 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** The resource block does not include `is_multi_region_trail`.  
+**Problem:** The trail is not configured to capture events from all regions (defaults to `false`). It will only record activity in the region where it is created, leaving other regions unmonitored.  
+**Change:** Add `is_multi_region_trail = true` to ensure global coverage.
+
+---
+
+### 5. CKV_AWS_35 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** The resource block (lines 1–6) contains no `kms_key_id` argument.  
+**Problem:** Logs are not encrypted at rest with a customer-managed KMS key. They will use default S3 server-side encryption, which does not provide the same control or auditability.  
+**Change:** Add a `kms_key_id` argument referencing a KMS key ARN (e.g., `aws_kms_key.test.arn` as used in the `pass` resource).
+
+---
+
+### 6. CKV_AWS_252 on `aws_cloudtrail.pass` (lines 8–14)
+**Trigger:** The resource block (lines 8–14) lacks an `sns_topic_arn` argument.  
+**Problem:** Same as check #1 – no SNS topic is defined, so real-time notifications are missing.  
+**Change:** Add an `sns_topic_arn` argument referencing a valid SNS topic ARN.
+
+---
+
+### 7. CKV_AWS_36 on `aws_cloudtrail.pass` (lines 8–14)
+**Trigger:** The resource block does not include `enable_log_file_validation`.  
+**Problem:** Log file validation is not enabled (defaults to `false`), preventing integrity verification of delivered logs.  
+**Change:** Set `enable_log_file_validation = true`.
+
+---
+
+### 8. CKV_AWS_67 on `aws_cloudtrail.pass` (lines 8–14)
+**Trigger:** The resource block does not include `is_multi_region_trail`.  
+**Problem:** The trail is not multi-region (defaults to `false`), so it only records events in the current region.  
+**Change:** Add `is_multi_region_trail = true`.
+
+---
+
+### 9. CKV_AWS_252 on `aws_cloudtrail.pass2` (lines 16–21)
+**Trigger:** The resource block (lines 16–21) lacks an `sns_topic_arn` argument.  
+**Problem:** Same as checks #1 and #6 – no SNS topic for notifications.  
+**Change:** Add an `sns_topic_arn` argument referencing a valid SNS topic ARN.
+
+---
+
+### 10. CKV_AWS_36 on `aws_cloudtrail.pass2` (lines 16–21)
+**Trigger:** The resource block does not include `enable_log_file_validation`.  
+**Problem:** Log file validation is not enabled (defaults to `false`), so log integrity cannot be verified.  
+**Change:** Set `enable_log_file_validation = true`.
+
+---
+
+### 11. CKV_AWS_67 on `aws_cloudtrail.pass2` (lines 16–21)
+**Trigger:** The resource block does not include `is_multi_region_trail`.  
+**Problem:** The trail is not multi-region (defaults to `false`), limiting event capture to a single region.  
+**Change:** Add `is_multi_region_trail = true`.
+
+---
+
+### 12. CKV2_AWS_10 on `aws_cloudtrail.fail` (lines 1–6)
+**Trigger:** The resource block (lines 1–6) contains no `cloud_watch_logs_group_arn` or `cloud_watch_logs_role_arn` arguments.  
+**Problem:** The trail is not integrated with CloudWatch Logs, so you cannot monitor trail events through CloudWatch metrics, alarms, or dashboards.  
+**Change:** Add both `cloud_watch_logs_group_arn` (a CloudWatch Logs group ARN) and `cloud_watch_logs_role_arn` (an IAM role ARN that grants CloudTrail permission to deliver logs to that group).
+
+---
+
+### 13. CKV2_AWS_10 on `aws_cloudtrail.pass` (lines 8–14)
+**Trigger:** The resource block (lines 8–14) lacks `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`.  
+**Problem:** Same as check #12 – no CloudWatch Logs integration, preventing log-based monitoring.  
+**Change:** Add both `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` arguments.
+
+---
+
+### 14. CKV2_AWS_10 on `aws_cloudtrail.pass2` (lines 16–21)
+**Trigger:** The resource block (lines 16–21) lacks `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`.  
+**Problem:** Same as checks #12 and #13 – no CloudWatch Logs integration.  
+**Change:** Add both `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn` arguments.
+
+---
+
+**Note:** The `pass2` resource does not explicitly set `enable_logging`, but the default is `true`, so CKV_AWS_251 is not raised against it. No change is needed for that attribute.

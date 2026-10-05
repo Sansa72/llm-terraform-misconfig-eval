@@ -1,0 +1,157 @@
+The scanner flagged several security misconfigurations across all four CloudFront distributions defined in the file. Each finding points to a missing or incorrectly configured setting that weakens the security posture of your CDN. Below is a breakdown of every issue, why it matters, and the Terraform changes needed to resolve it.
+
+---
+
+### 1. Distribution must be enabled (`CKV_AWS_216`)
+**Affected resources:** `aws_cloudfront_distribution.pass`, `fail2`, `fail3`  
+**Problem:** `enabled` is set to `false`. A disabled distribution cannot serve traffic, which may be intentional for unused resources, but if these are meant to be live, they are effectively down.  
+**Fix:** Set `enabled = true`.
+
+---
+
+### 2. Access logging must be enabled (`CKV_AWS_86`)
+**Affected resources:** All four distributions  
+**Problem:** No `logging_config` block is present. Without access logs, you lose visibility into requests, which hampers security monitoring, forensics, and compliance.  
+**Fix:** Add a `logging_config` block pointing to an S3 bucket that CloudFront can write to. Example:
+```hcl
+logging_config {
+  bucket = aws_s3_bucket.logs.bucket_domain_name
+  prefix = "cloudfront/"
+}
+```
+
+---
+
+### 3. Viewer certificate must enforce TLS 1.2 (`CKV_AWS_174`)
+**Affected resources:** All four distributions  
+**Problem:** The `viewer_certificate` block either is empty or uses `cloudfront_default_certificate = true` without setting `minimum_protocol_version`. This can allow outdated, insecure TLS versions (1.0/1.1).  
+**Fix:** Set `minimum_protocol_version = "TLSv1.2_2021"` (or a similar TLS 1.2 policy). If you also need to satisfy the custom certificate requirement (see #7), combine both. Example:
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = false
+  acm_certificate_arn            = aws_acm_certificate.example.arn
+  minimum_protocol_version       = "TLSv1.2_2021"
+  ssl_support_method             = "sni-only"
+}
+```
+
+---
+
+### 4. WAF must be associated (`CKV_AWS_68`)
+**Affected resources:** All four distributions  
+**Problem:** No `web_acl_id` is set. A Web Application Firewall protects against common attacks like SQL injection, cross‑site scripting, and bot traffic.  
+**Fix:** Attach a WAFv2 Web ACL. Example:
+```hcl
+web_acl_id = aws_wafv2_web_acl.example.arn
+```
+Ensure the Web ACL is created in the `us-east-1` region if you are using CloudFront (global).
+
+---
+
+### 5. Default root object must be configured (`CKV_AWS_305`)
+**Affected resources:** `aws_cloudfront_distribution.pass`, `fail2`, `fail3`  
+**Problem:** `default_root_object` is not set. Requests to the distribution’s root URL (e.g., `https://example.com/`) will not return a default document, often resulting in an access denied error.  
+**Fix:** Add `default_root_object = "index.html"` (or your preferred default file).
+
+---
+
+### 6. Origin failover must be configured (`CKV_AWS_310`)
+**Affected resources:** `aws_cloudfront_distribution.fail`, `fail2`, `fail3`  
+**Problem:**
+- `fail` has only a single origin – no failover possible.
+- `fail2` has an origin group with two members but **no `failover_criteria` block**.
+- `fail3` has an origin group with `failover_criteria` but **no `member` blocks**.
+
+Without a properly defined origin group (at least two origins and failover criteria), the distribution cannot automatically switch to a backup origin during failures.  
+**Fix:** Define a complete origin group. Example:
+```hcl
+origin_group {
+  origin_id = "groupS3"
+  failover_criteria {
+    status_codes = [403, 404, 500, 502]
+  }
+  member {
+    origin_id = "primaryS3"
+  }
+  member {
+    origin_id = "failoverS3"
+  }
+}
+```
+Then reference `target_origin_id = "groupS3"` in your default cache behavior.
+
+---
+
+### 7. Use a custom SSL certificate (`CKV2_AWS_42`)
+**Affected resources:** All four distributions  
+**Problem:** All distributions rely on the default CloudFront certificate (`*.cloudfront.net`). A custom certificate (ACM) allows you to use your own domain name and provides stronger trust signals.  
+**Fix:** Request or import a certificate in AWS Certificate Manager (in `us-east-1`), then reference it in `viewer_certificate` as shown in the TLS 1.2 fix above. Set `cloudfront_default_certificate = false`.
+
+---
+
+### 8. Attach a response headers policy (`CKV2_AWS_32`)
+**Affected resources:** All four distributions  
+**Problem:** No `response_headers_policy_id` is set in the cache behavior. This means security headers like `Strict-Transport-Security`, `X-Content-Type-Options`, and `X-Frame-Options` are not added to responses.  
+**Fix:** Attach an AWS-managed or custom response headers policy. Example using the managed `SecurityHeadersPolicy`:
+```hcl
+default_cache_behavior {
+  # ... other settings ...
+  response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"  # Managed-SecurityHeadersPolicy
+}
+```
+
+---
+
+### 9. WAFv2 WebACL must include Log4j vulnerability protection (`CKV2_AWS_47`)
+**Affected resources:** All four distributions (because none have WAF enabled)  
+**Problem:** Even after attaching a WAF Web ACL, the check requires that the Web ACL includes the AWS Managed Rules rule group that mitigates the Log4j vulnerability (CVE-2021-44228).  
+**Fix:** When creating the WAFv2 Web ACL, add the managed rule group `AWSManagedRulesKnownBadInputsRuleSet` or the specific `AWSManagedRulesLog4jRuleSet`. Example:
+```hcl
+resource "aws_wafv2_web_acl" "example" {
+  name  = "cloudfront-waf"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 1
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "KnownBadInputs"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "CloudFrontWebACL"
+    sampled_requests_enabled   = true
+  }
+}
+```
+Then associate this Web ACL with the distribution via `web_acl_id = aws_wafv2_web_acl.example.arn`.
+
+---
+
+### Summary of required changes per resource
+
+| Resource | Enable | Logging | TLS 1.2 | WAF | Root Object | Origin Failover | Custom Cert | Resp. Headers | WAF Log4j |
+|----------|--------|---------|---------|-----|-------------|-----------------|-------------|---------------|-----------|
+| `pass`   | ✅     | ✅      | ✅      | ✅  | ✅          | Already OK      | ✅          | ✅            | ✅        |
+| `fail`   | Already OK | ✅ | ✅ | ✅ | Already OK | ✅ (add group) | ✅ | ✅ | ✅ |
+| `fail2`  | ✅     | ✅      | ✅      | ✅  | ✅          | ✅ (add criteria) | ✅ | ✅ | ✅ |
+| `fail3`  | ✅     | ✅      | ✅      | ✅  | ✅          | ✅ (add members) | ✅ | ✅ | ✅ |
+
+Apply the corresponding Terraform blocks to each distribution, and the scanner findings will be resolved.

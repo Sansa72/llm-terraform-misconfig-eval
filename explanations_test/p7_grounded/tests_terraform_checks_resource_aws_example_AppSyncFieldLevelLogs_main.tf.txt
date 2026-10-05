@@ -1,0 +1,46 @@
+The findings point to two distinct misconfigurations in your AppSync definitions. Here is what the evidence shows.
+
+---
+
+### 1. CKV_AWS_194 – Field-Level Logging Disabled
+
+**Finding:**  
+`CKV_AWS_194 on aws_appsync_graphql_api.none (lines 25-33): Ensure AppSync has Field-Level logs enabled`
+
+**What the file shows:**  
+The resource `aws_appsync_graphql_api` named `"none"` (lines 25–33) contains a `log_config` block where `field_log_level` is explicitly set to `"NONE"` (line 31).  
+The other two resources (`"all"` and `"error"`) set this value to `"ALL"` and `"ERROR"` respectively, which satisfy the check.
+
+**Why it’s flagged:**  
+The check requires field-level logging to be enabled. A value of `"NONE"` disables it entirely. The scanner therefore correctly identifies this resource as non‑compliant.
+
+**What to fix:**  
+Change the `field_log_level` in the `"none"` resource from `"NONE"` to either `"ERROR"` or `"ALL"`, depending on your logging requirements.
+
+---
+
+### 2. CKV2_AWS_33 – No WAF Protection
+
+**Finding:**  
+`CKV2_AWS_33` is raised on **all three** AppSync resources:  
+- `aws_appsync_graphql_api.all` (lines 3–11)  
+- `aws_appsync_graphql_api.error` (lines 13–21)  
+- `aws_appsync_graphql_api.none` (lines 25–33)  
+
+**What the file shows:**  
+The provided Terraform configuration defines three AppSync GraphQL APIs. Nowhere in the file is there a WAF Web ACL association (e.g., `aws_wafv2_web_acl_association` or the older `aws_wafregional_web_acl_association`) linking any of these APIs to a WAF Web ACL. The check `CKV2_AWS_33` expects that each AppSync API is protected by AWS WAF, and the absence of such an association triggers the finding.
+
+**Why it’s flagged:**  
+The scanner detects that none of the three AppSync APIs have an associated WAF Web ACL. The file contains no evidence of WAF protection for any of them.
+
+**What to fix:**  
+Create a WAF Web ACL (or use an existing one) and associate it with each AppSync API. In Terraform, this typically requires an `aws_wafv2_web_acl_association` resource (or the regional equivalent) that references the API’s ARN. For example:
+
+```hcl
+resource "aws_wafv2_web_acl_association" "example" {
+  resource_arn = aws_appsync_graphql_api.all.arn
+  web_acl_arn  = aws_wafv2_web_acl.example.arn
+}
+```
+
+Repeat for the `"error"` and `"none"` APIs as needed.

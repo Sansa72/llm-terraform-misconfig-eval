@@ -1,0 +1,133 @@
+Here’s a breakdown of each failing check, contrasting the current insecure configuration with a secure one, and explaining exactly what must change and why.
+
+---
+
+### CKV_AWS_163 – Ensure ECR image scanning on push is enabled
+**Applies to:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**Current behaviour (failing):**  
+None of these repository resources include an `image_scanning_configuration` block. The default is no scan-on-push; images are not automatically scanned for vulnerabilities when pushed.
+
+**Secure behaviour (passing):**  
+The repository would contain:
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+This enables automatic vulnerability scanning by Amazon Inspector on every image push.
+
+**What differs:**  
+The presence of the `image_scanning_configuration` block with `scan_on_push = true`. Without it, newly pushed images are never scanned, leaving known vulnerabilities undetected. The block is the only way to turn on push-time scanning; its absence is the sole reason for the failure.
+
+---
+
+### CKV_AWS_136 – Ensure that ECR repositories are encrypted using KMS
+**Applies to:**  
+Same five repository resources.
+
+**Current behaviour (failing):**  
+No `encryption_configuration` block is present. ECR defaults to AES‑256 encryption using Amazon S3‑managed keys. While data is encrypted at rest, the key management is opaque and lacks customer-controlled key rotation, access policies, and audit trails.
+
+**Secure behaviour (passing):**  
+The repository would include:
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  # optionally specify a kms_key
+}
+```
+This forces the repository to use a KMS customer-managed key (or the default AWS-managed KMS key for ECR, but explicitly setting `KMS` is required).
+
+**What differs:**  
+The `encryption_configuration` block with `encryption_type = "KMS"`. The default AES‑256 encryption is not considered sufficient because it does not provide the control, rotation, and logging that KMS offers. The check requires an explicit opt-in to KMS.
+
+---
+
+### CKV_AWS_51 – Ensure ECR Image Tags are immutable
+**Applies to:**  
+Same five repository resources.
+
+**Current behaviour (failing):**  
+The `image_tag_mutability` attribute is not set, so it defaults to `MUTABLE`. This allows overwriting an existing tag (e.g., `latest`) with a different image, which can lead to supply‑chain attacks or accidental deployment of untested images.
+
+**Secure behaviour (passing):**  
+The repository would set:
+```hcl
+image_tag_mutability = "IMMUTABLE"
+```
+This prevents any tag from being overwritten once pushed; a new image must use a new tag.
+
+**What differs:**  
+The explicit attribute `image_tag_mutability = "IMMUTABLE"`. The default `MUTABLE` is the insecure state. Changing this one property enforces tag immutability, ensuring that a given tag always points to the same image digest.
+
+---
+
+### CKV_AWS_32 – Ensure ECR policy is not set to public
+**Applies to:**  
+`aws_ecr_repository_policy.fail` (lines 9‑38) and `aws_ecr_repository_policy.fail_conditional` (lines 131‑165)
+
+#### 1. Policy `fail` (lines 9‑38)
+**Current behaviour (failing):**  
+The policy has `"Principal": "*"` with **no condition**. This grants the listed actions (including `PutImage`, `DeleteRepository`, etc.) to anyone on the internet. The repository is fully public.
+
+**Secure behaviour (passing):**  
+The policy must either:
+- Replace `"Principal": "*"` with specific, trusted AWS principals (e.g., `"Principal": {"AWS": ["arn:aws:iam::123456789012:user/pull-user-1"]}`), **or**
+- Keep `"Principal": "*"` but add a condition that restricts access to a known organisation or account using a globally unique identifier, such as:
+  ```json
+  "Condition": {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-xxxxxxxxxxx"
+    }
+  }
+  ```
+
+**What differs:**  
+The policy statement must not be world‑accessible. The difference is either the `Principal` element (changing from `"*"` to specific ARNs) or the addition of a condition that scopes `"*"` to a specific organisation/account. Without this restriction, the repository is exposed to the public internet.
+
+#### 2. Policy `fail_conditional` (lines 131‑165)
+**Current behaviour (failing):**  
+The policy has `"Principal": "*"` with a condition:
+```json
+"Condition": {
+  "ForAllValues:StringEquals": {
+    "aws:username": "pull-user-1"
+  }
+}
+```
+The condition key `aws:username` is **not a globally unique identifier**. Any AWS account can create an IAM user named `pull-user-1`, so the policy is effectively still public.
+
+**Secure behaviour (passing):**  
+The condition must use a key that uniquely identifies an AWS account or organisation, such as:
+- `aws:PrincipalOrgID`
+- `aws:PrincipalAccount`
+- `aws:PrincipalArn`
+
+For example:
+```json
+"Condition": {
+  "StringEquals": {
+    "aws:PrincipalOrgID": "o-12345678"
+  }
+}
+```
+
+**What differs:**  
+The condition key changes from `aws:username` (a local, non‑unique name) to a globally unique identifier like `aws:PrincipalOrgID`. The rest of the policy (Principal `"*"`, actions) can remain identical. The security difference is critical: `aws:username` can be satisfied by any account that creates a user with that name, whereas `aws:PrincipalOrgID` can only be satisfied by principals belonging to a specific AWS organisation, truly restricting access.
+
+---
+
+### Summary for the engineer
+
+- **For every ECR repository** (`public`, `private`, `empty`, `conditional_ok`, `conditional_bad`), add three properties:
+  1. `image_scanning_configuration { scan_on_push = true }` – enables push‑time vulnerability scanning.
+  2. `encryption_configuration { encryption_type = "KMS" }` – enforces KMS‑based encryption instead of the default AES‑256.
+  3. `image_tag_mutability = "IMMUTABLE"` – prevents tag overwrites.
+
+- **For the two failing repository policies:**
+  - **`aws_ecr_repository_policy.fail`**: Remove the world‑wide access. Either replace `"Principal": "*"` with specific IAM principal ARNs, or keep `"*"` but add a condition that restricts to your organisation ID (`aws:PrincipalOrgID`) or account ID (`aws:PrincipalAccount`).
+  - **`aws_ecr_repository_policy.fail_conditional`**: Change the condition key from `aws:username` to a globally unique identifier like `aws:PrincipalOrgID`. The `aws:username` condition does not actually restrict access because any account can create a user with that name.
+
+These changes will resolve all flagged misconfigurations and bring the ECR repositories and their policies into a secure state.

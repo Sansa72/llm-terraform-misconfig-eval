@@ -1,0 +1,13 @@
+Findings:
+
+1. **CKV_AWS_196 on `aws_elasticache_security_group.exists` (lines 1-4):**  
+   This rule prohibits the existence of `aws_elasticache_security_group` resources. The file contains such a resource. To remediate, remove the entire resource block (lines 1-4).
+
+2. **CKV_AWS_23 on `aws_elasticache_security_group.exists` (lines 1-4):**  
+   This rule requires every security group rule to have a description. The resource block does not contain a description argument, and the `aws_elasticache_security_group` resource type does not expose a description field for its rules. It is uncertain whether this check can be satisfied on this resource type; the finding may be a false positive. If the resource is removed (per CKV_AWS_196), this check will no longer apply.
+
+3. **CKV_AWS_23 on `aws_security_group.bar` (lines 6-8):**  
+   This rule requires every security group rule to have a description. The `aws_security_group.bar` resource defines no `ingress` or `egress` rules (only a `name` is set). With no rules present, there are no rules to describe. The finding may be a false positive. No change is required unless rules are added; if rules are added, each must include a description.
+
+4. **CKV2_AWS_5 on `aws_security_group.bar` (lines 6-8):**  
+   This rule requires that security groups are attached to another resource. In the file, `aws_security_group.bar` is referenced by `aws_elasticache_security_group.exists` via `security_group_names` (line 3). This constitutes an attachment. The scanner may not recognise this attachment, so the finding may be a false positive. If the `aws_elasticache_security_group` resource is removed (per CKV_AWS_196), the security group will become unattached and would then need to be attached to another resource or removed to satisfy this check.

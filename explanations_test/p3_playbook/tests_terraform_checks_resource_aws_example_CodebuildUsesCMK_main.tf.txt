@@ -1,0 +1,35 @@
+**Remediation Briefing: CodeBuild Security Misconfigurations**
+
+Below are the required fixes for each scanner finding, in the order they appear. All changes are independent across the three resources; there are no interactions that require coordinated updates.
+
+---
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.enabled` (lines 3–20)
+**What is wrong:** The project’s environment has no logging configuration.  
+**Why it matters:** Without logging, you lose visibility into build output, errors, and security-relevant events. This hinders incident response, troubleshooting, and compliance with standards that mandate audit trails.  
+**Change needed:** Inside the existing `environment` block, add a `logs_config` block. At a minimum, include a `cloudwatch_logs` sub-block with a `group_name` and `stream_name` (the log group should already exist or be created separately). This will direct build logs to CloudWatch Logs and satisfy the check.
+
+---
+
+### 2. CKV_AWS_314 on `aws_codebuild_project.default` (lines 24–39)
+**What is wrong:** The project’s environment has no logging configuration.  
+**Why it matters:** Same as above – missing logs mean no record of build activity, weakening security monitoring and operational diagnostics.  
+**Change needed:** Add a `logs_config` block inside the `environment` block, specifying a CloudWatch Logs destination (or S3 logs) with the required group/stream names. This is identical in approach to the fix for the `enabled` resource.
+
+---
+
+### 3. CKV_AWS_147 on `aws_codebuild_project.default` (lines 24–39)
+**What is wrong:** The project does not specify a customer-managed KMS key (CMK) for encryption; it relies on the default AWS-managed key.  
+**Why it matters:** AWS-managed keys do not allow you to control key rotation, access policies, or usage auditing. Using a CMK gives you full control over encryption, enabling least-privilege access and meeting stricter compliance requirements.  
+**Change needed:** Add the `encryption_key` argument to the resource, setting it to the ARN of a KMS customer-managed key (e.g., `aws_kms_key.example.arn`). Ensure the CodeBuild service role has the necessary `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions on that key. The `enabled` resource already demonstrates this pattern.
+
+---
+
+### 4. CKV_AWS_314 on `aws_codebuild_project.no_artifacts` (lines 43–58)
+**What is wrong:** The project’s environment has no logging configuration.  
+**Why it matters:** Even when artifacts are disabled, build logs are essential for auditing the build process and detecting malicious activity.  
+**Change needed:** Add a `logs_config` block inside the `environment` block, as described for the other two resources. The absence of artifacts does not negate the need for build logging.
+
+---
+
+All three resources should end up with a `logs_config` block; the `default` resource additionally requires an `encryption_key`. No fix interferes with another, so they can be applied in any order.

@@ -1,0 +1,36 @@
+The scanner flagged the following issues across the three EKS cluster resources defined in the file.
+
+**Resource `aws_eks_cluster.disabled` (lines 3–12)**
+- **CKV_AWS_58 (Secrets Encryption):** The resource does not contain an `encryption_config` block. Without it, Kubernetes secrets are not encrypted at rest with a KMS key.
+- **CKV_AWS_37 (Control plane logging):** No `enabled_cluster_log_types` argument is present inside a logging block. By default, no control plane log types are enabled, so the cluster does not send logs to CloudWatch.
+
+**Resource `aws_eks_cluster.default` (lines 16–23)**
+- **CKV_AWS_58 (Secrets Encryption):** Same as above – no `encryption_config` block.
+- **CKV_AWS_37 (Control plane logging):** Same as above – no logging configuration.
+- **CKV_AWS_39 (Public endpoint disabled):** The `vpc_config` block does not set `endpoint_public_access`. The default value is `true`, so the public endpoint is enabled.
+- **CKV_AWS_38 (Public endpoint not accessible to 0.0.0.0/0):** Because the public endpoint is enabled and `public_access_cidrs` is not specified, it defaults to `["0.0.0.0/0"]`, making the endpoint accessible from any IP address.
+
+**Resource `aws_eks_cluster.enabled` (lines 25–34)**
+- **CKV_AWS_58 (Secrets Encryption):** No `encryption_config` block.
+- **CKV_AWS_37 (Control plane logging):** No logging configuration.
+- **CKV_AWS_39 (Public endpoint disabled):** `endpoint_public_access` is explicitly set to `True`, leaving the public endpoint enabled.
+- **CKV_AWS_38 (Public endpoint not accessible to 0.0.0.0/0):** With the public endpoint enabled and no `public_access_cidrs` override, the default `["0.0.0.0/0"]` applies.
+
+**Remediation**
+
+For **`aws_eks_cluster.disabled`** (lines 3–12):
+- Add an `encryption_config` block containing a `provider` with a KMS key ARN.
+- Add a logging block with `enabled_cluster_log_types` set to the required log types (e.g., `["api", "audit", "authenticator", "controllerManager", "scheduler"]`).
+- No changes are needed for the public endpoint checks; `endpoint_public_access = False` already satisfies CKV_AWS_39 and CKV_AWS_38.
+
+For **`aws_eks_cluster.default`** (lines 16–23):
+- Add an `encryption_config` block as above.
+- Add a logging block as above.
+- In the existing `vpc_config` block, set `endpoint_public_access = false` to disable the public endpoint. This resolves both CKV_AWS_39 and CKV_AWS_38.
+
+For **`aws_eks_cluster.enabled`** (lines 25–34):
+- Add an `encryption_config` block as above.
+- Add a logging block as above.
+- In the `vpc_config` block, change `endpoint_public_access` from `True` to `False`. This disables the public endpoint and resolves CKV_AWS_39 and CKV_AWS_38.
+
+**Note:** The IAM role referenced by `role_arn` in each resource must have permissions to write logs to CloudWatch for the logging configuration to take effect.

@@ -1,0 +1,5 @@
+**Check: CKV_AWS_263**  
+**Resource: `aws_appflow_flow.fail`**  
+**What’s wrong:** The flow does not specify a customer-managed KMS key for encryption.  
+**Why it matters:** Without a customer-managed key (CMK), the flow uses the default AWS-managed key. This limits your control over key rotation, access policies, and audit logging, and may violate compliance requirements that mandate use of organisation-controlled encryption keys.  
+**Remediation:** Add the `kms_arn` argument to the `aws_appflow_flow` resource, referencing the ARN of a KMS key that you manage. The `pass` resource in the same file already demonstrates the correct pattern: `kms_arn = aws_kms_key.example.arn`. Ensure the key exists (e.g., via a `aws_kms_key` resource) and that the AppFlow service has the necessary permissions to use it. No other changes are required, and there are no interactions with other fixes because only this resource is failing.

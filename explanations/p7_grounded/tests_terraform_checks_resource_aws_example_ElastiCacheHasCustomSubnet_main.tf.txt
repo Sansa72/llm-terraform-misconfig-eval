@@ -1,0 +1,15 @@
+The scanner flagged two misconfigurations in the `aws_elasticache_cluster` resource named `fail` (lines 13–20). Here is what each check found, based solely on the provided configuration.
+
+**1. CKV_AWS_134: Automatic backup is not enabled**
+
+- **What the check requires:** For Redis clusters, automatic backups should be turned on.
+- **Evidence in the file:** On line 19, the `snapshot_retention_limit` is set to `0`. A value of `0` disables automatic backups.  
+  Compare this to the `pass` resource (line 12), where the limit is `5` (backups enabled).
+
+**2. CKV_AWS_323: Default subnet group is used**
+
+- **What the check requires:** The cluster should not use the default subnet group.
+- **Evidence in the file:** The `fail` resource (lines 13–20) does not include a `subnet_group_name` argument. When this argument is omitted, AWS automatically assigns the default subnet group for the VPC.  
+  The `pass` resource explicitly sets `subnet_group_name = "mysubnet"` (line 11), avoiding the default.
+
+Both findings are raised against the same resource block (`aws_elasticache_cluster.fail`, lines 13–20). To resolve them, you would need to set a non‑zero `snapshot_retention_limit` and provide a custom `subnet_group_name`.

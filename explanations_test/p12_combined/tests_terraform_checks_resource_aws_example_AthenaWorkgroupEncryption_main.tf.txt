@@ -1,0 +1,16 @@
+**Remediation Briefing: Athena Workgroup Encryption**
+
+Below is the only failing check from the scan, addressed in order.
+
+---
+
+### Check CKV_AWS_159 – Ensure that Athena Workgroup is encrypted
+
+- **Resource:** `aws_athena_workgroup.fail` (lines 18–29)
+- **Triggering lines:** The `result_configuration` block at lines 23–25, which contains only `output_location` and no `encryption_configuration` block.
+- **What is wrong:** The workgroup’s query result configuration does not specify encryption. Without an `encryption_configuration` block, results written to S3 are not encrypted at rest using a defined encryption option.  
+- **Why it matters:** The check requires that every Athena workgroup explicitly configures encryption for query results. The absence of this block means the workgroup is not compliant with the encryption requirement.
+
+**Remediation guidance:**
+
+Inside the `result_configuration` block of `aws_athena_workgroup.fail`, add an `encryption_configuration` block. At minimum, set `encryption_option` to `"SSE_S3"` (for S3-managed keys) or `"SSE_KMS"` (for KMS-managed keys). If you choose `SSE_KMS`, also provide the `kms_key_arn` attribute with a valid KMS key ARN. The `aws_athena_workgroup.pass` resource (lines 1–17) already demonstrates the correct structure. No other changes are needed.

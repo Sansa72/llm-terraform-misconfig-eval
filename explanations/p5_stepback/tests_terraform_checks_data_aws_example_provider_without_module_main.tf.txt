@@ -1,0 +1,57 @@
+The scanner flagged several missing security controls on both S3 buckets defined in this file. Each finding corresponds to a specific security principle. Below I explain what each check requires, why the current configuration fails, and what you need to add to bring the buckets into compliance.
+
+---
+
+### CKV2_AWS_6 – Public Access Block
+**Principle:** S3 buckets should explicitly block public access at the account or bucket level to prevent accidental exposure of data to the internet.  
+**Violation:** Neither `aws_s3_bucket.bucket` (lines 10‑13) nor `aws_s3_bucket.bucket_2` (lines 15‑17) includes a `aws_s3_bucket_public_access_block` resource or the deprecated `block_public_*` arguments. Without this, the bucket could be made public through a separate bucket policy or ACL.  
+**Fix:** Attach an `aws_s3_bucket_public_access_block` resource to each bucket with all four block settings (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`) set to `true`.
+
+---
+
+### CKV_AWS_18 – Access Logging
+**Principle:** Server access logging provides detailed records of requests made to a bucket, essential for security auditing and incident investigation.  
+**Violation:** Neither bucket has a logging configuration. The resources only declare a bucket name; no `aws_s3_bucket_logging` resource is present.  
+**Fix:** Create an `aws_s3_bucket_logging` resource for each bucket, specifying a target bucket (and optional prefix) where logs will be delivered. The target bucket must be in the same region and have appropriate permissions.
+
+---
+
+### CKV_AWS_21 – Versioning
+**Principle:** Versioning preserves every version of an object, protecting against accidental deletion or overwrites and enabling recovery.  
+**Violation:** Both buckets are created without any versioning configuration. By default, versioning is disabled.  
+**Fix:** Add an `aws_s3_bucket_versioning` resource for each bucket with `versioning_configuration { status = "Enabled" }`.
+
+---
+
+### CKV_AWS_145 – Default Encryption with KMS
+**Principle:** Data at rest should be encrypted using customer-managed keys (SSE-KMS) to maintain control over key rotation, access policies, and auditing.  
+**Violation:** Neither bucket defines a `server_side_encryption_configuration` block. The default S3 encryption (AES‑256) does not satisfy the requirement for KMS-based encryption.  
+**Fix:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource for each bucket, setting `apply_server_side_encryption_by_default.sse_algorithm` to `aws:kms` and optionally specifying a KMS key ARN.
+
+---
+
+### CKV2_AWS_61 – Lifecycle Configuration
+**Principle:** Lifecycle rules help manage data retention, transition objects to cheaper storage tiers, and expire outdated data, reducing costs and limiting exposure of stale data.  
+**Violation:** No lifecycle configuration is defined for either bucket.  
+**Fix:** Attach an `aws_s3_bucket_lifecycle_configuration` resource to each bucket with appropriate rules (e.g., transition to STANDARD_IA after 30 days, expire after a defined period) based on your data retention requirements.
+
+---
+
+### CKV2_AWS_62 – Event Notifications
+**Principle:** S3 event notifications enable real‑time alerting on bucket activity (e.g., object creation, deletion), which is critical for security monitoring and automated response.  
+**Violation:** Neither bucket has any event notification configuration.  
+**Fix:** Add an `aws_s3_bucket_notification` resource to each bucket, defining at least one notification destination (e.g., SNS topic, SQS queue, Lambda function) for relevant events such as `s3:ObjectCreated:*` or `s3:ObjectRemoved:*`.
+
+---
+
+### CKV_AWS_144 – Cross‑Region Replication
+**Principle:** Cross‑region replication (CRR) ensures data durability and availability by automatically replicating objects to a bucket in a different AWS region, protecting against region‑wide failures.  
+**Violation:** No replication configuration is present for either bucket.  
+**Fix:** For each bucket, create an `aws_s3_bucket_replication_configuration` resource. This requires:
+- A destination bucket in a different region (e.g., for `bucket` in `usw1`, replicate to a bucket in `usw2`; for `bucket_2` in `usw2`, replicate to a bucket in `usw1`).
+- An IAM role with permissions to replicate objects.
+- Versioning must be enabled on both source and destination buckets (see CKV_AWS_21 above).
+
+---
+
+All of these controls are independent and can be added incrementally. The most critical from a security standpoint are the public access block and encryption; enable those first, then add logging, versioning, lifecycle, event notifications, and replication as your data governance requirements dictate.

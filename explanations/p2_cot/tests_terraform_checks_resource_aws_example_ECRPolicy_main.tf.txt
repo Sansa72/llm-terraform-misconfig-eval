@@ -1,0 +1,51 @@
+The scanner flagged two categories of issues across your ECR resources: missing repository-level security controls (scanning, encryption, immutability) and overly permissive repository policies that grant public access.
+
+**1. Repository-level controls (CKV_AWS_163, CKV_AWS_136, CKV_AWS_51)**  
+All five `aws_ecr_repository` resources (`public`, `private`, `empty`, `conditional_ok`, `conditional_bad`) are missing three important security settings:
+
+- **Image scanning on push** – Without `scan_on_push = true`, newly pushed images are not automatically checked for known vulnerabilities. This means you could unknowingly deploy containers with critical CVEs.
+- **KMS encryption** – By default, ECR encrypts images using AES‑256 with an AWS‑managed key. Enabling KMS (`encryption_type = "KMS"`) gives you control over the encryption key, allowing you to manage access, rotation, and auditing through AWS KMS. This is especially important for compliance and defense in depth.
+- **Immutable image tags** – With `image_tag_mutability = "MUTABLE"` (the default), the same tag can be overwritten with a different image. This breaks traceability and can allow a compromised image to replace a known‑good one without changing the tag. Setting it to `IMMUTABLE` prevents tag overwriting and enforces a unique tag per image.
+
+**Fix:** Add the following block to each `aws_ecr_repository` resource:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+
+encryption_configuration {
+  encryption_type = "KMS"
+  # Optionally specify a KMS key ARN: kms_key = "arn:aws:kms:..."
+}
+
+image_tag_mutability = "IMMUTABLE"
+```
+
+**2. Public repository policies (CKV_AWS_32)**  
+Two policies grant public access because they use `"Principal": "*"` without a condition that effectively restricts access to known AWS principals.
+
+- **`aws_ecr_repository_policy.fail`** – Allows *anyone* (including anonymous users) to perform a wide range of actions, including `PutImage`, `DeleteRepository`, and `SetRepositoryPolicy`. This exposes the repository to unauthorized image pushes, deletion, and policy changes.
+- **`aws_ecr_repository_policy.fail_conditional`** – Also uses `"Principal": "*"` and attempts to limit access with a condition on `aws:username`. This condition is not a secure way to restrict public access because `aws:username` is not available for anonymous requests and can be spoofed in certain scenarios. The scanner correctly treats this as effectively public.
+
+**Fix:** Replace the wildcard principal with either specific IAM principals or a condition that ties access to your AWS organization or account. For example:
+
+- **Restrict to specific IAM users/roles** (as done in `aws_ecr_repository_policy.pass`):
+  ```hcl
+  "Principal": {"AWS": [
+    "arn:aws:iam::123456789012:user/pull-user-1",
+    "arn:aws:iam::123456789012:user/pull-user-2"
+  ]}
+  ```
+- **Use an organization‑wide condition** (as in `pass_conditional`):
+  ```hcl
+  "Principal": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-12345678"
+    }
+  }
+  ```
+  This allows only principals from your AWS organization, effectively making the repository private to your org.
+
+Apply the same approach to both `fail` and `fail_conditional` policies. If the repository genuinely needs to be public (e.g., for open‑source distribution), consider using the dedicated `aws_ecrpublic_repository` resource in the `us-east-1` region, which is designed for public images, and ensure you understand the implications of public exposure.

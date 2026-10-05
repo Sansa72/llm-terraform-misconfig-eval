@@ -1,0 +1,66 @@
+### Analysis of failing checks
+
+The scanner flagged two distinct security issues across four log group resources. Below, each check is explained by contrasting the current configuration with a configuration that would satisfy the check, holding all other properties constant.
+
+---
+
+#### CKV_AWS_158 – Ensure that CloudWatch Log Group is encrypted by KMS
+
+**Resources affected:**  
+`aws_cloudwatch_log_group.pass_365`, `aws_cloudwatch_log_group.pass_0`, `aws_cloudwatch_log_group.fail`, `aws_cloudwatch_log_group.unknown`
+
+**What the current configuration does that makes the check fail:**  
+None of the log group definitions include the `kms_key_id` argument. When this argument is omitted, CloudWatch Logs encrypts log data at rest using **AWS-managed keys** (the default `aws/cloudwatch-logs` key). The scanner interprets this as a lack of customer-controlled encryption, because the key is owned and managed entirely by AWS, not by the account.
+
+**What a configuration that satisfies the check would do instead:**  
+A compliant configuration would explicitly set `kms_key_id` to the ARN of a **customer-managed KMS key** (CMK). For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass_365" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.logs.arn   # <-- added
+}
+```
+
+This forces the log group to use a key that the account owns, with a custom key policy, rotation schedule, and full audit trail via CloudTrail.
+
+**Precise difference and why it matters for security:**  
+The only difference is the **presence of the `kms_key_id` property**. Without it, encryption still occurs, but the key material and access policies are fully controlled by AWS. With a customer-managed KMS key, you can:
+- Restrict which IAM principals can decrypt the logs (enforcing separation of duties).
+- Enable automatic key rotation.
+- Audit all usage of the key.
+- Revoke access instantly if needed.
+
+This is critical for meeting compliance frameworks (e.g., PCI DSS, HIPAA) that require data to be encrypted with keys under the organisation’s control.
+
+---
+
+#### CKV_AWS_338 – Ensure CloudWatch log groups retain logs for at least 1 year
+
+**Resource affected:**  
+`aws_cloudwatch_log_group.fail` (lines 9–11)
+
+**What the current configuration does that makes the check fail:**  
+The `fail` log group sets `retention_in_days = 5`. This means log events are automatically deleted after 5 days, which is far below the 365-day minimum required by the check.
+
+**What a configuration that satisfies the check would do instead:**  
+A compliant configuration would set `retention_in_days` to a value **≥ 365** (or to `0` for indefinite retention, though `365` is the explicit threshold). For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365   # changed from 5
+}
+```
+
+**Precise difference and why it matters for security:**  
+The difference is the **numeric value of `retention_in_days`**. A retention period shorter than one year risks premature deletion of logs that may be needed for incident investigation, forensic analysis, or regulatory audits. Many standards (e.g., CIS AWS Foundations Benchmark, SOC 2) mandate at least 365 days of log retention to ensure a sufficient historical record.
+
+---
+
+### Summary for the engineer
+
+- **For all four log groups (`pass_365`, `pass_0`, `fail`, `unknown`):**  
+  Add the `kms_key_id` argument, pointing to a customer-managed KMS key ARN. This changes the encryption from the AWS-managed default to a key you control, satisfying **CKV_AWS_158**.
+
+- **For the `fail` log group only:**  
+  Change `retention_in_days` from `5` to at least `365` (or `0` if indefinite retention is acceptable). This ensures logs are kept for the required one-year minimum, satisfying **CKV_AWS_338**. The other log groups already meet this requirement (`pass_365` has 365, `pass_0` has indefinite retention).

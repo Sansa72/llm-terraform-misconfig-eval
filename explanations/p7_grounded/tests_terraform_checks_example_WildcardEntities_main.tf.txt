@@ -1,0 +1,64 @@
+The scanner flagged nine security checks against two resources in your Terraform file. Below I break down each finding, referencing the exact check ID, the resource, the lines that trigger it, and what is missing from the configuration.
+
+---
+
+### Findings on `aws_iam_account_password_policy.password-policy` (lines 28–35)
+
+**Resource definition (lines 28–35):**
+```terraform
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+}
+```
+
+1. **CKV_AWS_9 – Ensure IAM password policy expires passwords within 90 days or less**  
+   The resource does not set `max_password_age`. Without this argument, the account’s password policy does not enforce password expiration. The check requires a value of 90 or fewer days.
+
+2. **CKV_AWS_13 – Ensure IAM password policy prevents password reuse**  
+   The resource does not set `password_reuse_prevention`. Without it, users can reuse previous passwords. The check expects a value (e.g., 24) to remember a history of passwords and block reuse.
+
+**What to fix:** Add `max_password_age = 90` (or less) and `password_reuse_prevention = 24` (or another positive integer) to the `aws_iam_account_password_policy` block.
+
+---
+
+### Findings on `aws_s3_bucket.template_bucket` (lines 57–62)
+
+**Resource definition (lines 57–62):**
+```terraform
+resource "aws_s3_bucket" "template_bucket" {
+  region        = var.region
+  bucket        = local.bucket_name
+  acl           = var.acl
+  force_destroy = true
+}
+```
+
+All of the following checks are raised because the bucket resource lacks the corresponding configuration. The scanner expects these controls to be present, either as inline arguments/blocks (depending on provider version) or as separate associated resources. The current definition includes none of them.
+
+3. **CKV2_AWS_61 – Ensure that an S3 bucket has a lifecycle configuration**  
+   No `lifecycle_rule` block or separate `aws_s3_bucket_lifecycle_configuration` resource is defined.
+
+4. **CKV_AWS_18 – Ensure the S3 bucket has access logging enabled**  
+   No `logging` block or separate `aws_s3_bucket_logging` resource is defined.
+
+5. **CKV2_AWS_62 – Ensure S3 buckets should have event notifications enabled**  
+   No `notification` block or separate `aws_s3_bucket_notification` resource is defined.
+
+6. **CKV2_AWS_6 – Ensure that S3 bucket has a Public Access block**  
+   No `block_public_access` configuration (inline or via `aws_s3_bucket_public_access_block`) is present. The bucket’s public access settings are not explicitly restricted.
+
+7. **CKV_AWS_145 – Ensure that S3 buckets are encrypted with KMS by default**  
+   No `server_side_encryption_configuration` block or separate `aws_s3_bucket_server_side_encryption_configuration` resource is defined. Default encryption (especially with KMS) is not configured.
+
+8. **CKV_AWS_144 – Ensure that S3 bucket has cross-region replication enabled**  
+   No `replication_configuration` block or separate `aws_s3_bucket_replication_configuration` resource is defined.
+
+9. **CKV_AWS_21 – Ensure all data stored in the S3 bucket have versioning enabled**  
+   No `versioning` block or separate `aws_s3_bucket_versioning` resource is defined.
+
+**What to fix:** Add the missing configurations to the bucket. Depending on your AWS provider version, you may need to add separate resources (e.g., `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration`, `aws_s3_bucket_public_access_block`, `aws_s3_bucket_logging`, `aws_s3_bucket_lifecycle_configuration`, `aws_s3_bucket_replication_configuration`, `aws_s3_bucket_notification`) or use the corresponding inline blocks/arguments if your provider still supports them. The scanner will pass once these controls are explicitly defined.

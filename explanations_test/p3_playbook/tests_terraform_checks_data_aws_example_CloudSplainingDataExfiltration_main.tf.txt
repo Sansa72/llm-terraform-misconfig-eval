@@ -1,0 +1,45 @@
+**Check: CKV_AWS_111 on `aws_iam_policy_document.pass` (lines 3–17)**  
+**What is wrong:** The policy grants write actions (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) with a wildcard resource `"*"`.  
+**Why it matters:** Allowing unrestricted write access means any principal with this policy could create or modify resources anywhere in the account, leading to privilege escalation, resource manipulation, or cost abuse.  
+**Change needed:** Replace the `"*"` resource with specific ARNs for the intended Lambda functions and DynamoDB tables. If the exact resource names are not known at plan time, use constrained patterns (e.g., `arn:aws:lambda:region:account-id:function:myapp-*`) and combine them with condition keys such as `aws:RequestTag` or `lambda:FunctionArn` to limit the scope of the write operations.
+
+---
+
+**Check: CKV_AWS_356 on `aws_iam_policy_document.pass` (lines 3–17)**  
+**What is wrong:** The statement uses `"*"` as the resource for actions that are restrictable (the same `lambda:Create*` and `dynamodb:CreateTable` actions).  
+**Why it matters:** A wildcard resource for restrictable actions violates the principle of least privilege and can grant unintended access to any existing or future resource of that type.  
+**Change needed:** Replace the wildcard resource with specific, least-privilege ARNs or ARN patterns. This is the same fix required for CKV_AWS_111; scoping the resource will resolve both checks simultaneously.
+
+---
+
+**Check: CKV_AWS_108 on `aws_iam_policy_document.fail` (lines 21–41)**  
+**What is wrong:** The policy includes data access actions (`s3:GetObject`, `secretsmanager:GetSecretValue`, `ssm:GetParameter`, `ssm:GetParameters`, `ssm:GetParametersByPath`) with a wildcard resource, allowing potential data exfiltration.  
+**Why it matters:** Unrestricted read access to S3 objects, Secrets Manager secrets, and SSM parameters could let an attacker extract sensitive data from any bucket, secret, or parameter in the account.  
+**Change needed:** Restrict the resource field to the specific ARNs of the S3 buckets/objects, secrets, and SSM parameter paths that the policy should access. For example, use `arn:aws:s3:::my-bucket/*` for S3, `arn:aws:secretsmanager:region:account-id:secret:my-secret-*` for secrets, and `arn:aws:ssm:region:account-id:parameter/my-app/*` for SSM. If broad access is required, add strong conditions (e.g., `s3:prefix`, `secretsmanager:ResourceTag`, or `ssm:ResourceTag`) to limit exposure.
+
+---
+
+**Check: CKV_AWS_111 on `aws_iam_policy_document.fail` (lines 21–41)**  
+**What is wrong:** The policy allows write actions (`s3:PutObject`, `ec2:CreateTags`) with a wildcard resource.  
+**Why it matters:** Unconstrained write access could be used to overwrite or tag any S3 object or EC2 resource, potentially enabling data tampering, privilege escalation, or cost-incurring resource modifications.  
+**Change needed:** Scope the `s3:PutObject` action to a specific bucket and object prefix, and restrict `ec2:CreateTags` to specific EC2 resources (e.g., instances with a particular tag or within a certain VPC) using resource ARNs and/or condition keys. This will also help satisfy CKV_AWS_356 and CKV_AWS_109.
+
+---
+
+**Check: CKV_AWS_356 on `aws_iam_policy_document.fail` (lines 21–41)**  
+**What is wrong:** The statement uses `"*"` as the resource for multiple restrictable actions, including `iam:PassRole`, `ssm:Get*`, `secretsmanager:GetSecretValue`, `s3:GetObject`, `s3:PutObject`, and `ec2:CreateTags`.  
+**Why it matters:** A wildcard resource for these actions grants overly broad permissions, violating the principle of least privilege and increasing the blast radius of a compromised identity.  
+**Change needed:** Replace `"*"` with specific resource ARNs for each action or split the statement into multiple statements, each scoped to the exact resources required. This is the same underlying issue as the other checks on this policy; a single, properly scoped set of statements will resolve CKV_AWS_108, CKV_AWS_111, CKV_AWS_356, and CKV_AWS_109.
+
+---
+
+**Check: CKV_AWS_109 on `aws_iam_policy_document.fail` (lines 21–41)**  
+**What is wrong:** The policy includes `iam:PassRole` with a wildcard resource, allowing permissions management / resource exposure without constraints.  
+**Why it matters:** `iam:PassRole` is a powerful action that can be used to pass an overly permissive role to a service (e.g., EC2, Lambda), effectively granting that service all the role’s permissions. A wildcard resource means any role in the account can be passed, leading to privilege escalation.  
+**Change needed:** Restrict the `iam:PassRole` action to only the specific role ARNs that the principal is allowed to pass. Additionally, consider adding a condition that limits the service to which the role can be passed (e.g., `iam:PassedToService`). This change, together with the resource scoping for the other actions, will resolve all four checks on the `fail` policy.
+
+---
+
+**Interaction note:**  
+For the `pass` policy, the two checks (CKV_AWS_111 and CKV_AWS_356) are triggered by the same wildcard resource in a single statement. Replacing `"*"` with appropriately scoped resource ARNs and/or adding conditions will clear both.  
+For the `fail` policy, all four checks (CKV_AWS_108, CKV_AWS_111, CKV_AWS_356, CKV_AWS_109) stem from the same overly broad statement. Splitting the statement into multiple least-privilege statements—each with specific resources and, where necessary, conditions—will address every finding. No cross-policy interactions exist; the two documents can be fixed independently.

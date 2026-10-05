@@ -1,0 +1,66 @@
+### 1. What the misconfiguration is
+Checkov flagged multiple missing security controls across two resources:
+
+*   **IAM Password Policy (`aws_iam_account_password_policy.password-policy`):** The policy enforces password length and complexity, but it omits `max_password_age` (expiration) and `password_reuse_prevention`.
+*   **S3 Bucket (`aws_s3_bucket.template_bucket`):** The bucket is provisioned with only basic settings (`region`, `bucket`, `acl`, `force_destroy`). It lacks associated configurations for public access blocks, server-side KMS encryption, versioning, access logging, lifecycle rules, cross-region replication, and event notifications.
+
+### 2. Why it matters (concrete security risk / blast radius)
+*   **IAM Password Policy:** Without password expiration, a compromised IAM user password remains valid indefinitely if not manually changed. Without reuse prevention, users can rotate between the same small set of passwords, defeating the purpose of forced password changes if implemented later.
+*   **S3 Bucket:** 
+    *   **Exposure:** The bucket relies on `var.acl` and lacks a public access block. If `var.acl` is misconfigured to a public value (e.g., `public-read`), the bucket contents are exposed to the internet.
+    *   **Data Loss / Tampering:** `force_destroy = true` allows the bucket and all its objects to be deleted programmatically. Without versioning, accidental deletions or overwrites cannot be recovered.
+    *   **Unencrypted Data:** Without KMS encryption, data at rest is not cryptographically protected.
+    *   **Auditing/Visibility:** Without access logging, there is no trail of who accessed or modified the bucket objects. 
+
+### 3. How to fix it safely
+Add the missing attributes to the IAM policy and provision the necessary companion resources for the S3 bucket.
+
+**IAM Password Policy Fix:**
+```hcl
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+  max_password_age               = 90        # Fixes CKV_AWS_9
+  password_reuse_prevention      = 5         # Fixes CKV_AWS_13
+}
+```
+
+**S3 Bucket Fix:**
+Add the following resources to enforce the missing controls (ensure `var.acl` is set to `private` or removed entirely to rely on block public access):
+
+```hcl
+resource "aws_s3_bucket_public_access_block" "template_bucket_pab" {
+  bucket                  = aws_s3_bucket.template_bucket.id
+  block_public_acls      = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "template_bucket_versioning" {
+  bucket = aws_s3_bucket.template_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "template_bucket_sse" {
+  bucket = aws_s3_bucket.template_bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "aws:kms"
+    }
+  }
+}
+
+resource "aws_s3_bucket_logging" "template_bucket_logging" {
+  bucket        = aws_s3_bucket.template_bucket.id
+  target_bucket = "<YOUR_LOGGING_BUCKET_NAME>" # Requires a separate S3 bucket for logs
+  target_prefix = "log/template_bucket/"
+}
+```
+*Note: For lifecycle, replication, and event notifications (CKV2_AWS_61, CKV_AWS_144, CKV2_AWS_62), add `aws_s3_bucket_lifecycle_configuration`, `aws_s3_bucket_replication_configuration`, and `aws_s3_bucket_notification` resources if your specific data retention, disaster recovery, and automated processing requirements mandate them.*

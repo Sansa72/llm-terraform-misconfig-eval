@@ -1,0 +1,19 @@
+**Remediation Briefing: AWS Batch Job Definition – Privileged Container**
+
+Below is the single finding from the scan, with an explanation of the issue, its security importance, and the required change.
+
+---
+
+### Finding: CKV_AWS_210 on `aws_batch_job_definition.fail` (lines 8–46)
+
+**What is wrong**  
+The container properties for this job definition explicitly set `"privileged": true`.
+
+**Why it matters**  
+A privileged container runs with almost all of the host’s capabilities and bypasses many standard container isolation mechanisms. This greatly increases the risk that a compromised container could escape to the underlying host, access sensitive host resources, or interfere with other workloads. Unless the job has a strict, documented requirement for privileged mode (which is rare), it should run with the default unprivileged context.
+
+**What to change**  
+In the `container_properties` JSON block of the `aws_batch_job_definition.fail` resource, set the `"privileged"` field to `false`. Alternatively, you can remove the `"privileged"` key entirely, because the default value for Batch containers is `false`. The change will ensure the container runs without unnecessary host-level access, aligning with the principle of least privilege.
+
+**Note on interactions**  
+No other resources in the supplied file are affected by this finding. The definitions `aws_batch_job_definition.pass`, `aws_batch_job_definition.pass2`, and `aws_batch_job_definition.pass3` already have `"privileged": false` or omit the key, and are therefore compliant. The remaining definitions (`unknown`, `unknown2`, `unknown3`) are not flagged and do not require changes for this check.

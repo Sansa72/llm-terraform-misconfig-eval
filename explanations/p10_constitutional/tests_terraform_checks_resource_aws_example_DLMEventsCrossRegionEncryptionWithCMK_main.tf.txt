@@ -1,0 +1,14 @@
+The scanner flagged three violations across two resources, all related to encryption of DLM cross-region copy events.
+
+**Resource `aws_dlm_lifecycle_policy.fail` (lines 2–37)**
+- **CKV_AWS_253**: The `cross_region_copy` block (lines 23–25) contains an empty `encryption_configuration {}` (line 24). Because the `encryption` argument defaults to `false` when omitted, cross-region events are not encrypted. This directly violates the requirement to encrypt DLM cross-region events.
+- **CKV_AWS_254**: The same empty `encryption_configuration` block provides no customer-managed key (`cmk_arn`). Even if encryption were enabled, the absence of a CMK means the default AWS-managed key would be used, which fails the requirement to use a customer-managed key.
+
+**Resource `aws_dlm_lifecycle_policy.fail2` (lines 76–109)**
+- **CKV_AWS_254**: The `cross_region_copy` block (lines 88–97) includes `encryption_configuration` with `encryption = true` (line 90), satisfying the basic encryption check (CKV_AWS_253 is not triggered). However, no `cmk_arn` is specified. This means the snapshot is encrypted with the default AWS-managed key instead of a customer-managed key, violating CKV_AWS_254.
+
+**Remediation**
+- In `fail`, replace the empty `encryption_configuration {}` (line 24) with a block that sets both `encryption = true` and `cmk_arn = <valid KMS key ARN>`. The `pass` resource (lines 56–59) shows the correct pattern.
+- In `fail2`, add `cmk_arn = <valid KMS key ARN>` inside the existing `encryption_configuration` block (lines 89–91) so that a customer-managed key is used.
+
+No other resources in the file are affected by these findings.

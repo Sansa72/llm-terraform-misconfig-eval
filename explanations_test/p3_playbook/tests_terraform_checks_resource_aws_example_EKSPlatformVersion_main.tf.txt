@@ -1,0 +1,99 @@
+**CKV_AWS_39 on aws_eks_cluster.pass (lines 1-15): Ensure Amazon EKS public endpoint disabled**  
+*What is wrong:* The cluster does not disable the public endpoint; it defaults to `endpoint_public_access = true`.  
+*Why it matters:* A public endpoint exposes the Kubernetes API server to the internet, increasing the attack surface for unauthorised access, brute‑force attempts, and denial‑of‑service.  
+*Change needed:* In the `vpc_config` block, set `endpoint_public_access = false`. To retain private access from within the VPC, also set `endpoint_private_access = true`. This completely removes the public endpoint.
+
+**CKV_AWS_58 on aws_eks_cluster.pass (lines 1-15): Ensure EKS Cluster has Secrets Encryption Enabled**  
+*What is wrong:* No `encryption_config` block is present, so Kubernetes secrets are stored unencrypted in etcd.  
+*Why it matters:* Without envelope encryption using a KMS key, secrets are not protected at rest. If etcd backups or snapshots are exposed, all secrets are readable.  
+*Change needed:* Add an `encryption_config` block with `resources = ["secrets"]` and a `provider` block that references a valid KMS key ARN. The cluster’s IAM role must have `kms:Encrypt` and `kms:Decrypt` permissions on that key.
+
+**CKV_AWS_38 on aws_eks_cluster.pass (lines 1-15): Ensure Amazon EKS public endpoint not accessible to 0.0.0.0/0**  
+*What is wrong:* The public endpoint, if enabled, is open to the entire internet (`public_access_cidrs` defaults to `["0.0.0.0/0"]`).  
+*Why it matters:* Unrestricted access allows anyone on the internet to reach the API server, increasing the risk of exploitation and unauthorised control.  
+*Change needed:* If you keep the public endpoint enabled, add `public_access_cidrs` with a restricted list (e.g., your corporate IP ranges). If you disable the public endpoint entirely (as required by CKV_AWS_39), the endpoint is not reachable, which inherently satisfies this check. However, the scanner may still expect an explicit non‑`0.0.0.0/0` value; in that case, set `public_access_cidrs = ["10.0.0.0/8"]` (or another internal range) alongside `endpoint_public_access = false`.  
+*Interaction:* Disabling the public endpoint for CKV_AWS_39 also addresses CKV_AWS_38, but you may need to set `public_access_cidrs` explicitly to pass the scanner.
+
+**CKV_AWS_37 on aws_eks_cluster.pass (lines 1-15): Ensure Amazon EKS control plane logging enabled for all log types**  
+*What is wrong:* No `enabled_cluster_log_types` are specified, so control plane logs are not sent to CloudWatch.  
+*Why it matters:* Logs from the API server, audit, authenticator, controller manager, and scheduler are critical for security monitoring, incident response, and compliance auditing.  
+*Change needed:* Add the `enabled_cluster_log_types` argument with all five log types: `["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+**CKV_AWS_39 on aws_eks_cluster.pass2 (lines 17-32): Ensure Amazon EKS public endpoint disabled**  
+*What is wrong:* Same as `pass` – the public endpoint is not disabled.  
+*Why it matters:* Same risk as above.  
+*Change needed:* In the `vpc_config` block, set `endpoint_public_access = false` and `endpoint_private_access = true`.
+
+**CKV_AWS_58 on aws_eks_cluster.pass2 (lines 17-32): Ensure EKS Cluster has Secrets Encryption Enabled**  
+*What is wrong:* No `encryption_config` block is present.  
+*Why it matters:* Secrets are stored unencrypted.  
+*Change needed:* Add an `encryption_config` block with `resources = ["secrets"]` and a KMS key ARN, ensuring the IAM role has the necessary permissions.
+
+**CKV_AWS_339 on aws_eks_cluster.pass2 (lines 17-32): Ensure EKS clusters run on a supported Kubernetes version**  
+*What is wrong:* The `version` is set to `"1.35"`, which is not a valid or supported EKS version.  
+*Why it matters:* Running an unsupported version means no security patches, no bug fixes, and potential incompatibility with EKS features. It may also violate compliance requirements.  
+*Change needed:* Change the `version` to a currently supported Kubernetes version (e.g., `"1.30"` or `"1.31"`). Consult the AWS EKS documentation for the latest supported versions and plan the upgrade accordingly.
+
+**CKV_AWS_38 on aws_eks_cluster.pass2 (lines 17-32): Ensure Amazon EKS public endpoint not accessible to 0.0.0.0/0**  
+*What is wrong:* The public endpoint, if enabled, is open to `0.0.0.0/0`.  
+*Why it matters:* Same unrestricted access risk.  
+*Change needed:* If you disable the public endpoint (CKV_AWS_39), the endpoint is not accessible; otherwise, restrict `public_access_cidrs` to a specific set. To satisfy the scanner explicitly, set `public_access_cidrs` to a non‑`0.0.0.0/0` value (e.g., `["10.0.0.0/8"]`) even when `endpoint_public_access = false`.  
+*Interaction:* Disabling the public endpoint for CKV_AWS_39 mitigates this risk, but the scanner may still require an explicit `public_access_cidrs` setting.
+
+**CKV_AWS_37 on aws_eks_cluster.pass2 (lines 17-32): Ensure Amazon EKS control plane logging enabled for all log types**  
+*What is wrong:* No `enabled_cluster_log_types` are defined.  
+*Why it matters:* Lack of control plane logs hinders security monitoring and auditing.  
+*Change needed:* Add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+**CKV_AWS_39 on aws_eks_cluster.fail (lines 34-50): Ensure Amazon EKS public endpoint disabled**  
+*What is wrong:* The public endpoint is not disabled.  
+*Why it matters:* Same public exposure risk.  
+*Change needed:* Set `endpoint_public_access = false` and `endpoint_private_access = true` in `vpc_config`.
+
+**CKV_AWS_58 on aws_eks_cluster.fail (lines 34-50): Ensure EKS Cluster has Secrets Encryption Enabled**  
+*What is wrong:* No `encryption_config` block.  
+*Why it matters:* Secrets are unencrypted at rest.  
+*Change needed:* Add an `encryption_config` block with `resources = ["secrets"]` and a KMS key ARN, with appropriate IAM permissions.
+
+**CKV_AWS_339 on aws_eks_cluster.fail (lines 34-50): Ensure EKS clusters run on a supported Kubernetes version**  
+*What is wrong:* The `version` is `"1.21"`, which is end‑of‑life and no longer supported by AWS.  
+*Why it matters:* Unsupported versions do not receive security updates, leaving the cluster vulnerable to known exploits and out of compliance.  
+*Change needed:* Update the `version` to a supported release (e.g., `"1.30"`). Plan the upgrade carefully, as skipping multiple versions may require intermediate steps.
+
+**CKV_AWS_38 on aws_eks_cluster.fail (lines 34-50): Ensure Amazon EKS public endpoint not accessible to 0.0.0.0/0**  
+*What is wrong:* The public endpoint, if enabled, is open to the world.  
+*Why it matters:* Unrestricted access to the API server.  
+*Change needed:* If you disable the public endpoint (CKV_AWS_39), the risk is removed. To pass the scanner explicitly, set `public_access_cidrs` to a restricted range (e.g., `["10.0.0.0/8"]`) even when `endpoint_public_access = false`.  
+*Interaction:* Disabling the public endpoint for CKV_AWS_39 addresses this check, but an explicit `public_access_cidrs` may still be required.
+
+**CKV_AWS_37 on aws_eks_cluster.fail (lines 34-50): Ensure Amazon EKS control plane logging enabled for all log types**  
+*What is wrong:* No `enabled_cluster_log_types` are set.  
+*Why it matters:* Missing control plane logs reduce visibility.  
+*Change needed:* Add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+**CKV_AWS_39 on aws_eks_cluster.fail2 (lines 52-68): Ensure Amazon EKS public endpoint disabled**  
+*What is wrong:* The public endpoint is not disabled.  
+*Why it matters:* Same public exposure risk.  
+*Change needed:* Set `endpoint_public_access = false` and `endpoint_private_access = true` in `vpc_config`.
+
+**CKV_AWS_58 on aws_eks_cluster.fail2 (lines 52-68): Ensure EKS Cluster has Secrets Encryption Enabled**  
+*What is wrong:* No `encryption_config` block.  
+*Why it matters:* Secrets are unencrypted.  
+*Change needed:* Add an `encryption_config` block with `resources = ["secrets"]` and a KMS key ARN, with the required IAM permissions.
+
+**CKV_AWS_38 on aws_eks_cluster.fail2 (lines 52-68): Ensure Amazon EKS public endpoint not accessible to 0.0.0.0/0**  
+*What is wrong:* The public endpoint, if enabled, is open to `0.0.0.0/0`.  
+*Why it matters:* Unrestricted API server access.  
+*Change needed:* If you disable the public endpoint (CKV_AWS_39), the endpoint is not reachable. To satisfy the scanner, set `public_access_cidrs` to a restricted range (e.g., `["10.0.0.0/8"]`) even when `endpoint_public_access = false`.  
+*Interaction:* Disabling the public endpoint for CKV_AWS_39 mitigates this, but an explicit `public_access_cidrs` may still be needed.
+
+**CKV_AWS_37 on aws_eks_cluster.fail2 (lines 52-68): Ensure Amazon EKS control plane logging enabled for all log types**  
+*What is wrong:* No `enabled_cluster_log_types` are defined.  
+*Why it matters:* Lack of control plane logs impairs security monitoring.  
+*Change needed:* Add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]`.

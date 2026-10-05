@@ -1,0 +1,53 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported, with a concise explanation of the issue, its security importance, and the required change. No complete Terraform blocks are provided; the guidance is descriptive.
+
+---
+
+### 1. CKV_AWS_256 on `aws_dlm_lifecycle_policy.fail` (lines 60–116)
+**What is wrong:** The second `cross_region_copy_rule` block is missing the `cmk_arn` attribute, so it does not use a customer-managed key (CMK) for encryption.
+
+**Why it matters:** Without a CMK, the cross-region snapshot copy uses the default AWS-managed key. Customer-managed keys give you control over access, rotation, and auditing, which is essential for meeting compliance requirements and maintaining a strong security posture.
+
+**Change needed:** Add the `cmk_arn` attribute to the second `cross_region_copy_rule` block, referencing the same KMS key ARN used in the first rule (i.e., `aws_kms_key.dlm_cross_region_copy_cmk.arn`). This ensures both cross-region copy rules are encrypted with a customer-managed key.
+
+---
+
+### 2. CKV_AWS_256 on `aws_dlm_lifecycle_policy.fail2` (lines 118–163)
+**What is wrong:** The single `cross_region_copy_rule` in this policy has `encrypted = false` and no `cmk_arn`, so it is not encrypted at all.
+
+**Why it matters:** Unencrypted cross-region snapshot copies expose data to interception and unauthorized access during transit and at rest. Encryption is a baseline requirement for protecting sensitive data.
+
+**Change needed:** Set `encrypted = true` and provide a `cmk_arn` pointing to a customer-managed key (e.g., `aws_kms_key.dlm_cross_region_copy_cmk.arn`). This will satisfy both the encryption requirement and the CMK requirement.
+
+---
+
+### 3. CKV_AWS_255 on `aws_dlm_lifecycle_policy.fail2` (lines 118–163)
+**What is wrong:** The cross-region copy rule has `encrypted = false`, meaning the snapshot copy is not encrypted.
+
+**Why it matters:** This is the same underlying issue as CKV_AWS_256 for this resource. Unencrypted cross-region copies violate data protection standards and increase the risk of data exposure.
+
+**Change needed:** Change `encrypted` to `true` in the `cross_region_copy_rule` block. (This fix is identical to the first part of the CKV_AWS_256 remediation for `fail2`; once `encrypted = true` and `cmk_arn` are set, both checks will pass.)
+
+---
+
+### 4. CKV_AWS_7 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 169)
+**What is wrong:** The KMS key does not have automatic key rotation enabled.
+
+**Why it matters:** Without rotation, the same key material is used indefinitely, increasing the window of exposure if the key is ever compromised. Enabling rotation limits the amount of data encrypted under a single key version and aligns with security best practices.
+
+**Change needed:** Set `enable_key_rotation = true` on the `aws_kms_key` resource. This tells AWS to automatically rotate the key annually.
+
+---
+
+### 5. CKV2_AWS_64 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 169)
+**What is wrong:** The KMS key resource has no key policy defined (the resource block is empty).
+
+**Why it matters:** A KMS key without a policy is unusable because no principal is granted permission to encrypt or decrypt with it. Moreover, a missing policy means the key’s access control is undefined, which is a critical security gap.
+
+**Change needed:** Add a `policy` attribute to the `aws_kms_key` resource containing a valid IAM policy document. At minimum, the policy must grant the DLM service (`dlm.amazonaws.com`) permission to use the key for encryption and decryption, and grant administrative permissions to the appropriate account/role. Use an `aws_iam_policy_document` data source or inline JSON to define the policy.
+
+---
+
+### Interaction Note
+The DLM policies `fail` and `fail2` both reference `aws_kms_key.dlm_cross_region_copy_cmk.arn`. Fixing the KMS key (rotation and policy) is a prerequisite for those references to be meaningful. Once the key is properly configured, the DLM policies that add `cmk_arn` will automatically benefit from the key’s rotation and access controls. However, the DLM policies must still be individually corrected to include `cmk_arn` (and `encrypted = true` where missing) to pass their own checks.

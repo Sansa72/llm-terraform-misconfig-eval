@@ -1,0 +1,39 @@
+**Remediation briefing: AppSync security misconfigurations**
+
+Below are the failing checks in the order reported, with the evidence from the provided Terraform file and the changes required to make each check pass.
+
+---
+
+### 1. CKV_AWS_194 – Ensure AppSync has Field-Level logs enabled
+**Resource:** `aws_appsync_graphql_api.default` (lines 15–18)  
+**What is wrong:** The resource does not define a `log_config` block, so no field-level logging is configured.  
+**Why it matters:** Without field-level logging, you lose granular visibility into GraphQL request/response fields, which hinders detection of malicious queries or data exfiltration attempts.  
+**Remediation:** Add a `log_config` block inside the `aws_appsync_graphql_api.default` resource. The block must include a valid `cloudwatch_logs_role_arn` (an IAM role that allows AppSync to write to CloudWatch Logs) and set `field_log_level` to the desired verbosity (e.g., `ERROR` or `ALL`). The existing `aws_appsync_graphql_api.enabled` resource (lines 3–11) already demonstrates the required structure.
+
+---
+
+### 2. CKV_AWS_193 – Ensure AppSync has Logging enabled
+**Resource:** `aws_appsync_graphql_api.default` (lines 15–18)  
+**What is wrong:** The resource has no `log_config` block, meaning no CloudWatch logging is enabled at all.  
+**Why it matters:** Disabled logging prevents you from monitoring API activity, troubleshooting issues, or meeting audit requirements.  
+**Remediation:** Add a `log_config` block to `aws_appsync_graphql_api.default` with a valid `cloudwatch_logs_role_arn`. The `field_log_level` attribute (required by the provider when `log_config` is present) will also satisfy CKV_AWS_194. The same block will resolve both CKV_AWS_193 and CKV_AWS_194 for this resource.
+
+---
+
+### 3. CKV2_AWS_33 – Ensure AppSync is protected by WAF (on `aws_appsync_graphql_api.enabled`)
+**Resource:** `aws_appsync_graphql_api.enabled` (lines 3–11)  
+**What is wrong:** The resource is not associated with an AWS WAF Web ACL.  
+**Why it matters:** Without a WAF, the AppSync endpoint is exposed to common web exploits and malicious traffic patterns that could lead to denial of service or data breaches.  
+**Remediation:** Create an `aws_wafv2_web_acl` resource (or use an existing one) and an `aws_wafv2_web_acl_association` that links the Web ACL to the AppSync API’s ARN (`aws_appsync_graphql_api.enabled.arn`). The association must be defined in the same Terraform configuration.
+
+---
+
+### 4. CKV2_AWS_33 – Ensure AppSync is protected by WAF (on `aws_appsync_graphql_api.default`)
+**Resource:** `aws_appsync_graphql_api.default` (lines 15–18)  
+**What is wrong:** This AppSync API also lacks a WAF association.  
+**Why it matters:** Same as above – the API is unprotected against web-based attacks.  
+**Remediation:** Associate the same (or a separate) WAF Web ACL with this API by creating an `aws_wafv2_web_acl_association` that references the ARN of `aws_appsync_graphql_api.default`. Note that this resource also needs the logging fixes described in items 1 and 2.
+
+---
+
+All changes should be applied together to bring both AppSync APIs into compliance.

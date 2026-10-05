@@ -1,0 +1,13 @@
+The scanner flagged the `aws_batch_job_definition.fail` resource because its container properties explicitly enable privileged mode (`"privileged": true`). This setting gives the container almost all the capabilities of the host machine, including access to host devices and the ability to manipulate kernel parameters, which dramatically increases the blast radius if the container is compromised.
+
+**What the current configuration does**  
+The `container_properties` JSON includes `"privileged": true`. This runs the container in privileged mode, effectively removing the isolation between the container and the underlying EC2 host. A process inside the container can, for example, load kernel modules, access host filesystems, or interfere with other containers.
+
+**What a configuration that satisfies the check would do**  
+A compliant configuration either sets `"privileged": false` or omits the `"privileged"` key entirely (the default is `false`). In both cases the container runs without elevated host privileges, maintaining the standard container isolation boundary. The rest of the job definition—command, image, memory, vCPUs, volumes, environment variables, mount points, ulimits—remains identical.
+
+**Precise difference**  
+The only change is the value of the `"privileged"` property inside the `container_properties` JSON string. Changing it from `true` to `false` (or removing the line) disables privileged mode. This single property controls whether the container is granted all Linux capabilities and access to host devices. Because privileged mode is rarely needed for batch workloads, disabling it directly reduces the potential impact of a container escape or malicious image.
+
+**What the engineer must do**  
+In the `container_properties` JSON for `aws_batch_job_definition.fail`, locate the line `"privileged": true,` and either change it to `"privileged": false,` or delete the line entirely. No other part of the configuration needs to be altered. This ensures the batch job runs with the least privilege necessary, aligning with the security requirement.

@@ -1,0 +1,114 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_73",
+      "resource": "aws_api_gateway_stage.pass",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"pass\" {\n  name                  = \"example\"\n  cache_cluster_enabled = true\n}"
+      ],
+      "risk": "X-Ray tracing is not enabled, making it difficult to trace and debug requests flowing through the API Gateway stage.",
+      "remediation": "Set xray_tracing_enabled = true in the aws_api_gateway_stage resource to enable X-Ray tracing.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_76",
+      "resource": "aws_api_gateway_stage.pass",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"pass\" {\n  name                  = \"example\"\n  cache_cluster_enabled = true\n}"
+      ],
+      "risk": "Access logging is not configured, so API request details are not captured, hindering monitoring and auditing.",
+      "remediation": "Add an access_log_settings block with a destination ARN and log format to the aws_api_gateway_stage resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_120",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "API Gateway caching is not enabled, which can lead to increased latency and higher load on the backend.",
+      "remediation": "Set cache_cluster_enabled = true and specify a cache_cluster_size (e.g., \"0.5\") in the aws_api_gateway_stage resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_73",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "X-Ray tracing is not enabled, making it harder to trace and debug requests flowing through the API Gateway stage.",
+      "remediation": "Set xray_tracing_enabled = true in the aws_api_gateway_stage resource to enable X-Ray tracing.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_76",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "Access logging is not configured, so API request details are not captured, hindering monitoring and auditing.",
+      "remediation": "Add an access_log_settings block with a destination ARN and log format to the aws_api_gateway_stage resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_51",
+      "resource": "aws_api_gateway_stage.pass",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"pass\" {\n  name                  = \"example\"\n  cache_cluster_enabled = true\n}"
+      ],
+      "risk": "Client certificate authentication is not enforced, allowing connections without mutual TLS and potentially exposing the API to unauthorized access.",
+      "remediation": "Set the client_certificate_id argument to the ID of an aws_api_gateway_client_certificate resource to require client certificates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_51",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "Client certificate authentication is not enforced, allowing connections without mutual TLS and potentially exposing the API to unauthorized access.",
+      "remediation": "Set the client_certificate_id argument to the ID of an aws_api_gateway_client_certificate resource to require client certificates.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_4",
+      "resource": "aws_api_gateway_stage.pass",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"pass\" {\n  name                  = \"example\"\n  cache_cluster_enabled = true\n}"
+      ],
+      "risk": "No logging level is defined, which may result in insufficient log detail for monitoring and troubleshooting the API stage.",
+      "remediation": "Set the logging_level argument to an appropriate value such as \"INFO\" or \"ERROR\" in the aws_api_gateway_stage resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_4",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "No logging level is defined, which may result in insufficient log detail for monitoring and troubleshooting the API stage.",
+      "remediation": "Set the logging_level argument to an appropriate value such as \"INFO\" or \"ERROR\" in the aws_api_gateway_stage resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_29",
+      "resource": "aws_api_gateway_stage.pass",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"pass\" {\n  name                  = \"example\"\n  cache_cluster_enabled = true\n}"
+      ],
+      "risk": "The API Gateway stage is not associated with a WAF Web ACL, leaving it vulnerable to common web attacks.",
+      "remediation": "Associate a WAF regional Web ACL by setting the web_acl_arn argument to the ARN of an aws_wafregional_web_acl resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_29",
+      "resource": "aws_api_gateway_stage.fail",
+      "evidence": [
+        "resource \"aws_api_gateway_stage\" \"fail\" {\n  name = \"example\"\n}"
+      ],
+      "risk": "The API Gateway stage is not associated with a WAF Web ACL, leaving it exposed to common web attacks.",
+      "remediation": "Associate a WAF regional Web ACL by setting the web_acl_arn argument to the ARN of an aws_wafregional_web_acl resource.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+Below is a breakdown of each flagged check, the security principle behind it, how the current Terraform configuration violates it, and the specific change required.
+
+---
+
+### CKV_AWS_73 – API Gateway X-Ray Tracing
+**Principle:**  
+Observability. Enabling AWS X-Ray tracing provides end-to-end visibility into requests as they travel through your API and downstream services. This is critical for debugging performance issues, understanding service dependencies, and detecting anomalous behaviour that could indicate a security incident.
+
+**Violation:**  
+Neither `aws_api_gateway_stage.pass` nor `aws_api_gateway_stage.fail` sets `xray_tracing_enabled = true`. The default is `false`, so tracing is disabled for both stages.
+
+**Fix:**  
+Add `xray_tracing_enabled = true` to both resources.
+
+---
+
+### CKV_AWS_76 – API Gateway Access Logging
+**Principle:**  
+Auditability and monitoring. Access logs record every request to your API, including the caller’s identity, source IP, response latency, and status code. These logs are essential for security investigations, compliance reporting, and detecting abuse patterns.
+
+**Violation:**  
+Neither stage defines an `access_log_settings` block. Without it, no access logs are generated, leaving you blind to who is calling your API and how.
+
+**Fix:**  
+Add an `access_log_settings` block to each stage, pointing to a CloudWatch Logs log group and specifying a log format. Example:
+```hcl
+access_log_settings {
+  destination_arn = aws_cloudwatch_log_group.api_gw.arn
+  format          = "$context.identity.sourceIp - - [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId"
+}
+```
+
+---
+
+### CKV_AWS_120 – API Gateway Caching Enabled
+**Principle:**  
+Performance and cost optimisation. Caching reduces the number of calls made to your backend, improving latency and protecting backend systems from being overwhelmed. While not a direct security control, it contributes to availability and resilience.
+
+**Violation:**  
+The `aws_api_gateway_stage.fail` resource does not set `cache_cluster_enabled = true`. The `pass` resource already has this enabled and is not flagged.
+
+**Fix:**  
+Add `cache_cluster_enabled = true` (and optionally `cache_cluster_size`) to the `fail` stage.
+
+---
+
+### CKV2_AWS_51 – Client Certificate Authentication
+**Principle:**  
+Mutual TLS (mTLS) ensures that only clients presenting a valid, trusted certificate can invoke your API. This adds a strong authentication layer beyond API keys or IAM, preventing unauthorised access even if the endpoint is exposed.
+
+**Violation:**  
+Neither stage specifies a `client_certificate_id`. Without it, the API does not require client certificates, allowing any caller that reaches the endpoint to attempt authentication.
+
+**Fix:**  
+Generate or import a client certificate in API Gateway, then reference its ID in each stage:
+```hcl
+client_certificate_id = aws_api_gateway_client_certificate.example.id
+```
+
+---
+
+### CKV2_AWS_4 – API Gateway Stage Logging Level
+**Principle:**  
+Appropriate logging detail. Setting a logging level (e.g., `ERROR`, `INFO`) ensures that sufficient information is captured for monitoring and troubleshooting without generating excessive noise or cost. Missing or overly verbose logging can hide security-relevant events.
+
+**Violation:**  
+Neither stage defines a `logging_level`. The default is `OFF`, meaning no execution logs are sent to CloudWatch, making it impossible to trace request/response data or debug issues.
+
+**Fix:**  
+Add `logging_level = "INFO"` (or `ERROR` depending on your needs) to both stages.
+
+---
+
+### CKV2_AWS_29 – WAF Protection for Public API Gateway
+**Principle:**  
+Defence in depth. A Web Application Firewall (WAF) inspects incoming HTTP requests and blocks common attack patterns (SQL injection, cross‑site scripting, etc.) before they reach your API. Publicly accessible endpoints must be protected by a WAF to reduce the attack surface.
+
+**Violation:**  
+Neither stage associates a WAF Web ACL via the `web_acl_arn` attribute. This leaves the API exposed to application‑layer attacks without any filtering.
+
+**Fix:**  
+Create or use an existing AWS WAF Web ACL and set `web_acl_arn` on each stage:
+```hcl
+web_acl_arn = aws_wafv2_web_acl.api_gw.arn
+```
+
+---
+
+### Summary of required changes per resource
+
+| Resource             | Missing Configuration                                                                 |
+|---------------------|--------------------------------------------------------------------------------------|
+| `aws_api_gateway_stage.pass` | `xray_tracing_enabled`, `access_log_settings`, `client_certificate_id`, `logging_level`, `web_acl_arn` |
+| `aws_api_gateway_stage.fail` | `cache_cluster_enabled`, `xray_tracing_enabled`, `access_log_settings`, `client_certificate_id`, `logging_level`, `web_acl_arn` |
+
+Apply the corresponding arguments to each stage resource to resolve all findings.

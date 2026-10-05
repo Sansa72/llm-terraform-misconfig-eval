@@ -1,0 +1,51 @@
+The scanner raised four findings against two resources in the provided Terraform file. Below is a breakdown of each finding, the exact evidence that triggers it, and what needs to change.
+
+---
+
+### 1. CKV_AWS_255 on `aws_dlm_lifecycle_policy.fail` (lines 49–105)
+**Check:** Ensure DLM cross region schedules are encrypted  
+**Trigger:** The `fail` policy contains a `cross_region_copy_rule` block where `encrypted` is explicitly set to `false`.  
+**Evidence:** Lines 83–90 define a second cross-region copy rule:
+```terraform
+cross_region_copy_rule {
+  target    = "us-west-2"
+  encrypted = false          # <-- unencrypted copy
+  cmk_arn   = aws_kms_key.dlm_cross_region_copy_cmk.arn
+  copy_tags = true
+  retain_rule {
+    interval      = 30
+    interval_unit = "DAYS"
+  }
+}
+```
+Because this rule disables encryption, the policy as a whole fails the requirement that all cross-region copy schedules be encrypted.
+
+---
+
+### 2. CKV_AWS_256 on `aws_dlm_lifecycle_policy.fail` (lines 49–105)
+**Check:** Ensure DLM cross region schedules are encrypted using a Customer Managed Key  
+**Trigger:** The same unencrypted `cross_region_copy_rule` (lines 83–90) violates the requirement that every cross-region copy must use a customer-managed key (CMK). Even though the first rule (lines 75–82) is encrypted with a CMK, the second rule has `encrypted = false`, so the policy as a whole does not meet the check.
+
+---
+
+### 3. CKV_AWS_7 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 111)
+**Check:** Ensure rotation for customer created CMKs is enabled  
+**Trigger:** The KMS key resource is defined with no arguments:
+```terraform
+resource "aws_kms_key" "dlm_cross_region_copy_cmk" {}   # line 111
+```
+By default, `enable_key_rotation` is `false`. The check requires that key rotation be explicitly enabled. The resource block does not set `enable_key_rotation = true`, so the finding is raised.
+
+---
+
+### 4. CKV2_AWS_64 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 111)
+**Check:** Ensure KMS key Policy is defined  
+**Trigger:** The same KMS key resource has no `policy` argument. The scanner expects an explicit key policy to be defined. The empty resource block relies on the AWS default key policy, which is not considered sufficient by this check.
+
+---
+
+### Summary of required fixes
+- **In `aws_dlm_lifecycle_policy.fail`:** Either remove the second `cross_region_copy_rule` block (lines 83–90) or set `encrypted = true` inside it. Both rules must be encrypted with a CMK to satisfy CKV_AWS_255 and CKV_AWS_256.
+- **In `aws_kms_key.dlm_cross_region_copy_cmk`:**  
+  - Add `enable_key_rotation = true` to satisfy CKV_AWS_7.  
+  - Add a `policy` block with an appropriate key policy to satisfy CKV2_AWS_64.

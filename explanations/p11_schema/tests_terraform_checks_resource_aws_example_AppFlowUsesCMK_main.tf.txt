@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_263",
+      "resource": "aws_appflow_flow.fail",
+      "evidence": [
+        "resource \"aws_appflow_flow\" \"fail\" {\n  name = \"example\"\n\n  source_flow_config {\n    connector_type = \"S3\"\n    source_connector_properties {\n      s3 {\n        bucket_name   = aws_s3_bucket_policy.example_source.bucket\n        bucket_prefix = \"example\"\n      }\n    }\n  }\n\n  destination_flow_config {\n    connector_type = \"S3\"\n    destination_connector_properties {\n      s3 {\n        bucket_name = aws_s3_bucket_policy.example_destination.bucket\n\n        s3_output_format_config {\n          prefix_config {\n            prefix_type = \"PATH\"\n          }\n        }\n      }\n    }\n  }\n\n  task {\n    source_fields     = [\"exampleField\"]\n    destination_field = \"exampleField\"\n    task_type         = \"Map\"\n\n    connector_operator {\n      s3 = \"NO_OP\"\n    }\n  }\n\n  trigger_config {\n    trigger_type = \"OnDemand\"\n  }\n}"
+      ],
+      "risk": "The AppFlow flow does not specify a customer-managed KMS key (kms_arn). Without it, the flow data is encrypted using an AWS-managed key, which may not meet organizational compliance requirements for key management and control.",
+      "remediation": "Add the kms_arn argument to the aws_appflow_flow resource, set to the ARN of a customer-managed KMS key, to ensure encryption uses a customer-managed key.",
+      "confidence": "high"
+    }
+  ]
+}

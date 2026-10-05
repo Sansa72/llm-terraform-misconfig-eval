@@ -1,0 +1,45 @@
+The scanner flagged two `aws_api_gateway_rest_api` resources for missing or incorrect `create_before_destroy` lifecycle settings. Here’s what’s wrong and how to fix each one.
+
+---
+
+### 1. `aws_api_gateway_rest_api.fail` (lines 1–7)
+
+**What’s wrong**  
+The `lifecycle` block is commented out, so the resource has no `create_before_destroy` setting at all. Terraform’s default behavior is to destroy the existing API Gateway before creating a replacement when a change forces recreation (e.g., changing the `name`). This causes downtime because the old API is deleted before the new one is ready.
+
+**Why it matters**  
+Without `create_before_destroy = true`, any in-place update that requires resource replacement will take the API offline, breaking clients that depend on it until the new API is provisioned.
+
+**How to fix**  
+Uncomment the `lifecycle` block and set `create_before_destroy = true`:
+
+```hcl
+lifecycle {
+  create_before_destroy = true
+}
+```
+
+---
+
+### 2. `aws_api_gateway_rest_api.fail2` (lines 9–15)
+
+**What’s wrong**  
+The `lifecycle` block is present but explicitly sets `create_before_destroy = false`. This forces the destroy-before-create behavior, guaranteeing downtime during replacement.
+
+**Why it matters**  
+Even though a lifecycle block exists, the `false` value actively disables the safe creation pattern. The result is the same as having no lifecycle block at all: the old API is destroyed first, causing an outage.
+
+**How to fix**  
+Change the value from `false` to `true`:
+
+```hcl
+lifecycle {
+  create_before_destroy = true
+}
+```
+
+---
+
+### Summary
+
+Both resources need `create_before_destroy = true` in their `lifecycle` blocks to ensure zero-downtime replacements. The third resource (`pass`) already has the correct configuration and can serve as a reference.

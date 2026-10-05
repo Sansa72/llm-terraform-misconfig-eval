@@ -1,0 +1,13 @@
+### 1. What the misconfiguration is
+- **Missing KMS Encryption (CKV_AWS_158):** All four CloudWatch log groups (`pass_365`, `pass_0`, `fail`, `unknown`) lack a `kms_key_id` attribute. They will default to standard AWS-managed service encryption rather than using a customer-managed KMS key.
+- **Insufficient Retention (CKV_AWS_338):** The `fail` log group sets `retention_in_days = 5`, which violates the requirement to retain logs for at least 1 year (365 days). 
+
+### 2. Why it matters (concrete security risk / blast radius)
+- **Encryption Risk:** Without a customer-managed KMS key, you lack granular cryptographic control over your log data. You cannot independently define key rotation policies, apply custom access controls to the key, or revoke access to the encrypted logs without losing the data itself. 
+- **Retention Risk:** Setting retention to 5 days means logs are permanently deleted almost immediately. This eliminates the ability to perform long-term security auditing, compliance checks, or forensic investigation for past events.
+
+### 3. How to fix it safely
+- **Add KMS Encryption:** Add a `kms_key_id` attribute to all four log groups, referencing an existing customer-managed KMS key ARN (e.g., `kms_key_id = aws_kms_key.logs.arn`). 
+- **Fix Retention:** Change the `retention_in_days` attribute in the `fail` resource from `5` to `365`.
+- **Address the Variable Resource:** For the `unknown` resource, explicitly add the `kms_key_id` attribute. Additionally, verify that the `var.retention` variable is defined with a default value of at least `365` (or `0`, which signifies "never expire" and passed the Checkov retention check for `pass_0`).
+- **IAM Prerequisite:** Ensure the IAM roles used by the services writing to these log groups are granted `kms:GenerateDataKey` and `kms:Decrypt` permissions via the referenced KMS key policy, otherwise log ingestion will fail.

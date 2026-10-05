@@ -1,0 +1,43 @@
+**Remediation briefing: AppSync API Cache encryption findings**
+
+Below are the four failing checks, addressed in the order they appear in the scanner output. Each entry identifies the check, the resource, the exact lines that trigger it, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_215 on `aws_appsync_api_cache.fail` (lines 10–17)
+**Triggering line:** line 12 – `transit_encryption_enabled = false`  
+**What is wrong:** Transit encryption is explicitly disabled.  
+**Why it matters:** The check requires that data moving between the AppSync API and the cache is encrypted in transit. Disabling it means cache traffic could be intercepted in clear text.  
+**Change needed:** In the `aws_appsync_api_cache "fail"` block, set `transit_encryption_enabled` to `true`.
+
+---
+
+### 2. CKV_AWS_214 on `aws_appsync_api_cache.fail` (lines 10–17)
+**Triggering line:** line 13 – `at_rest_encryption_enabled = false`  
+**What is wrong:** At-rest encryption is explicitly disabled.  
+**Why it matters:** The check requires that cached data stored on disk is encrypted. Disabling it leaves the cache contents unprotected if the underlying storage is compromised.  
+**Change needed:** In the same `aws_appsync_api_cache "fail"` block, set `at_rest_encryption_enabled` to `true`.
+
+---
+
+### 3. CKV_AWS_215 on `aws_appsync_api_cache.fail2` (lines 19–24)
+**Triggering lines:** The entire block (lines 19–24) because the attribute `transit_encryption_enabled` is absent.  
+**What is wrong:** Transit encryption is not configured; the provider defaults this to `false`.  
+**Why it matters:** Without an explicit `true`, the cache operates with transit encryption disabled, exposing data in motion.  
+**Change needed:** Add `transit_encryption_enabled = true` inside the `aws_appsync_api_cache "fail2"` resource block.
+
+---
+
+### 4. CKV_AWS_214 on `aws_appsync_api_cache.fail2` (lines 19–24)
+**Triggering lines:** The entire block (lines 19–24) because the attribute `at_rest_encryption_enabled` is absent.  
+**What is wrong:** At-rest encryption is not configured; the provider defaults this to `false`.  
+**Why it matters:** Without an explicit `true`, the cache stores data unencrypted, violating the at-rest encryption requirement.  
+**Change needed:** Add `at_rest_encryption_enabled = true` inside the same `aws_appsync_api_cache "fail2"` resource block.
+
+---
+
+**Summary of actions:**  
+- For `fail`: change the two `false` values on lines 12 and 13 to `true`.  
+- For `fail2`: insert the two missing attributes (`transit_encryption_enabled = true` and `at_rest_encryption_enabled = true`) anywhere within the resource block.  
+
+No other resources or configurations are implicated by these findings.

@@ -1,0 +1,16 @@
+The check **CKV_AWS_210** on `aws_batch_job_definition.fail` requires that the Batch job definition does **not** run containers in privileged mode.  
+
+**What is wrong**  
+In the `container_properties` JSON of the `fail` resource, the field `"privileged"` is set to `true`. This grants the container elevated access to the host’s devices and kernel, effectively bypassing most isolation boundaries.
+
+**Why it matters**  
+A privileged container can access host resources, modify kernel parameters, and escape the container more easily if compromised. Unless the workload has a strict, documented need for this level of access (which is rare), it significantly increases the blast radius of a security incident.
+
+**How to fix it**  
+Change the `"privileged"` value from `true` to `false`, or remove the line entirely (the default is `false`). For example, the JSON inside the `container_properties` heredoc should read:
+
+```json
+"privileged": false,
+```
+
+This will satisfy the scanner and restore the principle of least privilege for the container.

@@ -1,0 +1,79 @@
+The Terraform file defines two security-group-related resources. Checkov flags four issues:
+
+## 1. CKV_AWS_196 on `aws_elasticache_security_group.exists` (lines 1–4)
+
+**What this is:**  
+`aws_elasticache_security_group` is a legacy resource type for EC2-Classic ElastiCache security groups. It is not usable with VPC-based ElastiCache.
+
+**Why it matters:**  
+Modern ElastiCache clusters and replication groups run in a VPC and use VPC security groups (`aws_security_group`) attached via `security_group_ids`. The legacy resource cannot be attached to those resources, so it provides no effective security control in a VPC deployment. Its presence indicates an outdated or invalid pattern.
+
+**How to fix safely:**  
+Remove the `aws_elasticache_security_group` resource entirely. Instead, use a VPC `aws_security_group` and attach it to your `aws_elasticache_cluster` or `aws_elasticache_replication_group` using the `security_group_ids` argument.
+
+Example:
+```hcl
+resource "aws_security_group" "redis" {
+  name        = "redis-sg"
+  description = "Security group for ElastiCache Redis"
+  vpc_id      = var.vpc_id
+}
+
+resource "aws_elasticache_cluster" "redis" {
+  cluster_id           = "my-cluster"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  security_group_ids   = [aws_security_group.redis.id]
+}
+```
+
+## 2. CKV_AWS_23 on `aws_elasticache_security_group.exists` (lines 1–4)
+
+**What this is:**  
+The resource has no rule descriptions. The `aws_elasticache_security_group` resource itself has no `description` argument, and it references `aws_security_group.bar` only by name; no rules are defined with descriptions.
+
+**Why it matters:**  
+When rules exist without descriptions, it is harder to audit, review, or understand why a rule allows or denies traffic. This increases the risk of unintended access or misconfiguration going unnoticed.
+
+**How to fix safely:**  
+Since `aws_elasticache_security_group` is legacy and should be removed (see CKV_AWS_196), this issue disappears after removal. If you must keep it temporarily, add a `description` to the resource itself, but the recommended fix is removal.
+
+## 3. CKV_AWS_23 on `aws_security_group.bar` (lines 6–8)
+
+**What this is:**  
+`aws_security_group.bar` has no `ingress` or `egress` rule blocks, so there are no rules to describe. Checkov flags this because the resource lacks rule descriptions (or because the resource is missing a `description` on itself).
+
+**Why it matters:**  
+If rules are added later without descriptions, they become difficult to audit. Also, a security group with no rules allows no traffic by default (for VPC security groups), but the missing description on the group itself reduces clarity.
+
+**How to fix safely:**  
+Add a `description` to the security group resource, and if you later add `ingress`/`egress` rules, include a `description` on every rule.
+
+Example:
+```hcl
+resource "aws_security_group" "bar" {
+  name        = "security-group"
+  description = "Security group for application tier"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Allow Redis from internal VPC"
+  }
+}
+```
+
+## 4. CKV2_AWS_5 on `aws_security_group.bar` (lines 6–8)
+
+**What this is:**  
+`aws_security_group.bar` is not attached to any VPC resource. The only reference to it is from the legacy `aws_elasticache_security_group`, which Checkov does not count as a valid attachment.
+
+**Why it matters:**  
+An unattached security group provides no protection to any resource. It may be left over from incomplete or obsolete configuration, causing confusion and potentially being modified later without any effect.
+
+**How to fix safely:**  
+Either attach the security group to the intended resource (e.g., an EC2 instance, ENI, or ElastiCache cluster via `security_group_ids`) or remove it if it is no longer needed. In this file, after removing the legacy `aws_elasticache_security_group`, `aws_security_group.bar` would be orphaned, so delete it unless it is used elsewhere.

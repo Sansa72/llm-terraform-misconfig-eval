@@ -1,0 +1,83 @@
+The scanner identified four distinct misconfigurations across the ECR repositories and their policies. Below is a breakdown of each issue, why it matters, and how to resolve it.
+
+---
+
+### 1. ECR image scanning on push is not enabled (CKV_AWS_163)
+
+**Affected resources:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**What’s wrong:**  
+None of these repositories have the `image_scanning_configuration` block set. By default, scanning on push is disabled, meaning newly pushed images are not automatically inspected for known vulnerabilities.
+
+**Why it matters:**  
+Without automatic scanning, you lose continuous visibility into vulnerabilities in your container images. This can lead to running containers with known security flaws, increasing the risk of compromise.
+
+**How to fix:**  
+Add an `image_scanning_configuration` block to each repository resource with `scan_on_push = true`. For example:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+
+---
+
+### 2. ECR repositories are not encrypted with KMS (CKV_AWS_136)
+
+**Affected resources:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**What’s wrong:**  
+No `encryption_configuration` block is present. By default, ECR encrypts images using an AWS-managed key with AES-256, but the check requires explicit KMS encryption (either a customer-managed key or the default ECR KMS key) to be declared.
+
+**Why it matters:**  
+Using KMS gives you control over key rotation, access policies, and audit trails. Relying on the implicit default encryption may not meet compliance requirements that mandate KMS-based encryption.
+
+**How to fix:**  
+Add an `encryption_configuration` block to each repository. To use the default ECR KMS key, specify `encryption_type = "KMS"`. To use a specific customer-managed key, also provide the `kms_key` ARN. Example:
+
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  # kms_key = "arn:aws:kms:..."   # optional, for a custom key
+}
+```
+
+---
+
+### 3. ECR image tags are mutable (CKV_AWS_51)
+
+**Affected resources:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**What’s wrong:**  
+The `image_tag_mutability` attribute is not set, so it defaults to `MUTABLE`. This allows overwriting image tags, which can lead to supply chain attacks or accidental deployment of the wrong image.
+
+**Why it matters:**  
+Immutable tags enforce that a given tag always points to the same image digest, preventing tag reuse and ensuring traceability. This is a fundamental security best practice for container registries.
+
+**How to fix:**  
+Set `image_tag_mutability = "IMMUTABLE"` in each repository resource.
+
+---
+
+### 4. ECR repository policy is effectively public (CKV_AWS_32)
+
+**Affected resources:**  
+`aws_ecr_repository_policy.fail` (attached to `public_repo`)  
+`aws_ecr_repository_policy.fail_conditional` (attached to `conditional_bad_repo`)
+
+**What’s wrong:**  
+- **`fail` policy:** The `Principal` is `"*"` with no `Condition` block. This grants the listed actions to anyone on the internet, making the repository fully public.  
+- **`fail_conditional` policy:** The `Principal` is `"*"` and the condition uses `"aws:username"`. The key `aws:username` is not a valid global condition key for restricting access to specific AWS principals; it can be easily spoofed or is not evaluated as a secure boundary. The policy is therefore still considered public.
+
+**Why it matters:**  
+A public ECR repository allows anonymous users to pull and potentially push images, leading to data exfiltration, malicious image injection, or unauthorized use of your container images.
+
+**How to fix:**  
+- **For `fail`:** Replace `"Principal": "*"` with specific IAM principals (e.g., `"AWS": "arn:aws:iam::123456789012:root"`) or add a condition that restricts access to your organization or account, such as `"aws:PrincipalOrgID"` or `"aws:PrincipalAccount"`.  
+- **For `fail_conditional`:** Change the condition key to a valid, secure global condition like `"aws:PrincipalOrgID"`, `"aws:PrincipalAccount"`, or `"aws:SourceArn"`. For example, use `"StringEquals": {"aws:PrincipalOrgID": "o-12345678"}`. Alternatively, replace the wildcard principal with explicit ARNs.
+
+In both cases, ensure the policy only grants the minimum necessary permissions to trusted identities.

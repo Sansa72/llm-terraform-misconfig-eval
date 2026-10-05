@@ -1,0 +1,112 @@
+The scanner flagged multiple security misconfigurations across both CloudFront distributions. Below is a breakdown of each check, the specific resource it applies to, and the exact lines that trigger the finding.
+
+---
+
+### CKV_AWS_34 – ViewerProtocolPolicy must be set to HTTPS
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+The `default_cache_behavior` block in both distributions sets `viewer_protocol_policy = "allow-all"`.  
+- `pass`: line 33  
+- `fail`: line 135  
+
+The check requires that all cache behaviors enforce HTTPS (e.g., `redirect-to-https` or `https-only`). The ordered cache behaviors already use `redirect-to-https`, but the default behavior does not.
+
+---
+
+### CKV_AWS_174 – Viewer certificate must use TLS v1.2
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+The `viewer_certificate` block in both distributions sets `cloudfront_default_certificate = true` but does **not** specify `minimum_protocol_version`.  
+- `pass`: lines 97–99  
+- `fail`: lines 199–201  
+
+When `minimum_protocol_version` is omitted, the default is `TLSv1`. The check requires TLS v1.2 or higher.
+
+---
+
+### CKV_AWS_68 – CloudFront distribution must have WAF enabled
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+Neither resource includes a `web_acl_id` argument. The entire resource blocks (lines 1–101 and 103–202) lack any WAF association.
+
+---
+
+### CKV_AWS_310 – Origin failover must be configured
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+Each distribution defines only a single `origin` block:  
+- `pass`: lines 2–6  
+- `fail`: lines 104–108  
+
+Origin failover requires an origin group with at least two origins. No such group is present.
+
+---
+
+### CKV_AWS_305 – Default root object must be configured
+
+**Resource:**  
+- `aws_cloudfront_distribution.fail` (lines 103–202) only
+
+**Evidence:**  
+The `fail` resource does not set `default_root_object`. Compare with the `pass` resource, which has `default_root_object = "index.html"` at line 10. The `fail` resource has no such attribute anywhere in its block (lines 103–202).
+
+---
+
+### CKV2_AWS_42 – Custom SSL certificate must be used
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+Both distributions use the default CloudFront certificate via `cloudfront_default_certificate = true` in the `viewer_certificate` block:  
+- `pass`: line 98  
+- `fail`: line 200  
+
+The check requires a custom SSL certificate (e.g., an ACM certificate) instead of the default one.
+
+---
+
+### CKV2_AWS_32 – Response headers policy must be attached
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+None of the cache behaviors (`default_cache_behavior` or `ordered_cache_behavior`) include a `response_headers_policy_id` argument.  
+- `pass`: default (lines 20–36), ordered (lines 39–58, 61–80)  
+- `fail`: default (lines 122–138), ordered (lines 141–160, 163–182)  
+
+The check requires a response headers policy to be explicitly associated.
+
+---
+
+### CKV2_AWS_47 – WAFv2 WebACL must have AMR for Log4j vulnerability
+
+**Resources:**  
+- `aws_cloudfront_distribution.pass` (lines 1–101)  
+- `aws_cloudfront_distribution.fail` (lines 103–202)
+
+**Evidence:**  
+Neither distribution has a `web_acl_id` (see CKV_AWS_68). Because no WAFv2 WebACL is attached, the requirement to have AWS Managed Rules (AMR) for Log4j cannot be satisfied. The check flags the absence of a properly configured WAFv2 association.
+
+---
+
+**Note:** The resource named `pass` still triggers all the same checks as `fail` except CKV_AWS_305. The name does not reflect actual compliance.

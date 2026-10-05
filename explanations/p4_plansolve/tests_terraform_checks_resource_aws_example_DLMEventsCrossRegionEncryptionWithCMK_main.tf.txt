@@ -1,0 +1,61 @@
+**Findings and Remediation Guidance**
+
+---
+
+### 1. CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail` – Cross-region events must be encrypted
+
+**What’s wrong**  
+The `cross_region_copy` block inside the `action` of `aws_dlm_lifecycle_policy.fail` contains an empty `encryption_configuration {}` block. This means cross-region copies of snapshots are not encrypted at all.
+
+**Why it matters**  
+Unencrypted snapshots copied across regions expose data to unauthorised access in transit and at rest. Compliance frameworks (e.g., CIS AWS Foundations) require that all data be encrypted, especially when moving between regions.
+
+**How to fix**  
+In the `encryption_configuration` block, set `encryption = true` and provide a valid KMS key ARN via `cmk_arn`. The block should look like the one in the `pass` resource:
+
+```
+encryption_configuration {
+  encryption = true
+  cmk_arn    = aws_kms_key.example.arn   # or another valid CMK ARN
+}
+```
+
+---
+
+### 2. CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail` – Cross-region events must use a Customer Managed Key (CMK)
+
+**What’s wrong**  
+The same empty `encryption_configuration {}` block means no encryption is configured, so a CMK is not being used.
+
+**Why it matters**  
+Even if encryption were enabled, using the default AWS-managed key gives you less control over key rotation, access policies, and auditing. A Customer Managed Key (CMK) allows you to enforce granular permissions and meet stricter compliance requirements.
+
+**How to fix**  
+After enabling encryption, specify a CMK ARN in the `cmk_arn` field. The key must exist in the same account and region, and the DLM execution role must have `kms:Encrypt`, `kms:Decrypt`, `kms:ReEncrypt*`, `kms:GenerateDataKey*`, and `kms:DescribeKey` permissions on that key. The fix is identical to the one above – add both `encryption = true` and `cmk_arn`.
+
+---
+
+### 3. CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail2` – Cross-region events must be encrypted with a CMK
+
+**What’s wrong**  
+The `fail2` resource has `encryption_configuration` with `encryption = true`, but it does **not** provide a `cmk_arn`. This means the cross-region copy is encrypted, but it uses the default AWS-managed key rather than a customer-managed key.
+
+**Why it matters**  
+Using a default AWS-managed key limits your control over key lifecycle, access policies, and auditability. Many security standards require the use of customer-managed keys for sensitive data.
+
+**How to fix**  
+Add the `cmk_arn` attribute inside the `encryption_configuration` block, pointing to a valid KMS key ARN. For example:
+
+```
+encryption_configuration {
+  encryption = true
+  cmk_arn   = aws_kms_key.my_key.arn
+}
+```
+
+Ensure the DLM execution role has the necessary KMS permissions (as described above) for the specified key.
+
+---
+
+**Note on the `pass` resource**  
+The `aws_dlm_lifecycle_policy.pass` resource already includes both `encryption = true` and a `cmk_arn`, so it satisfies both checks and can serve as a reference.

@@ -1,0 +1,34 @@
+**Remediation Briefing: API Gateway Route Authorization**
+
+Below are the two findings, in the order they appear in the scan results. Both relate to the same check (`CKV_AWS_309`) but affect different resources.
+
+---
+
+### 1. CKV_AWS_309 on `aws_apigatewayv2_route.fail` (lines 1–4)
+
+**What is wrong:**  
+The route does not define an `authorization_type` attribute at all.
+
+**Why it matters:**  
+When no authorization type is specified, the API Gateway V2 route defaults to no authorization. This means the endpoint is publicly accessible without any authentication or authorization checks, exposing the backend to unauthenticated requests and potential abuse.
+
+**Remediation:**  
+Add an `authorization_type` argument to the `aws_apigatewayv2_route.fail` resource. Choose a value that matches your API’s security model—typically `AWS_IAM` (IAM-based authorization) or `JWT` (JSON Web Token validation via a JWT authorizer). The existing `pass` and `pass2` resources in the same file show correct usage. Do not leave the attribute absent.
+
+---
+
+### 2. CKV_AWS_309 on `aws_apigatewayv2_route.fail2` (lines 6–10)
+
+**What is wrong:**  
+The route explicitly sets `authorization_type = "NONE"`, which disables authorization entirely.
+
+**Why it matters:**  
+Explicitly setting `NONE` has the same effect as omitting the attribute—the route becomes publicly accessible without any authentication. This is rarely acceptable for production APIs and violates the principle of least privilege.
+
+**Remediation:**  
+Change the `authorization_type` from `"NONE"` to a secure value such as `"AWS_IAM"` or `"JWT"`. If the route genuinely requires no authorization (e.g., a public health-check endpoint), consider whether that route can be removed or restricted; otherwise, the check will continue to flag it. The `pass` and `pass2` resources in the same file demonstrate the correct configuration.
+
+---
+
+**Interaction note:**  
+The two failing resources are independent; fixing one does not affect the other. No cross-resource dependencies are present in the supplied file that would require coordinated changes.

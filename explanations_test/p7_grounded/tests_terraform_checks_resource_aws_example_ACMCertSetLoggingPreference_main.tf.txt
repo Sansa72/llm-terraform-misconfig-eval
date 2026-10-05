@@ -1,0 +1,86 @@
+The scanner flagged three resources with two different checks. Here is what the findings tell you, based strictly on the file provided.
+
+---
+
+### Finding 1: CKV_AWS_233 on `aws_acm_certificate.pass` (lines 1–14)
+
+**Check meaning:** CKV_AWS_233 requires that ACM certificates have the `create_before_destroy` lifecycle rule enabled. This ensures that when a certificate must be replaced, the new certificate is created and validated before the old one is destroyed, preventing downtime.
+
+**What the file shows:**  
+Lines 11–13 contain a commented-out `lifecycle` block:
+
+```terraform
+  #   lifecycle {
+  #     create_before_destroy = true
+  #   }
+```
+
+Because the block is commented, the resource does **not** have `create_before_destroy = true` applied. The scanner flags this as a misconfiguration.
+
+**Fix:** Uncomment the `lifecycle` block (or add a new one) so that the resource includes:
+
+```terraform
+  lifecycle {
+    create_before_destroy = true
+  }
+```
+
+---
+
+### Finding 2: CKV_AWS_233 on `aws_acm_certificate.pass2` (lines 16–29)
+
+**Check meaning:** Same as above – the resource must have `create_before_destroy = true`.
+
+**What the file shows:**  
+Lines 27–29 contain the same commented-out `lifecycle` block. No uncommented `lifecycle` block exists. The scanner therefore flags the resource.
+
+**Fix:** Uncomment the `lifecycle` block (or add one) with `create_before_destroy = true`.
+
+---
+
+### Finding 3: CKV_AWS_234 on `aws_acm_certificate.fail` (lines 31–44)
+
+**Check meaning:** CKV_AWS_234 verifies the certificate transparency logging preference. Based on the only compliant resource in the file (`pass`, which has `certificate_transparency_logging_preference = "ENABLED"` and no CKV_AWS_234 finding), the check expects the preference to be `ENABLED`.
+
+**What the file shows:**  
+Line 40 explicitly sets the preference to `DISABLED`:
+
+```terraform
+  options {
+    certificate_transparency_logging_preference = "DISABLED"
+  }
+```
+
+The scanner flags this because the value is `DISABLED`.
+
+**Fix:** Change the value to `ENABLED`:
+
+```terraform
+  options {
+    certificate_transparency_logging_preference = "ENABLED"
+  }
+```
+
+---
+
+### Finding 4: CKV_AWS_233 on `aws_acm_certificate.fail` (lines 31–44)
+
+**Check meaning:** Same as the first two – `create_before_destroy` must be enabled.
+
+**What the file shows:**  
+Lines 42–44 contain the same commented-out `lifecycle` block. No active `create_before_destroy` setting exists.
+
+**Fix:** Uncomment the `lifecycle` block (or add one) with `create_before_destroy = true`.
+
+---
+
+### Summary of required changes
+
+| Resource | Check ID | Issue | Lines | Action |
+|----------|----------|-------|-------|--------|
+| `pass`   | CKV_AWS_233 | Missing `create_before_destroy` | 11–13 (commented) | Uncomment `lifecycle { create_before_destroy = true }` |
+| `pass2`  | CKV_AWS_233 | Missing `create_before_destroy` | 27–29 (commented) | Uncomment `lifecycle { create_before_destroy = true }` |
+| `fail`   | CKV_AWS_234 | Logging preference is `DISABLED` | 40 | Change to `"ENABLED"` |
+| `fail`   | CKV_AWS_233 | Missing `create_before_destroy` | 42–44 (commented) | Uncomment `lifecycle { create_before_destroy = true }` |
+
+No other resources or checks are evidenced in the file, so only these three resources need attention.

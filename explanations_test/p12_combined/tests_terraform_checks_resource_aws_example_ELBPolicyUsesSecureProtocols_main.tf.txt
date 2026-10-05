@@ -1,0 +1,107 @@
+**Remediation Briefing: CKV_AWS_213 – ELB Policy uses only secure protocols**
+
+All six findings are for the same check, `CKV_AWS_213`, against six separate `aws_load_balancer_policy` resources. Each resource defines an SSL negotiation policy that allows insecure protocols. The passing resources in the same file (`pass`, `pass2`, `pass3`) show the acceptable patterns: enable only TLSv1.2, explicitly disable TLSv1, or use a reference security policy that enforces TLSv1.2.
+
+Below is the remediation for each failing resource, in the order they appear.
+
+---
+
+### 1. `CKV_AWS_213` on `aws_load_balancer_policy.fail` (lines 1–15)
+
+**Trigger:**  
+Lines 9–12, the `policy_attribute` block that sets `Protocol-TLSv1` to `true`.
+
+**What is wrong:**  
+The policy explicitly enables TLSv1, an insecure protocol. The check requires that the policy uses only secure protocols.
+
+**Why it matters:**  
+TLSv1 is no longer considered secure. Allowing it in the negotiation policy means the load balancer can negotiate connections using a weak protocol.
+
+**Remediation:**  
+Remove the `policy_attribute` block that enables `Protocol-TLSv1` (lines 9–12). The remaining attribute enabling `Protocol-TLSv1.2` alone will satisfy the check, as demonstrated by the `pass` resource. Alternatively, change the value of that attribute to `"false"` (as in `pass2`).
+
+---
+
+### 2. `CKV_AWS_213` on `aws_load_balancer_policy.fail2` (lines 17–26)
+
+**Trigger:**  
+Lines 22–25, the `policy_attribute` block that sets `Reference-Security-Policy` to `"ELBSecurityPolicy-2016-08"`.
+
+**What is wrong:**  
+The referenced predefined security policy (`ELBSecurityPolicy-2016-08`) includes insecure protocols (TLSv1 and TLSv1.1). The check requires only secure protocols.
+
+**Why it matters:**  
+Using an outdated reference policy allows the load balancer to negotiate connections with weak protocol versions.
+
+**Remediation:**  
+Replace the value of the `Reference-Security-Policy` attribute with a secure predefined policy that enforces TLSv1.2 or higher. The passing resource `pass3` uses `"TLS-1-2-2017-01"`; the equivalent full name `"ELBSecurityPolicy-TLS-1-2-2017-01"` is also acceptable.
+
+---
+
+### 3. `CKV_AWS_213` on `aws_load_balancer_policy.fail3` (lines 28–37)
+
+**Trigger:**  
+Lines 33–36, the `policy_attribute` block with `Reference-Security-Policy` set to `"ELBSecurityPolicy-TLS-1-1-2017-01"`.
+
+**What is wrong:**  
+The policy references a security policy that allows TLSv1.1, which is not a secure protocol.
+
+**Why it matters:**  
+TLSv1.1 is considered weak; the policy must only permit secure protocols (TLSv1.2 or higher).
+
+**Remediation:**  
+Change the `value` of the reference security policy to one that enforces TLSv1.2 or higher, such as `"ELBSecurityPolicy-TLS-1-2-2017-01"` or `"TLS-1-2-2017-01"`.
+
+---
+
+### 4. `CKV_AWS_213` on `aws_load_balancer_policy.fail4` (lines 39–48)
+
+**Trigger:**  
+Lines 44–47, the `policy_attribute` block with `Reference-Security-Policy` set to `"ELBSecurityPolicy-2015-05"`.
+
+**What is wrong:**  
+The `ELBSecurityPolicy-2015-05` reference policy includes insecure protocols (TLSv1 and TLSv1.1).
+
+**Why it matters:**  
+The policy does not restrict the load balancer to secure protocols only.
+
+**Remediation:**  
+Replace the reference policy value with a secure policy such as `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+### 5. `CKV_AWS_213` on `aws_load_balancer_policy.fail5` (lines 50–59)
+
+**Trigger:**  
+Lines 55–58, the `policy_attribute` block with `Reference-Security-Policy` set to `"ELBSecurityPolicy-2015-03"`.
+
+**What is wrong:**  
+The `ELBSecurityPolicy-2015-03` policy allows insecure protocols (TLSv1, TLSv1.1).
+
+**Why it matters:**  
+The policy does not enforce only secure protocols.
+
+**Remediation:**  
+Change the reference policy value to a secure one, e.g., `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+### 6. `CKV_AWS_213` on `aws_load_balancer_policy.fail6` (lines 61–70)
+
+**Trigger:**  
+Lines 66–69, the `policy_attribute` block with `Reference-Security-Policy` set to `"ELBSecurityPolicy-2015-02"`.
+
+**What is wrong:**  
+The `ELBSecurityPolicy-2015-02` reference policy permits insecure protocols.
+
+**Why it matters:**  
+The policy does not limit the load balancer to secure protocols only.
+
+**Remediation:**  
+Update the reference policy value to a secure one, such as `"ELBSecurityPolicy-TLS-1-2-2017-01"`.
+
+---
+
+**Summary of required changes:**  
+- For `fail`: remove or disable the `Protocol-TLSv1` attribute.  
+- For `fail2` through `fail6`: replace the outdated reference security policy with one that enforces TLSv1.2 or higher (e.g., `"ELBSecurityPolicy-TLS-1-2-2017-01"`).

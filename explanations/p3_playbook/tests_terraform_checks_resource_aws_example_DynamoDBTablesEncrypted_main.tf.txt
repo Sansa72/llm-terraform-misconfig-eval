@@ -1,0 +1,87 @@
+**Remediation briefing: DynamoDB security misconfigurations**
+
+Below are the failing checks in the order reported. For each, I explain what is wrong, why it matters, and the change required. All changes are described in prose; no complete Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_28 on `aws_dynamodb_table.cmk` (lines 3‑20)
+**What is wrong:** Point‑in‑time recovery (PITR) is not enabled.  
+**Why it matters:** Without PITR, you cannot restore the table to any point in the last 35 days, increasing the risk of permanent data loss from accidental writes or deletes.  
+**Change needed:** Add a `point_in_time_recovery` block inside the `aws_dynamodb_table` resource with `enabled = true`.
+
+---
+
+### 2. CKV_AWS_28 on `aws_dynamodb_table.default` (lines 24‑36)
+**What is wrong:** Point‑in‑time recovery is not enabled.  
+**Why it matters:** Same as above – no continuous backups, no point‑in‑time restore capability.  
+**Change needed:** Add a `point_in_time_recovery` block with `enabled = true` to this resource.
+
+---
+
+### 3. CKV_AWS_119 on `aws_dynamodb_table.default` (lines 24‑36)
+**What is wrong:** The table is not encrypted with a Customer Managed Key (CMK); it uses the default AWS‑owned key.  
+**Why it matters:** Customer Managed Keys give you control over key rotation, access policies, and audit trails. Using the default key limits your governance and compliance posture.  
+**Change needed:** Add a `server_side_encryption` block with `enabled = true` and provide a valid `kms_key_arn` pointing to a KMS key you manage. (This also satisfies the encryption requirement for this table.)
+
+---
+
+### 4. CKV_AWS_28 on `aws_dynamodb_table.encrypted_false` (lines 38‑54)
+**What is wrong:** Point‑in‑time recovery is not enabled.  
+**Why it matters:** No continuous backup capability.  
+**Change needed:** Add a `point_in_time_recovery` block with `enabled = true`.
+
+---
+
+### 5. CKV_AWS_119 on `aws_dynamodb_table.encrypted_false` (lines 38‑54)
+**What is wrong:** Server‑side encryption is explicitly disabled (`enabled = false`).  
+**Why it matters:** Data at rest is not encrypted, violating security best practices and many compliance frameworks.  
+**Change needed:** Modify the existing `server_side_encryption` block: set `enabled = true` and add a `kms_key_arn` referencing a Customer Managed Key. (This will also resolve the encryption check for this table.)
+
+---
+
+### 6. CKV_AWS_28 on `aws_dynamodb_table.encrypted_no_cmk` (lines 56‑72)
+**What is wrong:** Point‑in‑time recovery is not enabled.  
+**Why it matters:** No continuous backup capability.  
+**Change needed:** Add a `point_in_time_recovery` block with `enabled = true`.
+
+---
+
+### 7. CKV_AWS_119 on `aws_dynamodb_table.encrypted_no_cmk` (lines 56‑72)
+**What is wrong:** Encryption is enabled but uses the AWS‑owned key (no `kms_key_arn` specified).  
+**Why it matters:** Without a Customer Managed Key, you lack control over key rotation, access policies, and auditing.  
+**Change needed:** In the existing `server_side_encryption` block, add a `kms_key_arn` attribute pointing to a KMS key you manage. (No other changes are required for encryption.)
+
+---
+
+### 8. CKV2_AWS_16 on `aws_dynamodb_table.cmk` (lines 3‑20)
+**What is wrong:** Auto Scaling is not configured for the table’s read/write capacity.  
+**Why it matters:** Without Auto Scaling, the table cannot automatically adjust capacity to handle traffic spikes, leading to throttling or over‑provisioning costs.  
+**Change needed:** Create an `aws_appautoscaling_target` resource for the table (targeting `table/GameScores`) and define `aws_appautoscaling_policy` resources for both read and write capacity. Alternatively, if using the `aws_dynamodb_table` resource’s `replica` block, enable auto scaling there. The key is to ensure the table has an active scaling configuration.
+
+---
+
+### 9. CKV2_AWS_16 on `aws_dynamodb_table.default` (lines 24‑36)
+**What is wrong:** Auto Scaling is not enabled.  
+**Why it matters:** Same as above – no automatic capacity management.  
+**Change needed:** Add an `aws_appautoscaling_target` and associated scaling policies for this table’s read and write capacity.
+
+---
+
+### 10. CKV2_AWS_16 on `aws_dynamodb_table.encrypted_false` (lines 38‑54)
+**What is wrong:** Auto Scaling is not enabled.  
+**Why it matters:** Same as above.  
+**Change needed:** Add an `aws_appautoscaling_target` and scaling policies for this table.
+
+---
+
+### 11. CKV2_AWS_16 on `aws_dynamodb_table.encrypted_no_cmk` (lines 56‑72)
+**What is wrong:** Auto Scaling is not enabled.  
+**Why it matters:** Same as above.  
+**Change needed:** Add an `aws_appautoscaling_target` and scaling policies for this table.
+
+---
+
+**Interaction note:**  
+- For `aws_dynamodb_table.encrypted_false`, fixing CKV_AWS_119 (enabling encryption with a CMK) will also satisfy the encryption requirement; no separate change is needed for CKV_AWS_119 beyond what is described.  
+- For `aws_dynamodb_table.encrypted_no_cmk`, adding a `kms_key_arn` to the existing `server_side_encryption` block resolves CKV_AWS_119.  
+- All four tables require the same two structural additions: a `point_in_time_recovery` block and an Auto Scaling configuration (via separate `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources).

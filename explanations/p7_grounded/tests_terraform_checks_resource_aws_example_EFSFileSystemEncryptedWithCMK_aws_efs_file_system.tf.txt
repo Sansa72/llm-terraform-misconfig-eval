@@ -1,0 +1,28 @@
+The scanner flagged check **CKV_AWS_184** against the resource `aws_efs_file_system.fail` (lines 6–8). The check requires that the EFS file system is encrypted using a **customer managed KMS key (CMK)**.
+
+**What the file shows**  
+- Lines 6–8 define the resource:
+  ```terraform
+  resource "aws_efs_file_system" "fail" {
+    encrypted = true
+  }
+  ```
+- The `encrypted` argument is set to `true`, so the file system *is* encrypted.  
+- However, no `kms_key_id` is specified. When `kms_key_id` is omitted, EFS uses the **AWS-managed key** (`aws/elasticfilesystem`) by default. That key is not a customer managed key (CMK).
+
+**Why the check fires**  
+CKV_AWS_184 explicitly demands encryption with a CMK. The absence of `kms_key_id` means the resource does not meet that requirement, even though encryption itself is enabled.
+
+**Evidence of the correct pattern**  
+The same file contains a passing resource (`aws_efs_file_system.pass`) that includes both `encrypted = true` and `kms_key_id = aws_kms_key.test.arn`. This demonstrates the expected configuration: a CMK must be supplied via `kms_key_id`.
+
+**What to fix**  
+Add a `kms_key_id` argument pointing to a customer managed KMS key ARN (or a reference to a `aws_kms_key` resource) inside the `fail` resource block. For example:
+```terraform
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.your_cmk.arn
+}
+```
+
+No other issues are evidenced in the provided material.

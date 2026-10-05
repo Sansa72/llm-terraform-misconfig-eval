@@ -1,0 +1,95 @@
+The scanner flagged three EMR security configurations for missing or misconfigured encryption settings. Below is a breakdown of each failing check, contrasting the current configuration with what a compliant configuration would look like, and explaining exactly which properties must change and why.
+
+---
+
+### CKV_AWS_351 – Enable In-Transit Encryption
+
+**Current state (all three resources):**  
+`"EnableInTransitEncryption": false`  
+In-transit encryption is explicitly disabled. Data moving between EMR cluster nodes and between EMR and other services (e.g., S3) is sent in plaintext.
+
+**Compliant state:**  
+`"EnableInTransitEncryption": true`  
+All inter-node and client-to-cluster communication is encrypted using TLS.
+
+**Difference:**  
+Change the `EnableInTransitEncryption` property from `false` to `true`. No other changes are required for this check.  
+**Why it matters:** Without in-transit encryption, an attacker who gains access to the network can eavesdrop on or tamper with sensitive data as it moves between nodes or to/from S3.
+
+---
+
+### CKV_AWS_171 – Use SSE-KMS for S3 Encryption
+
+**Current state (resources `pass` and `fail`):**  
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-S3"
+}
+```
+S3 data is encrypted using S3-managed keys (SSE-S3). The `fail2` resource has no S3 encryption block at all.
+
+**Compliant state:**  
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-KMS",
+  "AwsKmsKey": "arn:aws:kms:region:account:key/key-id"
+}
+```
+S3 data is encrypted using a customer-managed KMS key (SSE-KMS).
+
+**Difference:**  
+- Change `EncryptionMode` from `"SSE-S3"` to `"SSE-KMS"`.  
+- Add the `AwsKmsKey` property with a valid KMS key ARN.  
+**Why it matters:** SSE-KMS gives you control over key rotation, access policies, and audit trails via AWS CloudTrail. SSE-S3 uses opaque S3-managed keys with no user visibility or fine-grained access control.
+
+---
+
+### CKV_AWS_350 – Encrypt EBS Volumes
+
+**Current state (resources `fail` and `fail2`):**  
+No `LocalDiskEncryptionConfiguration` block is present, or `EnableAtRestEncryption` is `false`. EBS volumes attached to the cluster are not encrypted.
+
+**Compliant state (as in resource `pass`):**  
+```json
+"LocalDiskEncryptionConfiguration": {
+  "EnableEbsEncryption": true,
+  "EncryptionKeyProviderType": "AwsKms",
+  "AwsKmsKey": "arn:aws:kms:..."
+}
+```
+EBS volumes are encrypted using a KMS key.
+
+**Difference:**  
+Add the `LocalDiskEncryptionConfiguration` block and set `EnableEbsEncryption` to `true`. Provide a valid KMS key ARN in `AwsKmsKey`.  
+**Why it matters:** EBS encryption protects data at rest on the cluster’s EBS volumes. If a volume is compromised or improperly disposed of, the data remains unreadable without the KMS key.
+
+---
+
+### CKV_AWS_349 – Encrypt Local Disks
+
+**Current state (resources `fail` and `fail2`):**  
+No `LocalDiskEncryptionConfiguration` block is present, or it is present but missing the required key provider. Local instance store disks are not encrypted.
+
+**Compliant state (as in resource `pass`):**  
+```json
+"LocalDiskEncryptionConfiguration": {
+  "EnableEbsEncryption": true,
+  "EncryptionKeyProviderType": "AwsKms",
+  "AwsKmsKey": "arn:aws:kms:..."
+}
+```
+Local instance store volumes are encrypted using a KMS key.
+
+**Difference:**  
+Add the `LocalDiskEncryptionConfiguration` block with `EncryptionKeyProviderType` set to `"AwsKms"` and a valid `AwsKmsKey` ARN. (The `EnableEbsEncryption` property is for EBS volumes; local disk encryption is activated by specifying a key provider type.)  
+**Why it matters:** Instance store volumes are physically attached to the host and persist data only during the instance lifecycle. Without encryption, data on these volumes could be exposed if the underlying hardware is compromised or improperly decommissioned.
+
+---
+
+### Summary for the Engineer
+
+- **In-transit encryption:** Set `EnableInTransitEncryption` to `true` in all configurations.
+- **SSE-KMS:** In the `S3EncryptionConfiguration`, change `EncryptionMode` from `"SSE-S3"` to `"SSE-KMS"` and add an `AwsKmsKey` ARN.
+- **Local disk & EBS encryption:** Add a `LocalDiskEncryptionConfiguration` block with `EnableEbsEncryption: true` and `EncryptionKeyProviderType: "AwsKms"`, along with a valid `AwsKmsKey` ARN. This single block satisfies both CKV_AWS_349 and CKV_AWS_350.
+
+The `pass` resource already demonstrates the correct local disk/EBS encryption pattern; it only needs the in-transit flag set to `true` and the S3 encryption mode changed to `SSE-KMS` to pass all checks. Apply the same adjustments to the `fail` and `fail2` resources.

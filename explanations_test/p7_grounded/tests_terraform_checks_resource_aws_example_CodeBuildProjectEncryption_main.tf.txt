@@ -1,0 +1,69 @@
+The scanner flagged four resources with three different policy checks. Here’s what the findings mean, based solely on the provided Terraform and check descriptions.
+
+---
+
+### 1. Missing logging configuration – CKV_AWS_314
+**Check:** “Ensure CodeBuild project environments have a logging configuration”  
+**Affected resources:** All four `aws_codebuild_project` resources  
+- `aws_codebuild_project.fail` (lines 1–8)  
+- `aws_codebuild_project.no_artifacts_encryption_ignored` (lines 10–16)  
+- `aws_codebuild_project.success_no_encryption_disabled` (lines 18–23)  
+- `aws_codebuild_project.success` (lines 25–31)
+
+**Evidence:** None of the resource blocks contain a `logs_config` block. The check requires that every CodeBuild project explicitly defines logging (e.g., to CloudWatch Logs or S3). The file shows only `name` and `artifacts` blocks; no logging configuration is present anywhere.
+
+**What to fix:** Add a `logs_config` block to each resource. For example:
+```hcl
+logs_config {
+  cloudwatch_logs {
+    status = "ENABLED"
+  }
+}
+```
+
+---
+
+### 2. Artifact encryption explicitly disabled – CKV_AWS_78
+**Check:** “Ensure that CodeBuild Project encryption is not disabled”  
+**Affected resource:** `aws_codebuild_project.fail` (lines 1–8)
+
+**Evidence:** Line 5 contains `encryption_disabled = true` inside the `artifacts` block. This explicitly turns off encryption for the S3 artifacts. The check flags this as a misconfiguration. The other resources either omit `encryption_disabled` (defaults to `false`) or set it to `false`, so they do not trigger this check.
+
+**What to fix:** Remove `encryption_disabled = true` or set it to `false`. If you need encryption (which is the default), simply delete the line.
+
+---
+
+### 3. Encryption not using a customer-managed CMK – CKV_AWS_147
+**Check:** “Ensure that CodeBuild projects are encrypted using CMK”  
+**Affected resources:**  
+- `aws_codebuild_project.fail` (lines 1–8)  
+- `aws_codebuild_project.success_no_encryption_disabled` (lines 18–23)  
+- `aws_codebuild_project.success` (lines 25–31)
+
+**Evidence:**  
+- `fail` has `encryption_disabled = true`, so encryption is off entirely – it fails the CMK requirement.  
+- `success_no_encryption_disabled` and `success` both have `type = "S3"` and either omit `encryption_disabled` (default `false`) or set it to `false`. However, neither specifies a `kms_key_id` or any customer-managed key. The check interprets this as not using a CMK, because the default S3 encryption uses an AWS-managed key, not a customer-managed one.  
+- The resource `no_artifacts_encryption_ignored` (lines 10–16) is **not** flagged by CKV_AWS_147, likely because its `type` is `NO_ARTIFACTS`, making artifact encryption irrelevant.
+
+**What to fix:** For any project with S3 artifacts, explicitly set a customer-managed KMS key using the `kms_key_id` argument inside the `artifacts` block, e.g.:
+```hcl
+artifacts {
+  type                = "S3"
+  encryption_disabled = false
+  kms_key_id          = aws_kms_key.example.arn
+}
+```
+This will satisfy the CMK requirement. The `fail` resource also needs `encryption_disabled` removed or set to `false` in addition to the CMK.
+
+---
+
+### Summary of required changes per resource
+
+| Resource | Missing logging (CKV_AWS_314) | Encryption disabled (CKV_AWS_78) | No CMK (CKV_AWS_147) |
+|----------|-------------------------------|----------------------------------|----------------------|
+| `fail` (lines 1–8) | Yes | Yes (`encryption_disabled = true`) | Yes |
+| `no_artifacts_encryption_ignored` (lines 10–16) | Yes | No (type `NO_ARTIFACTS`) | Not flagged |
+| `success_no_encryption_disabled` (lines 18–23) | Yes | No (default `false`) | Yes |
+| `success` (lines 25–31) | Yes | No (explicit `false`) | Yes |
+
+All four resources need a `logs_config` block. The `fail` resource must have `encryption_disabled` removed or set to `false`. The three resources with S3 artifacts (`fail`, `success_no_encryption_disabled`, `success`) need a customer-managed KMS key specified to pass CKV_AWS_147.

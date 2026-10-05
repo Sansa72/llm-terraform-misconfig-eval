@@ -1,0 +1,7 @@
+The scanner flagged resource `aws_ebs_encryption_by_default.disabled` (lines 16‑18) because it explicitly sets `enabled = false`. This directly violates policy CKV_AWS_106, which requires that default EBS encryption be enabled. When default encryption is disabled, any new EBS volume created without an explicit encryption setting will be unencrypted, potentially exposing data at rest.
+
+The file also contains three other `aws_ebs_encryption_by_default` resources: `enabled` (with `enabled = true`), `default` (no argument, which defaults to `true`), and `null` (with `enabled = null`, which also defaults to `true`). Because this resource type is a singleton (only one can be active per account/region), having multiple definitions is unusual and may lead to conflicts; it is unclear which definition is intended to be applied. However, the finding is specifically triggered by the `disabled` resource.
+
+To resolve the finding, you can either:
+- Change `enabled = false` to `enabled = true` in the `disabled` resource block (line 17), or
+- Remove the entire `disabled` resource block (lines 16‑18) if the `enabled` resource is the intended configuration.

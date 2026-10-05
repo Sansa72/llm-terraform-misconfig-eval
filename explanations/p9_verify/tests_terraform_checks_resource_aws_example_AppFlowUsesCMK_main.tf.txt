@@ -1,0 +1,9 @@
+The `aws_appflow_flow.fail` resource (lines 1–42) does not include the `kms_arn` argument. As a result, the flow is not configured to use a customer-managed KMS key (CMK), which violates the requirement enforced by check CKV_AWS_263.
+
+To fix the misconfiguration, add a `kms_arn` attribute that references a customer-managed KMS key, exactly as shown in the `aws_appflow_flow.pass` resource:
+
+```hcl
+kms_arn = aws_kms_key.example.arn
+```
+
+This ensures the AppFlow flow encrypts data using a CMK rather than relying on the default encryption mechanism.

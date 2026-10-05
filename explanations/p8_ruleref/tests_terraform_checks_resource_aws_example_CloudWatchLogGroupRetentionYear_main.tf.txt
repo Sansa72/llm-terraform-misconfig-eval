@@ -1,0 +1,82 @@
+The scanner flagged two types of misconfigurations across your four CloudWatch Log Group resources. Below is a breakdown of each issue, why it matters, and exactly what to change in your Terraform.
+
+---
+
+## 1. CKV_AWS_158 – CloudWatch Log Group not encrypted with KMS
+
+**Affected resources:**  
+`aws_cloudwatch_log_group.pass_365`  
+`aws_cloudwatch_log_group.pass_0`  
+`aws_cloudwatch_log_group.fail`  
+`aws_cloudwatch_log_group.unknown`
+
+**What the rule requires**  
+CloudWatch Log Groups must be encrypted at rest using a customer-managed KMS key (not the default service key). This gives you control over key rotation, access policies, and audit trails, and ensures that log data – which often contains sensitive operational or application details – is protected according to your organisation’s standards.
+
+**What’s wrong in the file**  
+None of the four log groups specify a `kms_key_id`. They are therefore using the default encryption (which may be an AWS-owned key or the CloudWatch service key), and the scanner treats that as non‑compliant.
+
+**How to fix**  
+Add a `kms_key_id` argument to each log group, referencing a KMS key that you control. For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass_365" {
+  name            = "pass_365"   # optional, but good practice
+  retention_in_days = 365
+  kms_key_id      = aws_kms_key.logs.arn
+}
+```
+
+You can use the same KMS key for all log groups or separate keys per group, depending on your security requirements. The key must exist (create it with `aws_kms_key`), and the CloudWatch Logs service must be granted `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions on that key.
+
+---
+
+## 2. CKV_AWS_338 – Log group retention less than 1 year
+
+**Affected resource:**  
+`aws_cloudwatch_log_group.fail` (line 9–11)
+
+**What the rule requires**  
+CloudWatch Log Groups must retain log events for at least 365 days. This ensures that logs are available for security investigations, compliance audits, and operational troubleshooting over a meaningful period.
+
+**What’s wrong in the file**  
+The `fail` log group has `retention_in_days = 5`, which is far below the required minimum.
+
+**How to fix**  
+Change the retention to a compliant value. The simplest fix is to set it to `365` (or `0` for indefinite retention, which also satisfies the rule):
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id       = aws_kms_key.logs.arn   # also fix CKV_AWS_158
+}
+```
+
+**Note on the other resources**  
+- `pass_365` already has `retention_in_days = 365` – compliant.  
+- `pass_0` has `retention_in_days = 0` (never expire) – also compliant.  
+- `unknown` uses a variable (`var.retention`). The scanner cannot evaluate the variable, so it did **not** flag CKV_AWS_338 here. However, you must ensure that the variable’s value is either `0` or `>= 365`. Consider adding a validation block to the variable definition:
+
+```hcl
+variable "retention" {
+  type        = number
+  description = "CloudWatch log retention in days"
+  validation {
+    condition     = var.retention == 0 || var.retention >= 365
+    error_message = "Retention must be 0 (never expire) or at least 365 days."
+  }
+}
+```
+
+---
+
+### Summary of required changes
+
+| Resource          | Add `kms_key_id` | Fix retention |
+|-------------------|------------------|---------------|
+| `pass_365`        | Yes              | Already OK    |
+| `pass_0`          | Yes              | Already OK    |
+| `fail`            | Yes              | Change to ≥365 or 0 |
+| `unknown`         | Yes              | Validate variable value |
+
+After applying these changes, all four log groups will satisfy both policies.

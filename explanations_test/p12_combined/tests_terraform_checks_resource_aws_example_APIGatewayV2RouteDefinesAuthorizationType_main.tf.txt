@@ -1,0 +1,40 @@
+## Remediation Briefing: API Gateway V2 Route Authorization
+
+The scanner has raised two instances of check **CKV_AWS_309** (“Ensure API GatewayV2 routes specify an authorization type”) against the provided Terraform file. Both findings must be addressed.
+
+---
+
+### 1. CKV_AWS_309 on `aws_apigatewayv2_route.fail`
+
+- **Resource:** `aws_apigatewayv2_route.fail`  
+- **Triggering lines:** 1–4  
+  ```hcl
+  resource "aws_apigatewayv2_route" "fail" {
+    api_id    = aws_apigatewayv2_api.example.id
+    route_key = "$default"
+  }
+  ```
+- **What is wrong:** The resource does not include the `authorization_type` argument.  
+- **Why it matters:** Without an explicit authorization type, the route may default to no authentication, allowing unauthenticated access to the API endpoint. The check requires that every route explicitly declares an authorization type to prevent unintended public exposure.
+- **Remediation:** Add the `authorization_type` attribute to the resource block and set it to a value that enforces authentication (e.g., `"JWT"` or `"AWS_IAM"`). Do not leave it absent or set it to `"NONE"`. The exact value should match the authentication mechanism configured for the API.
+
+---
+
+### 2. CKV_AWS_309 on `aws_apigatewayv2_route.fail2`
+
+- **Resource:** `aws_apigatewayv2_route.fail2`  
+- **Triggering lines:** 6–10  
+  ```hcl
+  resource "aws_apigatewayv2_route" "fail2" {
+    api_id             = aws_apigatewayv2_api.example.id
+    route_key          = "$default"
+    authorization_type = "NONE"
+  }
+  ```
+- **What is wrong:** The `authorization_type` is explicitly set to `"NONE"`.  
+- **Why it matters:** `"NONE"` disables authorization entirely, meaning the route is publicly accessible without any authentication. The check treats this the same as omitting the attribute—it does not satisfy the requirement to specify a valid authorization type.
+- **Remediation:** Change the value of `authorization_type` from `"NONE"` to a type that enforces authentication, such as `"JWT"` or `"AWS_IAM"`. Ensure the chosen type aligns with the authorizer configured on the API Gateway V2 API.
+
+---
+
+Both resources must be updated so that every route explicitly requires authentication. The passing resources (`pass` and `pass2`) in the same file demonstrate the expected pattern: `authorization_type = "AWS_IAM"` or `"JWT"`.

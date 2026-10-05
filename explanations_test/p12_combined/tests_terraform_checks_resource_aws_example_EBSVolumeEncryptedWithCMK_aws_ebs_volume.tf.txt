@@ -1,0 +1,15 @@
+**Check: CKV_AWS_189**  
+**Resource: `aws_ebs_volume.fail` (lines 12–20)**
+
+**What the finding says**  
+The scanner flagged that this EBS volume is not encrypted using a customer managed KMS key (CMK).
+
+**Evidence in the file**  
+- The `aws_ebs_volume.fail` resource (lines 12–20) sets `encrypted = true` but does **not** include a `kms_key_id` argument.  
+- By contrast, the `aws_ebs_volume.pass` resource (lines 1–10) includes both `encrypted = true` and `kms_key_id = aws_kms_key.test.arn`, which satisfies the check.
+
+**What is wrong and why it matters**  
+The volume is encrypted, but it relies on the default AWS-managed key. The check requires a **customer managed key (CMK)** to be explicitly specified. Without a CMK, you lose the ability to control key rotation, access policies, and auditing granularity that a customer managed key provides.
+
+**Remediation**  
+Add a `kms_key_id` argument to the `aws_ebs_volume.fail` resource that references the ARN of a customer managed KMS key. This can be the same key used by the `pass` resource (`aws_kms_key.test.arn`) or another CMK you define. The change will make the volume use that CMK for encryption, satisfying the check.

@@ -1,0 +1,58 @@
+The scanner flagged four issues across three resources. Here’s what each finding means, backed by the exact lines in the file.
+
+---
+
+### 1. CKV_AWS_256 on `aws_dlm_lifecycle_policy.fail` (lines 60–116)
+**Check requirement:** Cross-region copy rules in a DLM policy must use a Customer Managed Key (CMK) for encryption.
+
+**What’s wrong:**  
+The `fail` resource contains two `cross_region_copy_rule` blocks.  
+- The first rule (lines 88–96) correctly sets `encrypted = true` and provides a CMK via `cmk_arn`.  
+- The second rule (lines 98–106) sets `encrypted = true` but **does not include a `cmk_arn`**.  
+
+Without `cmk_arn`, the cross-region copy will be encrypted with the default AWS managed key, not a customer-managed key. The scanner therefore flags the entire policy because at least one rule violates the requirement.
+
+**Lines to fix:** 98–106. Add `cmk_arn = aws_kms_key.dlm_cross_region_copy_cmk.arn` inside that `cross_region_copy_rule` block.
+
+---
+
+### 2. CKV_AWS_256 and CKV_AWS_255 on `aws_dlm_lifecycle_policy.fail2` (lines 118–163)
+**Check requirements:**  
+- CKV_AWS_255: Cross-region copy schedules must be encrypted.  
+- CKV_AWS_256: If encrypted, they must use a Customer Managed Key.
+
+**What’s wrong:**  
+The `fail2` resource has a single `cross_region_copy_rule` (lines 140–148). It sets `encrypted = false` (line 147) and provides no `cmk_arn`.  
+- Because `encrypted` is `false`, the copy is **not encrypted at all**, violating CKV_AWS_255.  
+- Even if encryption were enabled, the absence of `cmk_arn` would violate CKV_AWS_256.
+
+**Lines to fix:** 140–148. Change `encrypted` to `true` and add `cmk_arn = aws_kms_key.dlm_cross_region_copy_cmk.arn`.
+
+---
+
+### 3. CKV_AWS_7 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 169)
+**Check requirement:** Customer-created KMS keys must have automatic key rotation enabled.
+
+**What’s wrong:**  
+The key resource is defined as an empty block on line 169:  
+```hcl
+resource "aws_kms_key" "dlm_cross_region_copy_cmk" {}
+```
+No `enable_key_rotation` argument is present, so rotation defaults to `false`. The scanner flags this as a misconfiguration.
+
+**Line to fix:** 169. Add `enable_key_rotation = true` inside the resource block.
+
+---
+
+### 4. CKV2_AWS_64 on `aws_kms_key.dlm_cross_region_copy_cmk` (line 169)
+**Check requirement:** A KMS key must have an explicit key policy defined.
+
+**What’s wrong:**  
+The same empty resource block (line 169) contains no `policy` argument. Without a policy, the key uses the default key policy, which the scanner considers insufficiently restrictive. The check requires a user-defined policy.
+
+**Line to fix:** 169. Add a `policy` argument with a valid IAM policy document (e.g., granting access only to the DLM role).
+
+---
+
+### Reference for compliance
+The `aws_dlm_lifecycle_policy.pass` resource (lines 1–58) is not flagged because **all** its `cross_region_copy_rule` blocks include both `encrypted = true` and a `cmk_arn`. That pattern is what the failing resources should replicate.

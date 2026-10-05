@@ -1,0 +1,50 @@
+The scanner identified several misconfigurations across your ElastiCache resources. Below is a breakdown of each finding, why it matters, and the change needed to resolve it.
+
+---
+
+### Resource: `aws_elasticache_cluster.pass` (lines 3–11)
+**Finding: CKV_AWS_323 – ElastiCache clusters should not use the default subnet group**  
+- **Problem:** No `subnet_group_name` is specified, so the cluster falls back to the VPC’s default subnet group. Default subnet groups are not intended for production use and may lack proper network isolation.  
+- **Fix:** Add a `subnet_group_name` argument referencing a custom ElastiCache subnet group (e.g., `aws_elasticache_subnet_group.my_subnet_group.name`).
+
+---
+
+### Resource: `aws_elasticache_cluster.pass2` (lines 13–19)
+**Finding: CKV_AWS_134 – Redis clusters must have automatic backup turned on**  
+- **Problem:** The `snapshot_retention_limit` is not set, defaulting to `0`, which disables automatic backups. Without backups, data loss is likely in the event of a failure.  
+- **Fix:** Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5`). Optionally, also define `snapshot_window` to control when backups occur.
+
+**Finding: CKV_AWS_323 – ElastiCache clusters should not use the default subnet group**  
+- **Problem:** Same as above – no `subnet_group_name` is provided.  
+- **Fix:** Add a `subnet_group_name` argument pointing to a custom subnet group.
+
+---
+
+### Resource: `aws_elasticache_cluster.fail` (lines 21–29)
+**Finding: CKV_AWS_134 – Redis clusters must have automatic backup turned on**  
+- **Problem:** `snapshot_retention_limit` is explicitly set to `0`, disabling automatic backups.  
+- **Fix:** Change `snapshot_retention_limit` to a positive integer (e.g., `5`).
+
+**Finding: CKV_AWS_322 – Redis clusters should have auto minor version upgrades enabled**  
+- **Problem:** `auto_minor_version_upgrade` is set to `false`. This prevents the cluster from receiving important security patches and minor improvements automatically.  
+- **Fix:** Set `auto_minor_version_upgrade = true`.
+
+**Finding: CKV_AWS_323 – ElastiCache clusters should not use the default subnet group**  
+- **Problem:** No `subnet_group_name` is specified.  
+- **Fix:** Add a `subnet_group_name` argument referencing a custom subnet group.
+
+---
+
+### Resource: `aws_elasticache_cluster.memcached` (lines 33–39)
+**Finding: CKV_AWS_323 – ElastiCache clusters should not use the default subnet group**  
+- **Problem:** No `subnet_group_name` is specified.  
+- **Fix:** Add a `subnet_group_name` argument referencing a custom subnet group. (Note: The Memcached engine does not support automatic backups or minor version upgrades, so only the subnet group finding applies.)
+
+---
+
+### Summary of required changes
+1. **Create or identify a custom ElastiCache subnet group** in your VPC (if one does not already exist) and reference it via `subnet_group_name` in all four cluster resources.
+2. **Enable automatic backups** on all Redis clusters by setting `snapshot_retention_limit` to a value greater than `0`.
+3. **Enable auto minor version upgrades** on the `fail` Redis cluster by setting `auto_minor_version_upgrade = true`.
+
+These adjustments will bring your ElastiCache clusters into compliance with the flagged best-practice checks.

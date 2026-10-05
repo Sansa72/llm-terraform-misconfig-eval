@@ -1,0 +1,25 @@
+The scanner flagged the following issues in your Terraform file:
+
+- **CKV_AWS_158 (KMS encryption missing)** on all four log groups: `pass_365`, `pass_0`, `fail`, and `unknown`.  
+  Each log group must be encrypted using a customer-managed KMS key.
+
+- **CKV_AWS_338 (retention < 365 days)** on the `fail` log group.  
+  The retention period must be at least 365 days.
+
+---
+
+### How to fix each issue
+
+#### 1. Add KMS encryption to all log groups
+For every `aws_cloudwatch_log_group` resource, add the `kms_key_id` argument referencing a valid KMS key. You can either:
+
+- Create a new KMS key (e.g., `aws_kms_key.cloudwatch` and `aws_kms_alias.cloudwatch`), then reference it as `kms_key_id = aws_kms_key.cloudwatch.arn`, or  
+- Use an existing KMS key via a data source or variable.
+
+The key must be in the same region and have a policy that allows CloudWatch Logs to use it for encryption. The change applies to all four log groups: `pass_365`, `pass_0`, `fail`, and `unknown`.
+
+#### 2. Fix retention on the `fail` log group
+Change `retention_in_days` from `5` to a value of `365` or greater. For example, set it to `365` to meet the minimum requirement. If you want to keep logs indefinitely, use `0` (never expire), but note that the check requires at least 365 days, so `0` would also pass. However, the scanner only flagged the `fail` resource, so only that one needs adjustment.
+
+#### Additional note on the `unknown` log group
+The `unknown` log group uses a variable for retention. The scanner did not flag it for CKV_AWS_338, so the variable’s value is presumably already ≥365. If you want to be safe, ensure the variable’s default or assigned value meets the 365-day minimum.

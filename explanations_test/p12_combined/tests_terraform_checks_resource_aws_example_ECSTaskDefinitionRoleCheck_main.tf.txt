@@ -1,0 +1,42 @@
+**Remediation Briefing**
+
+Below are the failing checks, the evidence in the file, and the required changes.
+
+---
+
+### 1. CKV_AWS_336 on `aws_ecs_task_definition.pass` (lines 1–20)
+
+**What triggers it**  
+The container definition JSON (lines 4–16) does not include the property `"readonlyRootFilesystem": true`. The scanner interprets the absence of this setting as a writable root filesystem.
+
+**What is wrong**  
+The container’s root filesystem is not restricted to read-only, meaning the container can write to its own filesystem. This increases the risk that a compromised container could be used to tamper with its runtime environment or persist malicious changes.
+
+**Remediation**  
+Add `"readonlyRootFilesystem": true` inside the container definition object (for example, after `"essential": true` on line 10). This enforces a read-only root filesystem for the container, preventing writes unless explicitly allowed via mounted volumes.
+
+---
+
+### 2. CKV_AWS_336 on `aws_ecs_task_definition.fail` (lines 22–41)
+
+**What triggers it**  
+The container definition JSON (lines 25–37) also lacks `"readonlyRootFilesystem": true`. The same issue as above applies to this resource.
+
+**What is wrong**  
+The root filesystem is writable, which could allow a compromised container to modify its own filesystem or store malicious data.
+
+**Remediation**  
+Add `"readonlyRootFilesystem": true` to the container definition object (e.g., after `"essential": true` on line 31). This ensures the container’s root filesystem is mounted read-only.
+
+---
+
+### 3. CKV_AWS_249 on `aws_ecs_task_definition.fail` (lines 22–41)
+
+**What triggers it**  
+Lines 40 and 41 set both `execution_role_arn` and `task_role_arn` to the same value (`"aws_iam_role.example.arn"`). The check requires these two roles to be different.
+
+**What is wrong**  
+The execution role (used by the ECS agent to pull images, write logs, etc.) and the task role (used by the container application) are identical. This violates the principle of least privilege by granting the container the same permissions as the infrastructure agent, unnecessarily broadening the container’s access.
+
+**Remediation**  
+Assign distinct IAM roles. Change one of the ARNs to a different IAM role ARN—for instance, keep `execution_role_arn` as `"aws_iam_role.example.arn"` and set `task_role_arn` to a separate role ARN (e.g., `"aws_iam_role.task.arn"`). The execution role should have only the permissions needed for ECS infrastructure tasks, while the task role should have only the permissions required by the application inside the container.

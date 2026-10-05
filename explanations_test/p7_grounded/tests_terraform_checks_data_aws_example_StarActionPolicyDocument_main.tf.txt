@@ -1,0 +1,60 @@
+The scanner flagged three policy violations in the `data "aws_iam_policy_document" "fail"` and `data "aws_iam_policy_document" "no_effect"` resources. All findings stem from the use of a wildcard `"*"` in the `actions` block.
+
+---
+
+### 1. CKV_AWS_49: “Ensure no IAM policies documents allow ‘*’ as a statement’s actions”
+
+**What it means:**  
+The check prohibits using `"*"` as the sole action in a policy statement because it grants permission to perform **any** action on the specified resources. This violates the principle of least privilege.
+
+**Evidence in your file:**
+
+- **Resource `aws_iam_policy_document.fail`** (lines 49–61)  
+  The statement at line 54 explicitly sets `actions = ["*"]`.
+
+- **Resource `aws_iam_policy_document.no_effect`** (lines 63–74)  
+  The statement at line 67 also uses `actions = ["*"]`.
+
+Both policies allow every possible AWS action on the S3 bucket `my_corporate_bucket/*`. Even though the resource is scoped to a single bucket, the wildcard action is still flagged as overly broad.
+
+---
+
+### 2. CKV_AWS_107: “Ensure IAM policies does not allow credentials exposure”
+
+**What it means:**  
+This check looks for policies that could allow an identity to perform actions that expose or escalate credentials (e.g., `iam:PassRole`, `sts:AssumeRole`, `iam:CreateAccessKey`). A wildcard `"*"` in the `actions` block includes all such sensitive actions.
+
+**Evidence in your file:**
+
+- **`aws_iam_policy_document.fail`** (lines 49–61) – the `actions = ["*"]` on line 54.
+- **`aws_iam_policy_document.no_effect`** (lines 63–74) – the `actions = ["*"]` on line 67.
+
+The scanner sees `"*"` and immediately flags the potential for credentials exposure, regardless of the resource constraint. In practice, the resource is limited to an S3 bucket, so IAM actions like `iam:PassRole` would be denied because they don’t apply to S3. However, the check evaluates the policy document in isolation and cannot assume that the resource restriction will always be enforced or that the policy won’t be attached in a broader context. The finding is therefore valid as a warning.
+
+---
+
+### 3. CKV2_AWS_40: “Ensure AWS IAM policy does not allow full IAM privileges”
+
+**What it means:**  
+This check flags policies that grant unrestricted administrative access to AWS. A wildcard `"*"` in the `actions` block, combined with a wildcard or insufficiently restricted `resources`, could allow an identity to manage all IAM resources (users, roles, policies, etc.).
+
+**Evidence in your file:**
+
+- **Resource `aws_iam_policy_document.fail`** (lines 49–61) – the `actions` block contains `"*"` (line 54).  
+  The resource is `"arn:aws:s3:::my_corporate_bucket/*"`, which is not an IAM resource. However, the scanner treats any policy with `Action: "*"` as potentially granting full IAM privileges because:
+  - The policy could be attached to a role that is later updated with a broader resource.
+  - The wildcard action includes IAM management actions that, if the resource constraint were ever removed or bypassed, would give full control over IAM.
+
+The finding is raised on the policy document itself, so the resource restriction does not suppress the alert.
+
+---
+
+### Summary of the problem
+
+Both `fail` and `no_effect` policy documents use `actions = ["*"]` (lines 54 and 67). This single wildcard:
+
+- Triggers **CKV_AWS_49** because it allows all actions on the S3 bucket.
+- Triggers **CKV_AWS_107** because it includes actions that could expose credentials.
+- Triggers **CKV2_AWS_40** (on `fail` only) because it could be interpreted as allowing full IAM privileges if the resource constraint is not considered.
+
+**To fix:** Replace `"*"` with a precise list of S3 actions that the policy actually needs (e.g., `s3:GetObject`, `s3:PutObject`). For the `no_effect` resource, also explicitly set `effect = "Allow"` (or `"Deny"` as intended) to make the policy’s intent clear.

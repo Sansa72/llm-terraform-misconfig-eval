@@ -1,0 +1,147 @@
+The scanner flagged multiple security misconfigurations across three EKS cluster definitions. Below I explain each failing check, why it matters, and how to fix it in Terraform.
+
+---
+
+## Resource: `aws_eks_cluster.disabled` (lines 3–12)
+
+This cluster already disables the public endpoint (`endpoint_public_access = False`), which is good, but it fails two other checks.
+
+### 1. CKV_AWS_58 – Secrets Encryption not enabled
+**Problem:** Kubernetes stores sensitive data (Secrets, ConfigMaps) in etcd. Without encryption at rest, anyone with access to the underlying EBS volumes or etcd snapshots can read these secrets.  
+**Fix:** Add an `encryption_config` block referencing a KMS key. The key must be created separately (e.g., `aws_kms_key`).  
+**Example:**
+```hcl
+resource "aws_eks_cluster" "disabled" {
+  name     = "example"
+  role_arn = aws_iam_role.eks.arn
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+  }
+
+  vpc_config {
+    subnet_ids            = ["subnet-12345"]
+    endpoint_public_access = false
+  }
+}
+```
+
+### 2. CKV_AWS_37 – Control plane logging not enabled for all log types
+**Problem:** EKS control plane logs (API server, audit, authenticator, controller manager, scheduler) are not being sent to CloudWatch. Without these logs, you lose visibility into cluster operations, security events, and troubleshooting data.  
+**Fix:** Add an `enabled_cluster_log_types` argument listing all five log types.
+```hcl
+resource "aws_eks_cluster" "disabled" {
+  # ... other configuration ...
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+```
+
+---
+
+## Resource: `aws_eks_cluster.default` (lines 16–23)
+
+This cluster uses default settings, which trigger four checks.
+
+### 1. CKV_AWS_58 – Secrets Encryption (same as above)
+Add the `encryption_config` block with a KMS key.
+
+### 2. CKV_AWS_37 – Control plane logging (same as above)
+Add `enabled_cluster_log_types` with all five log types.
+
+### 3. CKV_AWS_39 – Public endpoint not disabled
+**Problem:** By default, `endpoint_public_access` is `true`, meaning the Kubernetes API server is reachable from the internet. This increases the attack surface.  
+**Fix:** Set `endpoint_public_access = false` inside `vpc_config`. If you must keep the public endpoint enabled (e.g., for external CI/CD tools), you must also fix the next check.
+
+### 4. CKV_AWS_38 – Public endpoint accessible to 0.0.0.0/0
+**Problem:** When the public endpoint is enabled, the default `public_access_cidrs` is `["0.0.0.0/0"]`, allowing any IP address to connect. This is a significant exposure risk.  
+**Fix:** Either disable the public endpoint entirely (preferred), or restrict `public_access_cidrs` to a specific set of trusted IP ranges (e.g., your office VPN, CI/CD runners).  
+**Example with restricted CIDRs:**
+```hcl
+vpc_config {
+  subnet_ids              = ["subnet-12345"]
+  endpoint_public_access  = true
+  public_access_cidrs     = ["203.0.113.0/24", "198.51.100.0/24"]
+}
+```
+
+**Combined fix for `default` resource (disabling public access):**
+```hcl
+resource "aws_eks_cluster" "default" {
+  name     = "example"
+  role_arn = aws_iam_role.eks.arn
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+  }
+
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+  vpc_config {
+    subnet_ids            = ["subnet-12345"]
+    endpoint_public_access = false
+  }
+}
+```
+
+---
+
+## Resource: `aws_eks_cluster.enabled` (lines 25–34)
+
+This cluster explicitly enables public access (`endpoint_public_access = True`), so it fails the same four checks as `default`.
+
+### 1. CKV_AWS_58 – Secrets Encryption
+Add `encryption_config` block with KMS key.
+
+### 2. CKV_AWS_37 – Control plane logging
+Add `enabled_cluster_log_types` with all five log types.
+
+### 3. CKV_AWS_39 – Public endpoint disabled
+**Problem:** `endpoint_public_access = True` is explicitly set.  
+**Fix:** Change to `false` unless you have a strict requirement for a public endpoint. If you must keep it public, you must also fix the next check.
+
+### 4. CKV_AWS_38 – Public endpoint accessible to 0.0.0.0/0
+**Problem:** No `public_access_cidrs` is specified, so it defaults to `["0.0.0.0/0"]`.  
+**Fix:** If you keep the endpoint public, add a restricted list of CIDRs.  
+**Example with public access restricted:**
+```hcl
+resource "aws_eks_cluster" "enabled" {
+  name     = "example"
+  role_arn = aws_iam_role.eks.arn
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+  }
+
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+  vpc_config {
+    subnet_ids            = ["subnet-12345"]
+    endpoint_public_access = true
+    public_access_cidrs   = ["10.0.0.0/8"]   # replace with your actual trusted CIDRs
+  }
+}
+```
+
+**Better approach:** Disable public access entirely unless you have a specific need for it. If you do need it, always restrict the CIDRs.
+
+---
+
+## Summary of required changes
+
+| Check | What to add/change |
+|-------|-------------------|
+| **CKV_AWS_58** (all resources) | Add `encryption_config` block with a KMS key ARN. |
+| **CKV_AWS_37** (all resources) | Add `enabled_cluster_log_types = ["api","audit","authenticator","controllerManager","scheduler"]`. |
+| **CKV_AWS_39** (default, enabled) | Set `vpc_config.endpoint_public_access = false`. |
+| **CKV_AWS_38** (default, enabled) | If public access is required, add `public_access_cidrs` with a restricted list; otherwise disable public access. |
+
+Make sure the KMS key exists and the IAM role has permissions to use it. The key policy must allow the EKS service to perform `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey*` actions.

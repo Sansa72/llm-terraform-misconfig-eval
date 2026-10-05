@@ -1,0 +1,107 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported. For each, the exact trigger, the problem, and the required change are described.
+
+---
+
+### 1. CKV_AWS_111 on `aws_iam_policy_document.pass1` (lines 25–39)
+
+**What triggers it**  
+The statement grants the write actions `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, and `dynamodb:CreateTable` on `resources = ["*"]` (line 37).
+
+**What is wrong and why it matters**  
+The policy allows write operations on **all resources** without any constraint. This violates the principle of least privilege because an identity using this policy could create or modify any Lambda function or DynamoDB table in the account.
+
+**Change needed**  
+Replace the wildcard `"*"` in the `resources` list with the specific ARNs of the resources that the policy should be able to create or modify. If the exact ARNs are not known at plan time, use a condition key (e.g., `aws:RequestedRegion`) to limit the scope, but a wildcard alone is not acceptable.
+
+---
+
+### 2. CKV_AWS_356 on `aws_iam_policy_document.pass1` (lines 25–39)
+
+**What triggers it**  
+The same statement uses `resources = ["*"]` (line 37) for actions that are restrictable (the three `Create*` actions can be scoped to specific resource ARNs).
+
+**What is wrong and why it matters**  
+Using `"*"` as the resource for restrictable actions grants unintended broad access. Even if the actions themselves are limited, the wildcard resource removes the ability to confine the effect to a particular resource or set of resources.
+
+**Change needed**  
+Replace `"*"` with explicit resource ARNs. For example, if the policy is meant to allow creating a specific function, use the function’s ARN pattern. If multiple resources are needed, list them individually; do not use a wildcard.
+
+---
+
+### 3. CKV_AWS_358 on `aws_iam_policy_document.fail1` (lines 97–110)
+
+**What triggers it**  
+The trust policy for the GitHub OIDC provider (lines 97–110) contains **no condition** that restricts the `sub` claim. The statement only declares the `AssumeRoleWithWebIdentity` action and the federated principal.
+
+**What is wrong and why it matters**  
+Without a condition on `token.actions.githubusercontent.com:sub`, any GitHub Actions workflow from any repository can assume this role. The policy does not enforce that the request comes from a specific, known GitHub organization.
+
+**Change needed**  
+Add a `condition` block that tests the `token.actions.githubusercontent.com:sub` claim. Use `StringLike` or `StringEquals` with a value that identifies your organization, such as `"repo:myOrg/*"` (to allow all repositories in the org) or a more specific repository reference.
+
+---
+
+### 4. CKV_AWS_358 on `aws_iam_policy_document.fail2` (lines 112–131)
+
+**What triggers it**  
+The condition at lines 124–128 uses `variable = "token.actions.githubusercontent.com:sub"` with `values = ["invalid"]`.
+
+**What is wrong and why it matters**  
+The value `"invalid"` does not represent a valid GitHub repository constraint. It does not restrict the role to any known organization or repository, effectively leaving the trust open.
+
+**Change needed**  
+Replace `"invalid"` with a properly formatted subject claim value that includes your organization, e.g., `"repo:myOrg/myRepo:*"` or `"repo:myOrg/*"`. The value must match the `sub` claim format that GitHub Actions sends.
+
+---
+
+### 5. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard` (lines 134–153)
+
+**What triggers it**  
+The condition at lines 147–151 uses `values = ["*"]` for the `sub` claim.
+
+**What is wrong and why it matters**  
+A literal `"*"` value matches any subject, providing no restriction at all. Any GitHub Actions workflow, regardless of organization, can assume the role.
+
+**Change needed**  
+Replace `"*"` with a value that scopes the trust to your organization, such as `"repo:myOrg/*"`. The condition must enforce that the subject belongs to a known organization.
+
+---
+
+### 6. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard-assertion` (lines 176–195)
+
+**What triggers it**  
+The condition at lines 190–194 uses `values = ["repo:*"]`.
+
+**What is wrong and why it matters**  
+The value `"repo:*"` uses a wildcard for the organization part, meaning the role can be assumed by workflows from **any** GitHub organization. The check requires that the policy restricts access to a specific, known organization.
+
+**Change needed**  
+Replace `"repo:*"` with a value that includes your actual organization name, e.g., `"repo:myOrg/*"`. The wildcard after the org is acceptable for allowing all repositories within that org, but the org itself must be explicit.
+
+---
+
+### 7. CKV_AWS_358 on `aws_iam_policy_document.fail-misused-repo` (lines 197–216)
+
+**What triggers it**  
+The condition at lines 211–215 uses `values = ["repo:myOrg*"]`.
+
+**What is wrong and why it matters**  
+The value `"repo:myOrg*"` is not a valid GitHub subject claim format. It does not correctly specify a repository constraint and will not match the actual `sub` claim sent by GitHub Actions. As a result, the condition is ineffective, and the trust is not properly restricted.
+
+**Change needed**  
+Correct the value to a valid format. To restrict to the organization `myOrg`, use `"repo:myOrg/*"`. If you need to restrict to a specific repository, use `"repo:myOrg/myRepo:*"` or a more precise ref.
+
+---
+
+### 8. CKV_AWS_358 on `aws_iam_policy_document.pass-gh-org` (lines 240–264)
+
+**What triggers it**  
+The condition at lines 252–256 uses `variable = "token.actions.githubusercontent.com/github-org:sub"` with `values = ["repo:myOrg/myRepo:ref:refs/heads/MyBranch"]`.
+
+**What is wrong and why it matters**  
+The claim `github-org:sub` is not a standard OIDC claim for GitHub Actions. The correct claim that carries the repository information is `sub` (i.e., `token.actions.githubusercontent.com:sub`). Because the policy references a non-standard claim, the intended organization restriction is not enforced; the check cannot verify that the policy restricts access to a known organization.
+
+**Change needed**  
+Change the `variable` to `"token.actions.githubusercontent.com:sub"`. The value `"repo:myOrg/myRepo:ref:refs/heads/MyBranch"` already includes the organization (`myOrg`), so after correcting the claim name the policy will properly restrict access to that specific repository and branch. If you only need org-level restriction, you may simplify the value to `"repo:myOrg/*"`.

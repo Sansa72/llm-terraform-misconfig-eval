@@ -1,0 +1,35 @@
+**CKV2_AWS_61 – Lifecycle configuration missing**  
+The current resource only declares a bucket name. It has no `lifecycle_rule` block, so objects will remain in the bucket indefinitely with no automated transition or expiration. A compliant configuration would include a `lifecycle_rule` block (e.g., to expire old versions or move objects to cheaper storage classes). The difference is the presence of a `lifecycle_rule` block inside the `aws_s3_bucket` resource. This matters because lifecycle policies help manage storage costs and enforce data retention policies, reducing the risk of stale or unneeded data accumulating.
+
+**CKV_AWS_18 – Access logging not enabled**  
+The bucket has no `logging` block, so S3 server access logs are not being delivered to any target bucket. A secure configuration would add a `logging` block specifying a `target_bucket` and `target_prefix`. The difference is the addition of the `logging` block. Access logging provides an audit trail of requests made to the bucket, which is essential for security investigations and compliance.
+
+**CKV2_AWS_62 – Event notifications not configured**  
+There are no `event_notification` blocks, meaning no alerts are triggered on object events (e.g., `s3:ObjectCreated:*`). A compliant setup would define at least one `event_notification` block with a destination (SNS, SQS, Lambda) and a set of events. The difference is the inclusion of `event_notification` blocks. Event notifications enable real-time response to changes, such as triggering malware scans or data processing pipelines, which is critical for security monitoring.
+
+**CKV2_AWS_6 – Public access block not enabled**  
+The bucket lacks a `block_public_access` configuration. A secure configuration would set all four flags (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`) to `true`. The difference is the addition of a `block_public_access` block with all options enabled. This prevents accidental public exposure of the bucket and its objects, which is a fundamental data leakage protection.
+
+**CKV_AWS_145 – Default encryption not using KMS**  
+The bucket has no `server_side_encryption_configuration` block, so objects are stored unencrypted or with Amazon S3-managed keys (SSE-S3) if bucket default encryption is later enabled via the console. The check requires SSE-KMS (customer-managed key). A compliant configuration would add a `server_side_encryption_configuration` block with a `rule` that sets `sse_algorithm = "aws:kms"` and optionally a `kms_master_key_id`. The difference is the presence of that block with KMS as the algorithm. KMS provides centralized key management, access control, and auditability, which is critical for sensitive data.
+
+**CKV_AWS_144 – Cross-region replication not enabled**  
+There is no `replication_configuration` block, so objects are not automatically replicated to another region. A compliant configuration would include a `replication_configuration` block with a `role` and `rules` pointing to a destination bucket in a different region. The difference is the addition of the replication block. Cross-region replication ensures data durability and availability in disaster recovery scenarios, and can also help meet compliance requirements for geographic redundancy.
+
+**CKV_AWS_21 – Versioning not enabled**  
+The bucket has no `versioning` block, so versioning is disabled (or suspended). A secure configuration would set `versioning { enabled = true }`. The difference is the explicit `versioning` block with `enabled = true`. Versioning protects against accidental deletion and overwrites, and is a prerequisite for many other security features like MFA delete and replication.
+
+---
+
+**Summary for the engineer**  
+The bucket `module-bucket` is defined with only a name, missing all security-relevant configurations. To satisfy the checks, you must add the following blocks to the `aws_s3_bucket` resource:
+
+- `versioning { enabled = true }` – enables object versioning.
+- `logging { target_bucket = "..." ; target_prefix = "..." }` – enables access logging to a designated bucket.
+- `server_side_encryption_configuration { rule { apply_server_side_encryption_by_default { sse_algorithm = "aws:kms" } } }` – enforces KMS encryption by default.
+- `block_public_access { block_public_acls = true ; block_public_policy = true ; ignore_public_acls = true ; restrict_public_buckets = true }` – blocks all public access.
+- `lifecycle_rule { ... }` – define at least one lifecycle rule (e.g., expire old versions).
+- `event_notification { ... }` – define at least one event notification (e.g., to an SNS topic for object creation events).
+- `replication_configuration { role = "..." ; rules { ... } }` – set up cross-region replication to a bucket in another region.
+
+Each of these additions closes a specific security gap: versioning prevents data loss, logging provides audit trails, KMS encryption ensures data confidentiality with managed keys, public access block prevents exposure, lifecycle rules manage data retention, event notifications enable real-time monitoring, and cross-region replication provides disaster recovery. Add these blocks to the existing resource definition, keeping the `bucket` name unchanged.

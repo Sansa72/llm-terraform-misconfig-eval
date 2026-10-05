@@ -1,0 +1,28 @@
+The scanner flagged a misconfiguration in the `aws_ebs_snapshot_copy` resource named `fail` (lines 12–20). The check **CKV_AWS_183** requires that EBS snapshot copies be encrypted using a **customer managed key** (CMK), not the default AWS-managed key.
+
+Here is the evidence from the file:
+
+- The flagged resource is defined on **lines 12–20**.
+- It sets `encrypted = true` (line 15), which enables encryption.
+- However, it does **not** include a `kms_key_id` argument.  
+  Compare this to the `pass` resource (lines 1–10), which explicitly provides `kms_key_id = aws_kms_key.test.arn` (line 5).
+
+When `encrypted` is `true` but no `kms_key_id` is specified, AWS automatically uses the **default EBS KMS key** (an AWS-managed key) for the copy. The check interprets this as a misconfiguration because the intent is to enforce the use of a customer managed key, which gives you control over key policies, rotation, and auditing.
+
+**What to fix:**  
+Add a `kms_key_id` argument pointing to a customer managed KMS key ARN (or a key alias) to the `fail` resource, just as the `pass` resource does. For example:
+
+```hcl
+resource "aws_ebs_snapshot_copy" "fail" {
+  source_snapshot_id = aws_ebs_snapshot.test.id
+  source_region      = data.aws_region.current.name
+  encrypted          = true
+  kms_key_id         = aws_kms_key.test.arn   # <-- add this line
+
+  tags = {
+    Name = "testAccEBSSnapshotCopyWithKMSConfig"
+  }
+}
+```
+
+No other issues are evidenced in the provided file.

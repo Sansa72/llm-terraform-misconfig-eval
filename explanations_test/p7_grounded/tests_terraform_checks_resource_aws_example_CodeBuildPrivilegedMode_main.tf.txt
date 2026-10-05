@@ -1,0 +1,58 @@
+The scanner raised three distinct checks against the resources in this file. I’ll break down each finding, the exact resource and lines involved, and what the file shows.
+
+---
+
+### CKV_AWS_314 – Missing logging configuration
+
+**Finding:** “Ensure CodeBuild project environments have a logging configuration”  
+**Flagged on:**
+- `aws_codebuild_project.pass` (lines 3–21)
+- `aws_codebuild_project.pass2` (lines 23–40)
+- `aws_codebuild_project.fail` (lines 44–60)
+
+**Evidence in the file:**  
+None of the three resources contain a `logs_config` block inside the `environment` block. The `environment` blocks are at:
+- `pass`: lines 12–17
+- `pass2`: lines 33–37
+- `fail`: lines 51–56
+
+The scanner expects a logging configuration (e.g., CloudWatch logs or S3 logs) to be explicitly defined. Because it is absent in all three, the check fails for each resource.
+
+---
+
+### CKV_AWS_316 – Privileged mode enabled
+
+**Finding:** “Ensure CodeBuild project environments do not have privileged mode enabled”  
+**Flagged on:** `aws_codebuild_project.fail` (lines 44–60)
+
+**Evidence in the file:**  
+Line 55 inside the `environment` block of the `fail` resource sets:
+```hcl
+privileged_mode = true
+```
+This directly violates the check.  
+For comparison, the `pass` resource explicitly sets `privileged_mode = false` (line 17), and `pass2` omits the attribute entirely (defaults to `false`). Neither of those is flagged by this check.
+
+---
+
+### CKV_AWS_147 – Missing CMK encryption
+
+**Finding:** “Ensure that CodeBuild projects are encrypted using CMK”  
+**Flagged on:** `aws_codebuild_project.fail` (lines 44–60)
+
+**Evidence in the file:**  
+The `fail` resource does not include an `encryption_key` argument.  
+The `pass` and `pass2` resources both specify:
+```hcl
+encryption_key = "aws_kms_key.scanner_key.id"
+```
+at lines 7 and 27 respectively. The `fail` resource has no such line, so the scanner flags it as not using a customer-managed key (CMK) for encryption.
+
+---
+
+### Summary of required fixes
+
+- **All three resources** need a `logs_config` block inside the `environment` block to satisfy CKV_AWS_314.  
+- **`aws_codebuild_project.fail`** additionally needs:
+  - `privileged_mode` set to `false` (or removed) to satisfy CKV_AWS_316.
+  - An `encryption_key` argument pointing to a KMS key to satisfy CKV_AWS_147.

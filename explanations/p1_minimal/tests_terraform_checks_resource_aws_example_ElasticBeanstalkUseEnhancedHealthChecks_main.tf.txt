@@ -1,0 +1,214 @@
+The scanner flagged two types of misconfigurations across your Elastic Beanstalk environments:
+
+1. **CKV_AWS_340 – Managed platform updates are not enabled**  
+   This requires the environment to automatically apply minor and patch updates to the underlying platform stack. Without it, your environment may run on an outdated, vulnerable platform version.
+
+2. **CKV_AWS_312 – Enhanced health reporting is not enabled**  
+   This requires the environment to provide detailed health information (enhanced health). Without it, you only get basic health metrics, which limits your ability to monitor and troubleshoot issues.
+
+Below is a breakdown of each resource, why it fails, and how to fix it.
+
+---
+
+## Common fix: enabling managed platform updates (CKV_AWS_340)
+
+Add a `setting` block with the following values to **every** environment:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+Optionally, you can also configure the update window and level, but the check only requires `ManagedActionsEnabled = "true"`.
+
+---
+
+## Common fix: enabling enhanced health reporting (CKV_AWS_312)
+
+Add a `setting` block with:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "SystemType"
+  value     = "enhanced"
+}
+```
+
+This is the canonical way to enable enhanced health reporting.  
+*(Note: The scanner may also accept `HealthStreamingEnabled = true` as seen in the `pass` resources, but the recommended approach is to set `SystemType` to `"enhanced"`.)*
+
+---
+
+## Resource-by-resource analysis
+
+### 1. `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+**Failing checks:** CKV_AWS_340, CKV_AWS_312  
+**Problem:** No `setting` blocks at all – neither managed updates nor enhanced health reporting are configured.  
+**Fix:** Add both settings blocks.
+
+```hcl
+resource "aws_elastic_beanstalk_environment" "fail" {
+  name                   = "beany"
+  application            = var.elastic_beanstalk_application_name
+  description            = var.description
+  tier                   = var.tier
+  solution_stack_name     = var.solution_stack_name
+  wait_for_ready_timeout = var.wait_for_ready_timeout
+  version_label          = var.version_label
+  tags                   = local.tags
+
+  # Enable managed platform updates
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+
+  # Enable enhanced health reporting
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"
+  }
+}
+```
+
+### 2. `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+**Failing checks:** CKV_AWS_340, CKV_AWS_312  
+**Problem:**  
+- No managed platform updates setting.  
+- Health reporting is set to `"basic"` (explicitly disables enhanced health).  
+**Fix:** Add the managed updates setting and change `SystemType` to `"enhanced"`.
+
+```hcl
+resource "aws_elastic_beanstalk_environment" "fail2" {
+  name                   = "beany"
+  application            = var.elastic_beanstalk_application_name
+  description           = var.description
+  tier                  = var.tier
+  solution_stack_name   = var.solution_stack_name
+  wait_for_ready_timeout = var.wait_for_ready_timeout
+  version_label         = var.version_label
+  tags                  = local.tags
+
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"   # was "basic"
+  }
+}
+```
+
+### 3. `aws_elastic_beanstalk_environment.fail3` (lines 28–48)
+**Failing checks:** CKV_AWS_340, CKV_AWS_312  
+**Problem:**  
+- No managed updates setting.  
+- `HealthStreamingEnabled` is set to `"False"` (disables streaming).  
+- A second `setting` block uses a bogus namespace `"guff"` and sets `SystemType` to `"basic"` – this has no effect on the real health system.  
+**Fix:** Add managed updates, remove the invalid block, and set `SystemType` to `"enhanced"` (or at least set `HealthStreamingEnabled` to `"true"`). The cleanest approach:
+
+```hcl
+resource "aws_elastic_beanstalk_environment" "fail3" {
+  name                   = "beany"
+  application            = var.elastic_beanstalk_application_name
+  description            = var.description
+  tier                   = var.tier
+  solution_stack_name    = var.solution_stack_name
+  wait_for_ready_timeout = var.wait_for_ready_timeout
+  version_label          = var.version_label
+  tags                   = local.tags
+
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"
+  }
+}
+```
+
+### 4. `aws_elastic_beanstalk_environment.fail4` (lines 50–65)
+**Failing checks:** CKV_AWS_340, CKV_AWS_312  
+**Problem:**  
+- No managed updates setting.  
+- `HealthStreamingEnabled` is set to an empty string (effectively disabled).  
+**Fix:** Add managed updates and set `SystemType` to `"enhanced"`.
+
+```hcl
+resource "aws_elastic_beanstalk_environment" "fail4" {
+  name                   = "beany"
+  application            = var.elastic_beanstalk_application_name
+  description            = var.description
+  tier                   = var.tier
+  solution_stack_name    = var.solution_stack_name
+  wait_for_ready_timeout = var.wait_for_ready_timeout
+  version_label          = var.version_label
+  tags                   = local.tags
+
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"
+  }
+}
+```
+
+### 5. `aws_elastic_beanstalk_environment.pass` (lines 68–82) and `pass2` (lines 84–98)
+**Failing check:** CKV_AWS_340 only  
+**Problem:** These environments already have enhanced health reporting enabled (via `HealthStreamingEnabled = true`), but they still lack managed platform updates.  
+**Fix:** Add the managed updates setting to both.
+
+```hcl
+resource "aws_elastic_beanstalk_environment" "pass" {
+  # ... existing configuration ...
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+  # keep the existing health streaming setting
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "HealthStreamingEnabled"
+    value     = "true"
+  }
+}
+```
+
+Do the same for `pass2`.
+
+---
+
+## Summary of required changes
+
+| Resource | Add ManagedActionsEnabled | Fix Enhanced Health |
+|----------|---------------------------|----------------------|
+| `fail`   | Yes                       | Add `SystemType = "enhanced"` |
+| `fail2`  | Yes                       | Change `SystemType` from `"basic"` to `"enhanced"` |
+| `fail3`  | Yes                       | Remove bogus setting, add `SystemType = "enhanced"` |
+| `fail4`  | Yes                       | Replace empty `HealthStreamingEnabled` with `SystemType = "enhanced"` |
+| `pass`   | Yes                       | Already compliant (keep `HealthStreamingEnabled = true`) |
+| `pass2`  | Yes                       | Already compliant (keep `HealthStreamingEnabled = true`) |
+
+After applying these changes, all environments will pass both checks.

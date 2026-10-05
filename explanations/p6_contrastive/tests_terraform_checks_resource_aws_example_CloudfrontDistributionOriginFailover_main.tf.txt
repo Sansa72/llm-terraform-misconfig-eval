@@ -1,0 +1,102 @@
+Below is a breakdown of every failing check, contrasting the current configuration with a compliant one, and explaining exactly which property must change and why. The explanation is organised by check ID, then a concise summary for the engineer.
+
+---
+
+### CKV_AWS_216 – Ensure CloudFront distribution is enabled
+**Failing resources:** `aws_cloudfront_distribution.pass`, `fail2`, `fail3`  
+**Current configuration:** `enabled = false`  
+**Compliant configuration:** `enabled = true`  
+**Difference:** Change the `enabled` attribute from `false` to `true`.  
+**Why it matters:** A disabled distribution cannot serve traffic. If the distribution is intended to be active, leaving it disabled is a misconfiguration that may indicate an unfinished deployment or a forgotten resource. The check expects distributions to be in the enabled state when they are meant to be used.
+
+---
+
+### CKV_AWS_86 – Ensure CloudFront distribution has Access Logging enabled
+**Failing resources:** all four distributions (`pass`, `fail`, `fail2`, `fail3`)  
+**Current configuration:** No `logging_config` block is present.  
+**Compliant configuration:** A `logging_config` block with at least a `bucket` (S3 bucket domain name) and `include_cookies` (e.g., `false`).  
+**Difference:** Add a `logging_config` block inside the resource.  
+**Why it matters:** Access logs record every request handled by CloudFront. Without logging, you lose visibility into traffic patterns, potential attacks, and operational issues. Logging is essential for security monitoring and incident response.
+
+---
+
+### CKV_AWS_174 – Verify CloudFront Distribution Viewer Certificate is using TLS v1.2
+**Failing resources:** all four distributions  
+**Current configuration:** The `viewer_certificate` block is either empty (`pass`, `fail2`, `fail3`) or sets `cloudfront_default_certificate = true` without a `minimum_protocol_version` (`fail`).  
+**Compliant configuration:** Inside `viewer_certificate`, set `minimum_protocol_version = "TLSv1.2_2019"` (or a higher security policy like `"TLSv1.2_2021"`).  
+**Difference:** Add the `minimum_protocol_version` attribute with a value that enforces TLS 1.2 or higher.  
+**Why it matters:** Without an explicit minimum protocol version, CloudFront may accept older, insecure protocols (SSLv3, TLS 1.0, TLS 1.1). Enforcing TLS 1.2+ prevents downgrade attacks and ensures encrypted connections meet modern security standards.
+
+---
+
+### CKV_AWS_68 – CloudFront Distribution should have WAF enabled
+**Failing resources:** all four distributions  
+**Current configuration:** No `web_acl_id` is specified.  
+**Compliant configuration:** Set `web_acl_id` to the ARN of a WAF WebACL (classic or WAFv2).  
+**Difference:** Add the `web_acl_id` attribute pointing to an existing WAF WebACL.  
+**Why it matters:** A Web Application Firewall inspects incoming requests and blocks common exploits like SQL injection and cross‑site scripting. Without a WAF, the distribution is exposed to these attacks.
+
+---
+
+### CKV_AWS_305 – Ensure CloudFront distribution has a default root object configured
+**Failing resources:** `pass`, `fail2`, `fail3`  
+**Current configuration:** No `default_root_object` is set.  
+**Compliant configuration:** `default_root_object = "index.html"` (or another appropriate object).  
+**Difference:** Add the `default_root_object` attribute with a valid object key.  
+**Why it matters:** When a viewer requests the root URL (`/`), CloudFront returns the default root object. Without it, the request may result in an error or expose a directory listing, degrading user experience and potentially leaking information.
+
+---
+
+### CKV_AWS_310 – Ensure CloudFront distributions should have origin failover configured
+**Failing resources:** `fail`, `fail2`, `fail3`  
+**Current configuration:**
+- `fail`: no `origin_group` block at all.
+- `fail2`: has an `origin_group` with `member` blocks but **no** `failover_criteria` block.
+- `fail3`: has an `origin_group` with `failover_criteria` but **no** `member` blocks.  
+**Compliant configuration:** An `origin_group` block that contains **both** a `failover_criteria` block (with `status_codes`) **and** at least two `member` blocks referencing valid origins.  
+**Difference:** Ensure the `origin_group` block is complete: it must include `failover_criteria` and the required `member` blocks.  
+**Why it matters:** Origin failover provides high availability. If the primary origin fails, CloudFront automatically routes traffic to a secondary origin. An incomplete or missing origin group means no failover is configured, leaving the distribution vulnerable to a single point of failure.
+
+---
+
+### CKV2_AWS_42 – Ensure AWS CloudFront distribution uses custom SSL certificate
+**Failing resources:** all four distributions  
+**Current configuration:** The `viewer_certificate` block either uses `cloudfront_default_certificate = true` (`fail`) or is empty (defaults to the CloudFront default certificate).  
+**Compliant configuration:** Use `acm_certificate_arn` (or `iam_certificate_id`) with `ssl_support_method = "sni-only"` and remove `cloudfront_default_certificate`.  
+**Difference:** Replace the default certificate with a custom ACM/iam certificate by setting `acm_certificate_arn` and `ssl_support_method`.  
+**Why it matters:** The default CloudFront certificate only works for the `*.cloudfront.net` domain. A custom certificate allows you to use your own domain name, provides stronger trust, and is required for many compliance frameworks.
+
+---
+
+### CKV2_AWS_32 – Ensure CloudFront distribution has a response headers policy attached
+**Failing resources:** all four distributions  
+**Current configuration:** No `response_headers_policy_id` is set in the `default_cache_behavior` (or any other cache behavior).  
+**Compliant configuration:** Add `response_headers_policy_id` referencing a managed or custom response headers policy (e.g., `aws_cloudfront_response_headers_policy.example.id`).  
+**Difference:** Add the `response_headers_policy_id` attribute to the cache behavior.  
+**Why it matters:** Response headers policies can inject security headers like `Strict-Transport-Security`, `Content-Security-Policy`, and `X-Content-Type-Options`. Without one, the distribution misses an easy opportunity to harden the application.
+
+---
+
+### CKV2_AWS_47 – Ensure AWS CloudFront attached WAFv2 WebACL is configured with AMR for Log4j Vulnerability
+**Failing resources:** all four distributions  
+**Current configuration:** No `web_acl_id` is set, so no WAFv2 WebACL is attached. Even if a WAF were attached, it might not include the Log4j managed rule.  
+**Compliant configuration:** Attach a WAFv2 WebACL (via `web_acl_id`) that includes the AWS Managed Rule group `AWSManagedRulesKnownBadInputsRuleSet` (which contains the Log4j vulnerability rule) or the specific `AWSManagedRulesLog4jRuleSet`.  
+**Difference:** Add `web_acl_id` pointing to a WAFv2 WebACL that has the Log4j managed rule enabled.  
+**Why it matters:** The Log4j vulnerability (CVE-2021-44228) allows remote code execution. A WAF rule specifically designed to block Log4j exploit attempts is a critical defence. Without it, the distribution is exposed to this well‑known attack.
+
+---
+
+## Summary for the engineer
+
+All four CloudFront distributions need the following property changes to pass every check. Apply these changes to each resource, keeping the rest of the configuration unchanged:
+
+1. **Enable the distribution** – set `enabled = true` on `pass`, `fail2`, and `fail3`.
+2. **Add access logging** – insert a `logging_config` block with a valid S3 bucket and `include_cookies` on all distributions.
+3. **Enforce TLS 1.2+** – inside `viewer_certificate`, add `minimum_protocol_version = "TLSv1.2_2019"` (or a higher policy) on all distributions.
+4. **Attach a WAF WebACL** – set `web_acl_id` to the ARN of a WAFv2 WebACL that includes the AWS Managed Rule for Log4j (`AWSManagedRulesKnownBadInputsRuleSet`). This satisfies both CKV_AWS_68 and CKV2_AWS_47.
+5. **Use a custom SSL certificate** – in `viewer_certificate`, replace `cloudfront_default_certificate = true` (or the empty block) with `acm_certificate_arn` and `ssl_support_method = "sni-only"`.
+6. **Attach a response headers policy** – add `response_headers_policy_id` to the `default_cache_behavior` (and any other cache behaviors) on all distributions.
+7. **Set a default root object** – add `default_root_object = "index.html"` (or your app’s entry point) on `pass`, `fail2`, and `fail3`.
+8. **Complete the origin failover configuration** – on `fail`, add a full `origin_group` block with `failover_criteria` and at least two `member` blocks. On `fail2`, add the missing `failover_criteria` block. On `fail3`, add the missing `member` blocks.
+
+Each change is a single attribute or block addition/modification; no other parts of the resources need to be altered.

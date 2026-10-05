@@ -1,0 +1,13 @@
+**Check: CKV_AWS_235 – Ensure copied AMIs are encrypted**  
+**Resource:** `aws_ami_copy.fail`  
+**What’s wrong:** The `encrypted` argument is explicitly set to `false`, which means the resulting AMI copy will not be encrypted at rest.  
+**Why it matters:** Unencrypted AMIs expose the underlying EBS snapshots and any derived EC2 instances to unauthorised access if the snapshots are shared or leaked. Encryption protects data confidentiality and is a baseline security requirement in most compliance frameworks.  
+**Change needed:** Set `encrypted = true` on the `aws_ami_copy.fail` resource. This will ensure that the AMI and its associated snapshots are encrypted using the default AWS-managed KMS key for the region unless a customer-managed key is also specified.
+
+**Check: CKV_AWS_236 – Ensure AMI copying uses a CMK**  
+**Resource:** `aws_ami_copy.fail`  
+**What’s wrong:** The resource does not specify a `kms_key_id`, so even if encryption were enabled, it would rely on the default AWS-managed key rather than a customer-managed CMK.  
+**Why it matters:** Using a customer-managed CMK gives you control over key rotation, access policies, and audit trails via CloudTrail. AWS-managed keys do not provide the same granularity of permissions or visibility, which can hinder security governance and incident response.  
+**Change needed:** Provide a valid KMS key ARN for the `kms_key_id` argument. The key must be a symmetric encryption CMK in the same region as the target AMI. The passing example in the same file shows `kms_key_id = aws_kms_key.copy.arn`; you can follow that pattern by defining a `aws_kms_key` resource (or referencing an existing one) and assigning its ARN here.
+
+**Interaction note:** Both checks apply to the same resource. Setting `encrypted = true` alone will not satisfy CKV_AWS_236 because the check specifically requires a customer-managed key. Therefore you must apply both changes together: enable encryption and supply a CMK ARN.

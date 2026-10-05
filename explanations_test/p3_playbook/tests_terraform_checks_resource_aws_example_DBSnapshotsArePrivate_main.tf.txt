@@ -1,0 +1,19 @@
+**Remediation Briefing: CKV_AWS_302 – Public DB Snapshot**
+
+---
+
+### 1. CKV_AWS_302 on `aws_db_snapshot.fail` (lines 12–16)
+
+**What is wrong**  
+The snapshot is configured with `shared_accounts = ["all"]`, which makes it publicly accessible to any AWS account.
+
+**Why it matters**  
+A publicly shared RDS snapshot exposes the entire database contents—potentially including sensitive customer data, credentials, or intellectual property—to anyone on the internet. This can lead to data breaches, regulatory non‑compliance (GDPR, PCI‑DSS, etc.), and reputational damage. The `"all"` value explicitly grants access to all authenticated AWS users, effectively removing all access controls.
+
+**Change needed**  
+Remove the `shared_accounts` argument entirely if the snapshot should remain private. If the snapshot must be shared with specific, trusted accounts, replace `["all"]` with a list of explicit AWS account IDs (as demonstrated by the `pass2` resource in the same file). For example, change `shared_accounts = ["all"]` to `shared_accounts = ["123456789012"]` or simply delete the line. The check will pass once the snapshot is no longer publicly accessible.
+
+---
+
+**Interactions with other fixes**  
+No other failing checks are present; the `pass` and `pass2` resources already comply. No cross‑resource interactions need to be considered for this single finding.

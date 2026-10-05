@@ -1,0 +1,115 @@
+**Remediation Briefing: CloudFront Distribution Security Misconfigurations**
+
+Below are the failing checks in the order reported by the scanner, with a description of the issue, its importance, and the required change. Where fixes interact, this is noted.
+
+---
+
+### 1. CKV_AWS_34 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** The `viewer_protocol_policy` is set to `"allow-all"` in both the default and ordered cache behaviors.  
+**Why it matters:** Allowing HTTP connections means data can be intercepted or modified in transit. Enforcing HTTPS ensures encryption and integrity between CloudFront and viewers.  
+**Change needed:** In the `default_cache_behavior` and every `ordered_cache_behavior` block, change `viewer_protocol_policy` from `"allow-all"` to `"redirect-to-https"` (to automatically redirect HTTP requests to HTTPS) or `"https-only"` (to reject HTTP requests). The variable-driven values must be updated accordingly, or the hardcoded string replaced.
+
+---
+
+### 2. CKV_AWS_86 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** No `logging_config` block is present; access logging is disabled.  
+**Why it matters:** Access logs are essential for auditing, security analysis, and compliance. Without them, you lose visibility into who is accessing your content and how.  
+**Change needed:** Add a `logging_config` block inside the distribution resource, specifying a valid S3 bucket (with appropriate permissions) and an optional prefix. For example, include `bucket = "<log-bucket>.s3.amazonaws.com"` and `include_cookies = false`. The bucket must be in the same region as the distribution or a standard logging bucket.
+
+---
+
+### 3. CKV_AWS_68 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** No `web_acl_id` is set; the distribution is not associated with an AWS WAF WebACL.  
+**Why it matters:** Without a WAF, the distribution is exposed to common web exploits like SQL injection, cross-site scripting, and bot traffic. A WAF provides a critical layer of defense.  
+**Change needed:** Add the `web_acl_id` argument to the distribution resource, pointing to the ARN of a WAFv2 WebACL (e.g., `aws_wafv2_web_acl.example.arn`). The WebACL must be in the `us-east-1` region for CloudFront. This change is a prerequisite for check CKV2_AWS_47.
+
+---
+
+### 4. CKV_AWS_310 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** No origin failover is configured; the distribution lacks an origin group with a secondary origin.  
+**Why it matters:** Origin failover improves availability by automatically routing requests to a backup origin if the primary fails (e.g., returns specific HTTP error codes). Without it, a single origin outage causes complete service disruption.  
+**Change needed:** Ensure at least two origins exist in `local.origins`. Then add an `origin_group` block that references two origin IDs and defines a `failover_criteria` with status codes (e.g., 500, 502, 503, 504). Update the default cache behavior’s `target_origin_id` to point to the origin group ID instead of a single origin.
+
+---
+
+### 5. CKV_AWS_216 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** The distribution is disabled (`enabled = false`).  
+**Why it matters:** A disabled distribution does not serve content, but the check expects it to be enabled to ensure the configuration is actively used and monitored.  
+**Change needed:** Set `enabled = true` in the `aws_cloudfront_distribution.fail` resource.
+
+---
+
+### 6. CKV_AWS_34 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** Same as item 1 – `viewer_protocol_policy` is `"allow-all"`.  
+**Why it matters:** Identical risk of unencrypted viewer connections.  
+**Change needed:** Apply the same fix as in item 1: change `viewer_protocol_policy` to `"redirect-to-https"` or `"https-only"` in all cache behaviors.
+
+---
+
+### 7. CKV_AWS_86 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** No `logging_config` block; access logging is disabled.  
+**Why it matters:** Same loss of audit trail as item 2.  
+**Change needed:** Add a `logging_config` block as described in item 2.
+
+---
+
+### 8. CKV_AWS_68 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** No `web_acl_id` is set.  
+**Why it matters:** Same exposure to web attacks as item 3.  
+**Change needed:** Add a `web_acl_id` referencing a WAFv2 WebACL, as in item 3. This also enables the fix for CKV2_AWS_47 on this resource.
+
+---
+
+### 9. CKV_AWS_310 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** No origin failover configured.  
+**Why it matters:** Same availability risk as item 4.  
+**Change needed:** Implement an origin group with failover criteria, as described in item 4.
+
+---
+
+### 10. CKV2_AWS_42 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** The distribution is using the default CloudFront SSL certificate (`cloudfront_default_certificate` is likely `true`).  
+**Why it matters:** The default certificate uses the `*.cloudfront.net` domain, which does not represent your custom domain and may not meet security policies that require organization-specific certificates.  
+**Change needed:** In the `viewer_certificate` block, set `cloudfront_default_certificate = false` and provide `acm_certificate_arn` with the ARN of a valid ACM certificate in `us-east-1`. Also set `ssl_support_method = "sni-only"` and `minimum_protocol_version` appropriately. This change is independent of the HTTPS enforcement fix (CKV_AWS_34) but both are required for a fully secure configuration.
+
+---
+
+### 11. CKV2_AWS_42 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** Same as item 10 – default CloudFront certificate in use.  
+**Why it matters:** Same policy violation.  
+**Change needed:** Apply the same viewer certificate changes as in item 10.
+
+---
+
+### 12. CKV2_AWS_32 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** No `response_headers_policy_id` is attached to the cache behaviors.  
+**Why it matters:** Response headers policies allow you to add security headers (e.g., `Strict-Transport-Security`, `X-Content-Type-Options`) to every response, improving browser-side security.  
+**Change needed:** Add the `response_headers_policy_id` attribute to the `default_cache_behavior` and each `ordered_cache_behavior`, referencing an existing policy (e.g., a managed policy like `Managed-SecurityHeadersPolicy` or a custom one). This can be done by adding a variable or hardcoding the policy ID.
+
+---
+
+### 13. CKV2_AWS_32 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** Same as item 12 – no response headers policy.  
+**Why it matters:** Same missing security headers.  
+**Change needed:** Apply the same addition of `response_headers_policy_id` as in item 12.
+
+---
+
+### 14. CKV2_AWS_47 on `aws_cloudfront_distribution.pass` (lines 1-79)
+**What is wrong:** The WAFv2 WebACL attached (once CKV_AWS_68 is fixed) does not include the AWS Managed Rules for Log4j vulnerability.  
+**Why it matters:** The Log4j vulnerability (CVE-2021-44228) is a critical remote code execution flaw. AWS provides a managed rule group specifically designed to block exploit attempts. Without it, the distribution is unprotected against this known threat.  
+**Change needed:** After associating a WAFv2 WebACL (fix for CKV_AWS_68), ensure that WebACL contains a rule that uses the AWS managed rule group `AWSManagedRulesLog4jRuleSet` (or `AWSManagedRulesKnownBadInputsRuleSet` which includes Log4j rules). This requires modifying the WAFv2 WebACL resource (not shown in the provided file) to add a `rule` block with `override_action` or `count` as needed, referencing the managed rule group. The distribution resource itself only needs the correct `web_acl_id`.
+
+---
+
+### 15. CKV2_AWS_47 on `aws_cloudfront_distribution.fail` (lines 81-159)
+**What is wrong:** Same as item 14 – the attached WAFv2 WebACL lacks the Log4j managed rule group.  
+**Why it matters:** Same vulnerability exposure.  
+**Change needed:** Apply the same WAFv2 WebACL configuration change as in item 14, ensuring the WebACL referenced by this distribution’s `web_acl_id` includes the Log4j rule group.
+
+---
+
+**Interaction notes:**
+- Fixing **CKV_AWS_68** (adding a WAF WebACL) is a prerequisite for **CKV2_AWS_47**; the WebACL must then be configured with the Log4j rule group.
+- **CKV_AWS_34** (HTTPS enforcement) and **CKV2_AWS_42** (custom SSL certificate) are independent but both contribute to transport security. You can enforce HTTPS with the default certificate, but a custom certificate is required to pass CKV2_AWS_42.
+- **CKV_AWS_310** (origin failover) requires at least two origins; if `local.origins` currently has only one, you must add a second origin before creating the origin group.

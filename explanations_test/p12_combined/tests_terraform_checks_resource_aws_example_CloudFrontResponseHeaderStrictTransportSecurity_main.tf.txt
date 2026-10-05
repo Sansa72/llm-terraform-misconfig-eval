@@ -1,0 +1,64 @@
+**Remediation Briefing: CKV_AWS_259 – CloudFront Strict Transport Security**
+
+Below are the three failing checks, in the order they appear in the scanner output. Each section identifies the resource, the exact lines that trigger the failure, the problem, and the change required.
+
+---
+
+### 1. `CKV_AWS_259` on `aws_cloudfront_response_headers_policy.no_security_headers_config`
+
+- **Triggering lines:** 18–20  
+  ```terraform
+  resource "aws_cloudfront_response_headers_policy" "no_security_headers_config" {
+    name    = "test"
+  }
+  ```
+- **What is wrong:** The resource has no `security_headers_config` block at all, so it cannot define any Strict-Transport-Security (HSTS) settings.  
+- **Why it matters:** Without an HSTS header, browsers will not be instructed to always use HTTPS for this distribution’s domain, leaving connections vulnerable to downgrade attacks.  
+- **Change needed:** Add a `security_headers_config` block containing a `strict_transport_security` block. The `strict_transport_security` block must set `access_control_max_age_sec` to at least `31536000` (one year), and set `include_subdomains`, `preload`, and `override` to `true`, matching the pattern shown in the `pass` resource (lines 3–14).
+
+---
+
+### 2. `CKV_AWS_259` on `aws_cloudfront_response_headers_policy.no_strict_transport_security`
+
+- **Triggering lines:** 22–30  
+  ```terraform
+  resource "aws_cloudfront_response_headers_policy" "no_strict_transport_security" {
+    name    = "test"
+
+    security_headers_config {
+      content_type_options {
+        override = true
+      }
+    }
+  }
+  ```
+- **What is wrong:** The `security_headers_config` block exists but contains only a `content_type_options` block; the required `strict_transport_security` block is missing.  
+- **Why it matters:** The policy will not emit a Strict-Transport-Security header, so browsers receive no instruction to enforce HTTPS, leaving the same downgrade risk as above.  
+- **Change needed:** Inside the existing `security_headers_config` block, add a `strict_transport_security` block with the same required values: `access_control_max_age_sec = 31536000`, `include_subdomains = true`, `preload = true`, `override = true`. The existing `content_type_options` block can remain unchanged.
+
+---
+
+### 3. `CKV_AWS_259` on `aws_cloudfront_response_headers_policy.incorrect_strict_transport_security`
+
+- **Triggering lines:** 32–43  
+  ```terraform
+  resource "aws_cloudfront_response_headers_policy" "incorrect_strict_transport_security" {
+    name    = "test"
+
+    security_headers_config {
+      strict_transport_security {
+        access_control_max_age_sec = 1
+        include_subdomains         = true
+        override                   = true
+        preload                    = true
+      }
+    }
+  }
+  ```
+- **What is wrong:** The `strict_transport_security` block is present, but `access_control_max_age_sec` is set to `1` second. The check requires a value that enforces HSTS for a meaningful duration (the passing resource uses `31536000`).  
+- **Why it matters:** A max-age of 1 second effectively disables HSTS, because the browser will only remember the HTTPS requirement for one second after the first visit. This provides no real protection against SSL-stripping attacks.  
+- **Change needed:** Change `access_control_max_age_sec` from `1` to `31536000` (or a value at least that high). The other attributes (`include_subdomains`, `preload`, `override`) are already correctly set to `true` and do not need modification.
+
+---
+
+All three resources must end up with a `strict_transport_security` block that mirrors the configuration in the `pass` resource (lines 7–12) to satisfy the check.

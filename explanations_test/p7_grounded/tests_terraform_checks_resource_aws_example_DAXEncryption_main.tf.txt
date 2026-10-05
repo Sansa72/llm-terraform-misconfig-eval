@@ -1,0 +1,46 @@
+The scanner flagged two distinct misconfigurations across your three DAX cluster resources. Here’s what each finding means, backed by the exact lines in your file.
+
+---
+
+### 1. CKV_AWS_239 – DAX cluster endpoint is not using TLS
+
+**What it checks:**  
+The DAX cluster endpoint should be configured to require TLS (HTTPS) for data in transit. By default, the endpoint uses plaintext.
+
+**Evidence in your file:**  
+None of the three resources define the `cluster_endpoint_encryption_type` argument. The scanner therefore flags all of them:
+
+- **`aws_dax_cluster.enabled`** (lines 3–12) – missing TLS configuration.
+- **`aws_dax_cluster.default`** (lines 16–21) – missing TLS configuration.
+- **`aws_dax_cluster.disabled`** (lines 23–32) – missing TLS configuration.
+
+The Terraform `aws_dax_cluster` resource supports the argument `cluster_endpoint_encryption_type`. When omitted, it defaults to `NONE`, meaning the endpoint accepts unencrypted connections. The scanner expects `TLS`.
+
+---
+
+### 2. CKV_AWS_47 – DAX cluster is not encrypted at rest
+
+**What it checks:**  
+DAX clusters should have server-side encryption at rest enabled. The default is unencrypted.
+
+**Evidence in your file:**  
+Two resources fail this check:
+
+- **`aws_dax_cluster.default`** (lines 16–21) – The `server_side_encryption` block is completely absent. Because the default is `enabled = false`, the cluster is unencrypted.
+- **`aws_dax_cluster.disabled`** (lines 23–32) – The `server_side_encryption` block is present but explicitly sets `enabled = False` (line 30), leaving the cluster unencrypted.
+
+The resource `aws_dax_cluster.enabled` (lines 3–12) passes this check because it includes `server_side_encryption { enabled = True }` (line 9).
+
+---
+
+### Summary of required changes
+
+| Resource | Check ID | Issue | Fix |
+|----------|----------|-------|-----|
+| `aws_dax_cluster.enabled` | CKV_AWS_239 | No TLS on endpoint | Add `cluster_endpoint_encryption_type = "TLS"` |
+| `aws_dax_cluster.default` | CKV_AWS_239 | No TLS on endpoint | Add `cluster_endpoint_encryption_type = "TLS"` |
+| `aws_dax_cluster.default` | CKV_AWS_47 | No encryption at rest | Add `server_side_encryption { enabled = true }` |
+| `aws_dax_cluster.disabled` | CKV_AWS_239 | No TLS on endpoint | Add `cluster_endpoint_encryption_type = "TLS"` |
+| `aws_dax_cluster.disabled` | CKV_AWS_47 | Encryption at rest explicitly disabled | Change `enabled = False` to `enabled = True` |
+
+All findings are based solely on the provided file and scanner output. No other resources or configurations are implicated.

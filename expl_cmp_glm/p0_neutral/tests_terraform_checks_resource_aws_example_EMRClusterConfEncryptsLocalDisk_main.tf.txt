@@ -1,0 +1,35 @@
+### 1. What the misconfiguration is
+Checkov flagged multiple gaps across the three `aws_emr_security_configuration` resources:
+- **In-transit encryption disabled**: All three configurations (`pass`, `fail`, `fail2`) set `"EnableInTransitEncryption": false`.
+- **Inadequate S3 at-rest encryption**: The `pass` and `fail` resources use `"SSE-S3"` for S3 encryption. Checkov (CKV_AWS_171) requires `"SSE-KMS"` (customer-managed keys). The `fail2` resource disables at-rest encryption entirely (`"EnableAtRestEncryption": false`).
+- **Missing EBS and local disk encryption**: The `fail` and `fail2` resources omit the `LocalDiskEncryptionConfiguration` block entirely, leaving cluster volumes unencrypted.
+
+### 2. Why it matters (Security risk / Blast radius)
+- **In-transit risk**: With in-transit encryption disabled, data moving between EMR nodes is sent in plaintext. If the network traffic is intercepted, the attacker can read the processed data.
+- **At-rest risk (S3)**: Using `SSE-S3` relies on AWS-managed keys. Without `SSE-KMS`, you lose the ability to enforce custom IAM key policies, strict access controls, detailed CloudTrail auditing, and automated key rotation. 
+- **At-rest risk (EBS/Local Disks)**: Missing EBS and local disk encryption means data stored on the cluster's volumes is plaintext. If an unauthorized actor gains access to the underlying storage, the data is fully exposed.
+
+### 3. How to fix it safely
+Update the JSON configuration in each resource to enforce encryption in transit and at rest using SSE-KMS:
+
+```json
+{
+  "EncryptionConfiguration": {
+    "AtRestEncryptionConfiguration": {
+      "S3EncryptionConfiguration": {
+        "EncryptionMode": "SSE-KMS",
+        "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+      },
+      "LocalDiskEncryptionConfiguration": {
+        "EnableEbsEncryption": true,
+        "EncryptionKeyProviderType": "AwsKms",
+        "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+      }
+    },
+    "EnableInTransitEncryption": true,
+    "EnableAtRestEncryption": true
+  }
+}
+```
+
+*Note: You will also need to add an `InTransitEncryptionConfiguration` block (typically defining a TLS certificate provider) to satisfy EMR's requirements when `EnableInTransitEncryption` is set to `true`.*

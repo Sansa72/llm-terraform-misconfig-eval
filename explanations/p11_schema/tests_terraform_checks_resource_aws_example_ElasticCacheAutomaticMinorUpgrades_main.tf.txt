@@ -1,0 +1,74 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_323",
+      "resource": "aws_elasticache_cluster.pass",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"pass\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n  auto_minor_version_upgrade = true\n  snapshot_retention_limit = 5\n}"
+      ],
+      "risk": "The cluster does not specify a custom subnet group, so it will be deployed in the default VPC subnet group, which may not provide the intended network isolation or security controls.",
+      "remediation": "Add a subnet_group_name argument referencing a custom ElastiCache subnet group to ensure the cluster is placed in a controlled network environment.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_134",
+      "resource": "aws_elasticache_cluster.pass2",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"pass2\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n}"
+      ],
+      "risk": "The snapshot_retention_limit is not set, which means automatic backups are not enabled, risking permanent data loss in the event of a failure.",
+      "remediation": "Set snapshot_retention_limit to a value greater than 0 to enable automatic backups for the Redis cluster.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_323",
+      "resource": "aws_elasticache_cluster.pass2",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"pass2\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n}"
+      ],
+      "risk": "The cluster does not specify a custom subnet group, so it will be deployed in the default VPC subnet group, which may not meet the organization's network security requirements.",
+      "remediation": "Add a subnet_group_name argument referencing a custom ElastiCache subnet group to ensure the cluster is placed in a controlled network environment.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_134",
+      "resource": "aws_elasticache_cluster.fail",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"fail\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n  auto_minor_version_upgrade = false\n  snapshot_retention_limit = 0\n}"
+      ],
+      "risk": "The snapshot_retention_limit is set to 0, which disables automatic backups and could lead to data loss if the cluster fails.",
+      "remediation": "Set snapshot_retention_limit to a value greater than 0 to enable automatic backups.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_322",
+      "resource": "aws_elasticache_cluster.fail",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"fail\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n  auto_minor_version_upgrade = false\n  snapshot_retention_limit = 0\n}"
+      ],
+      "risk": "Auto minor version upgrade is explicitly set to false, preventing the cluster from automatically receiving important security patches and bug fixes.",
+      "remediation": "Set auto_minor_version_upgrade to true to allow the cluster to automatically receive minor version upgrades.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_323",
+      "resource": "aws_elasticache_cluster.fail",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"fail\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n  auto_minor_version_upgrade = false\n  snapshot_retention_limit = 0\n}"
+      ],
+      "risk": "The cluster does not specify a custom subnet group, so it will use the default VPC subnet group, potentially exposing it to unintended network access.",
+      "remediation": "Add a subnet_group_name argument with a custom ElastiCache subnet group to ensure proper network segmentation.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_323",
+      "resource": "aws_elasticache_cluster.memcached",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"memcached\" {\n  cluster_id           = \"cluster\"\n  engine               = \"memcached\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.memcached1.6 \"\n}"
+      ],
+      "risk": "The cluster does not specify a custom subnet group, so it will be placed in the default VPC subnet group, which may not provide adequate network isolation.",
+      "remediation": "Add a subnet_group_name argument referencing a custom ElastiCache subnet group to control the network placement of the cluster.",
+      "confidence": "high"
+    }
+  ]
+}

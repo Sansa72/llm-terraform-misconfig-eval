@@ -1,0 +1,69 @@
+The scanner flagged two security misconfigurations in the `aws_elasticache_cluster.fail` resource. Both are straightforward to fix, and the adjacent `aws_elasticache_cluster.pass` resource already demonstrates the correct patterns.
+
+### 1. CKV_AWS_134: Automatic backups are disabled
+
+**What the check means**  
+The policy requires that Amazon ElastiCache Redis clusters have automatic backups enabled. This is controlled by the `snapshot_retention_limit` argument. A value of `0` disables automatic snapshots entirely.
+
+**Why it matters**  
+Without automatic backups, you lose the ability to recover the cluster’s data after a failure, accidental deletion, or corruption. Redis is often used as a primary data store or cache with critical state; losing that data can cause extended downtime or permanent data loss. Enabling backups ensures you can restore to a point in time within the retention window.
+
+**What’s wrong in this file**  
+In the `fail` resource (lines 13–20), `snapshot_retention_limit` is set to `0`:
+
+```hcl
+resource "aws_elasticache_cluster" "fail" {
+  ...
+  snapshot_retention_limit = 0
+}
+```
+
+The `pass` resource correctly sets it to `5` (days), which satisfies the policy.
+
+**How to fix it**  
+Change `snapshot_retention_limit` to a positive integer between 1 and 35 (the allowed range for Redis). For example, to match the passing resource:
+
+```hcl
+snapshot_retention_limit = 5
+```
+
+If you need a different retention period, choose a value that meets your recovery point objective (RPO). Also ensure that the cluster’s `engine` is `redis` (it is) because this setting is only applicable to Redis clusters.
+
+---
+
+### 2. CKV_AWS_323: Default subnet group in use
+
+**What the check means**  
+The policy requires that ElastiCache clusters do not rely on the VPC’s default subnet group. A default subnet group is automatically created by AWS and contains every subnet in the VPC, including public ones. By not specifying a custom subnet group, the cluster falls back to this default.
+
+**Why it matters**  
+ElastiCache clusters should be placed in private subnets to prevent direct internet exposure and to limit network access to only the application tiers that need it. The default subnet group often includes public subnets, which could inadvertently allow the cluster to be reachable from the internet if a public subnet is selected at launch. Even if the security group restricts access, using a dedicated subnet group is a defense-in-depth measure that ensures the cluster’s network placement is intentional and isolated.
+
+**What’s wrong in this file**  
+The `fail` resource does not include a `subnet_group_name` argument:
+
+```hcl
+resource "aws_elasticache_cluster" "fail" {
+  cluster_id           = "cluster"
+  engine               = "redis"
+  node_type            = "cache.m5.large"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  snapshot_retention_limit = 0
+}
+```
+
+Because it’s omitted, AWS will assign the default subnet group of the VPC. The `pass` resource explicitly sets `subnet_group_name = "mysubnet"`, which avoids the default.
+
+**How to fix it**  
+Add a `subnet_group_name` argument that references a pre‑created, custom subnet group containing only your private subnets. For instance:
+
+```hcl
+subnet_group_name = "mysubnet"
+```
+
+If you don’t already have a suitable subnet group, create one (e.g., via `aws_elasticache_subnet_group`) that includes the private subnets of your VPC, then reference it here.
+
+---
+
+Both fixes are one‑line additions or changes. After applying them, the `fail` resource will meet the same security baseline as the `pass` resource.

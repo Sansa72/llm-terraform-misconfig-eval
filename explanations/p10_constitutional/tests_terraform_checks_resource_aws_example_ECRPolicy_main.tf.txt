@@ -1,0 +1,44 @@
+The scanner identified the following misconfigurations in the provided Terraform file. Each finding is tied to a specific resource and rule, and every remediation points to the exact location in the file that must change.
+
+---
+
+**CKV_AWS_163 – ECR image scanning on push is not enabled**  
+The following repository resources do not include an `image_scanning_configuration` block, so `scan_on_push` defaults to `false`:
+- `aws_ecr_repository.public` (lines 5‑7)
+- `aws_ecr_repository.private` (lines 40‑42)
+- `aws_ecr_repository.empty` (lines 78‑80)
+- `aws_ecr_repository.conditional_ok` (lines 87‑89)
+- `aws_ecr_repository.conditional_bad` (lines 127‑129)
+
+**CKV_AWS_136 – ECR repositories are not encrypted with KMS**  
+The same five repository resources lack an `encryption_configuration` block, so they use the default AES256 encryption instead of KMS.
+
+**CKV_AWS_51 – ECR image tags are mutable**  
+The same five repository resources do not set `image_tag_mutability`, which defaults to `MUTABLE`.
+
+**CKV_AWS_32 – ECR repository policy is set to public**  
+Two repository policies grant public access:
+- `aws_ecr_repository_policy.fail` (lines 9‑38): The policy statement has `"Principal": "*"` with no condition, making the repository accessible to anyone.
+- `aws_ecr_repository_policy.fail_conditional` (lines 131‑165): The policy statement also uses `"Principal": "*"`. The condition key `"aws:username"` is not a valid condition key for ECR repository policies, so the scanner treats the condition as ineffective and the policy as public.
+
+---
+
+**Remediation (changes to the file)**
+
+For each of the five repository resources (`public`, `private`, `empty`, `conditional_ok`, `conditional_bad`), add the following inside the respective resource block (at the lines indicated above):
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+encryption_configuration {
+  encryption_type = "KMS"
+}
+image_tag_mutability = "IMMUTABLE"
+```
+This directly resolves CKV_AWS_163, CKV_AWS_136, and CKV_AWS_51 on those resources.
+
+For the public policies:
+- In `aws_ecr_repository_policy.fail` (lines 9‑38), change the `Principal` from `"*"` to a specific set of AWS principals (as demonstrated in `aws_ecr_repository_policy.pass` on lines 44‑73) or add a valid condition that restricts access (e.g., `aws:PrincipalOrgID` as in `aws_ecr_repository_policy.pass_conditional` on lines 93‑126).
+- In `aws_ecr_repository_policy.fail_conditional` (lines 131‑165), replace the condition key `"aws:username"` with a supported key such as `"aws:PrincipalOrgID"` or `"aws:PrincipalArn"`, or change the `Principal` to specific ARNs. The existing policy `pass_conditional` shows a valid condition‑based restriction.
+
+These changes address all flagged findings.

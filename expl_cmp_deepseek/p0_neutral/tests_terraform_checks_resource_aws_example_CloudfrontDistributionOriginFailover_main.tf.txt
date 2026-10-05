@@ -1,0 +1,106 @@
+The file defines four CloudFront distributions (`pass`, `fail`, `fail2`, `fail3`). Checkov grouped the findings into these categories:
+
+---
+
+### 1. Disabled distribution (`CKV_AWS_216`)
+- **Affected:** `pass` (line 1–44), `fail2` (83–122), `fail3` (124–160) have `enabled = false`.
+- **Risk:** The distributions will not serve any traffic. This is primarily an availability issue; if these are intended to be active, the service is down.
+- **Fix:** Set `enabled = true` only if the distribution should be active. Verify the origin and default cache behavior are correct before enabling.
+
+---
+
+### 2. Access logging (`CKV_AWS_86`)
+- **Affected:** All four distributions (`pass`, `fail`, `fail2`, `fail3`) do not define a `logging_config` block.
+- **Risk:** No request logs are stored. This removes visibility into traffic, abuse patterns, and forensic evidence after a security incident.
+- **Fix:** Add a `logging_config` block to each distribution, specifying an S3 bucket and optional prefix. The S3 bucket must grant CloudFront the necessary write permissions (via ACL or bucket policy).
+
+```hcl
+logging_config {
+  bucket = aws_s3_bucket.logs.bucket_regional_domain_name
+  prefix = "cloudfront/"
+}
+```
+
+---
+
+### 3. TLS minimum protocol version (`CKV_AWS_174`)
+- **Affected:** All four distributions. `viewer_certificate` is empty (`pass`, `fail2`, `fail3`) or sets only `cloudfront_default_certificate = true` (`fail`) without a `minimum_protocol_version`.
+- **Risk:** CloudFront may accept outdated TLS versions (1.0/1.1), which are vulnerable to downgrade attacks and do not meet modern security standards.
+- **Fix:** In each `viewer_certificate`, set `minimum_protocol_version = "TLSv1.2_2021"` (or at least `"TLSv1.2"`). If using a custom ACM certificate, also provide `acm_certificate_arn` and `ssl_support_method = "sni-only"`.
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+---
+
+### 4. WAF association (`CKV_AWS_68`)
+- **Affected:** All four distributions. None set `web_acl_id`.
+- **Risk:** The distributions are not protected by AWS WAF. Common web attacks (SQL injection, XSS, bot scraping) can reach the origin directly.
+- **Fix:** Associate a WAF WebACL. For WAFv2, use the ARN of a WebACL created in `us-east-1` (required for CloudFront).
+
+```hcl
+web_acl_id = aws_wafv2_web_acl.example.arn
+```
+
+---
+
+### 5. Default root object (`CKV_AWS_305`)
+- **Affected:** `pass`, `fail2`, `fail3` do not set `default_root_object`. (`fail` already has `index.html`.)
+- **Risk:** Requests to the root path (`/`) may return an error or access denied instead of the intended index document.
+- **Fix:** Add `default_root_object = "index.html"` (or the appropriate file) to those distributions.
+
+---
+
+### 6. Origin failover (`CKV_AWS_310`)
+- **Affected:**
+  - `fail`: has only a single origin, no origin group.
+  - `fail2`: has an `origin_group` but is missing the `failover_criteria` block.
+  - `fail3`: has an `origin_group` with `failover_criteria` but no `member` blocks.
+- **Risk:** If the primary origin fails, there is no automatic failover to a secondary origin, causing downtime.
+- **Fix:** Configure a complete origin group:
+  - Define both primary and failover origins.
+  - In `origin_group`, include both `member` blocks and a `failover_criteria` block with relevant status codes (e.g., 403, 404, 500, 502).
+  - Point the cache behavior’s `target_origin_id` to the `origin_id` of the origin group.
+
+The `pass` resource already demonstrates the correct pattern.
+
+---
+
+### 7. Custom SSL certificate (`CKV2_AWS_42`)
+- **Affected:** All four distributions use the default CloudFront certificate (`*.cloudfront.net`).
+- **Risk:** If a custom domain (e.g., `example.com`) is used, the default certificate will not match, causing browser certificate warnings. Custom certificates also allow control over renewal and revocation.
+- **Fix:** Use an ACM certificate in `us-east-1` and reference it in `viewer_certificate`:
+
+```hcl
+viewer_certificate {
+  acm_certificate_arn      = aws_acm_certificate.example.arn
+  ssl_support_method       = "sni-only"
+  minimum_protocol_version = "TLSv1.2_2021"
+}
+```
+
+---
+
+### 8. Response headers policy (`CKV2_AWS_32`)
+- **Affected:** All four distributions. None attach a response headers policy via `response_headers_policy_id` in their cache behavior(s).
+- **Risk:** Security-relevant HTTP headers (e.g., HSTS, X-Content-Type-Options, X-Frame-Options) are not added. Clients are more exposed to clickjacking, MIME sniffing, and protocol downgrade attacks.
+- **Fix:** Create an `aws_cloudfront_response_headers_policy` with the desired security headers and attach it to the `default_cache_behavior` (and any other cache behaviors) using `response_headers_policy_id`.
+
+---
+
+### 9. WAFv2 with Log4j AMR (`CKV2_AWS_47`)
+- **Affected:** All four distributions. None have a WAFv2 WebACL, and therefore none include AWS Managed Rules (AMR) for the Log4j vulnerability.
+- **Risk:** The Log4j RCE vulnerability (CVE-2021-44228) could be exploited through HTTP requests if the origin is vulnerable.
+- **Fix:** Attach a WAFv2 WebACL that includes the relevant AWS Managed Rules rule group for Log4j (e.g., the dedicated Log4j rule group or the “Known bad inputs” rule set). The WebACL must be in `us-east-1` and referenced via `web_acl_id`.
+
+---
+
+### Safe rollout
+- Apply changes in a non-production environment first.
+- For logging, ensure the S3 bucket permissions are correct to avoid distribution update failures.
+- For WAF and ACM, create resources in `us-east-1` (required for CloudFront).
+- If enabling a previously disabled distribution, confirm that the origin and cache behavior are correct before switching traffic.

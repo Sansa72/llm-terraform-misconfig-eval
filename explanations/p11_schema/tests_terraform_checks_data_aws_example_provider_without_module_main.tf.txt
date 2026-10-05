@@ -1,0 +1,179 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV2_AWS_61",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without a lifecycle configuration, objects may accumulate indefinitely, increasing storage costs and management complexity.",
+      "remediation": "Add an aws_s3_bucket_lifecycle_configuration resource to define rules that transition objects to cheaper storage classes or expire them after a certain period.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_61",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without a lifecycle configuration, objects may accumulate indefinitely, increasing storage costs and management overhead.",
+      "remediation": "Add an aws_s3_bucket_lifecycle_configuration resource to define rules that transition objects to cheaper storage classes or expire them after a certain period.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_18",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without access logging enabled, there is no record of requests made to the bucket, making security audits and incident investigations difficult.",
+      "remediation": "Add an aws_s3_bucket_logging resource to enable server access logging, specifying a target bucket and prefix for log delivery.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_18",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without access logging enabled, there is no record of requests to the bucket, hindering security audits and incident response.",
+      "remediation": "Add an aws_s3_bucket_logging resource to enable server access logging, specifying a target bucket and log prefix.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_62",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without event notifications, real-time alerts on object changes are not sent, reducing the ability to trigger automated workflows or detect security incidents promptly.",
+      "remediation": "Add an aws_s3_bucket_notification resource to configure event notifications for specific bucket events, such as object creation or deletion.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_62",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without event notifications, real-time alerts on object changes are not sent, reducing the ability to trigger automated workflows or detect security incidents promptly.",
+      "remediation": "Add an aws_s3_bucket_notification resource to configure event notifications for specific bucket events, such as object creation or deletion.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_6",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without a public access block, the bucket could be inadvertently exposed to the public internet, leading to unauthorized data access.",
+      "remediation": "Add an aws_s3_bucket_public_access_block resource to block public ACLs and public bucket policies, ensuring the bucket and its objects are not publicly accessible.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_6",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without a public access block, the bucket could be inadvertently exposed to the public internet, risking unauthorized data access.",
+      "remediation": "Add an aws_s3_bucket_public_access_block resource to block public ACLs and public bucket policies, preventing public exposure.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_145",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without default KMS encryption, data at rest may not be protected with customer-managed keys, reducing control over encryption and key management.",
+      "remediation": "Add a server_side_encryption_configuration block to the bucket resource with a rule that uses aws:kms and specifies a KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_145",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without default KMS encryption, data at rest may not be protected with customer-managed keys, reducing control over encryption and key management.",
+      "remediation": "Add a server_side_encryption_configuration block to the bucket resource with a rule that uses aws:kms and specifies a KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_144",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without cross-region replication, data is not automatically replicated to another region, reducing durability and availability in disaster recovery scenarios.",
+      "remediation": "Add an aws_s3_bucket_replication_configuration resource to replicate objects to a bucket in a different AWS region, ensuring geographic redundancy.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_144",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without cross-region replication, data is not automatically replicated to another region, reducing durability and availability in disaster scenarios.",
+      "remediation": "Add an aws_s3_bucket_replication_configuration resource to replicate objects to a bucket in a different AWS region, ensuring geographic redundancy.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_21",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{",
+        "  bucket = \"bucket\"",
+        "  provider = aws.usw1",
+        "}"
+      ],
+      "risk": "Without versioning enabled, objects can be accidentally overwritten or deleted without the ability to recover previous versions, leading to data loss.",
+      "remediation": "Add a versioning block inside the bucket resource with enabled = true to enable versioning.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_21",
+      "resource": "aws_s3_bucket.bucket_2",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket_2\" {",
+        "  bucket = \"bucket-2\"",
+        "}"
+      ],
+      "risk": "Without versioning enabled, objects can be accidentally overwritten or deleted without the ability to recover previous versions, risking data loss.",
+      "remediation": "Add a versioning block inside the bucket resource with enabled = true to enable versioning.",
+      "confidence": "high"
+    }
+  ]
+}

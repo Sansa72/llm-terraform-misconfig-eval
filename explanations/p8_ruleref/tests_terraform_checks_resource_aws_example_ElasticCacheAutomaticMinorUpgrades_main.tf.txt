@@ -1,0 +1,87 @@
+The scanner flagged several security misconfigurations across your ElastiCache resources. Even the clusters named “pass” and “pass2” are not fully compliant. Below I break down each failing check, why it matters, and exactly what needs to change in this Terraform file.
+
+---
+
+### CKV_AWS_323 – Default subnet group in use
+**Affected resources:**  
+`aws_elasticache_cluster.pass` (line 3)  
+`aws_elasticache_cluster.pass2` (line 13)  
+`aws_elasticache_cluster.fail` (line 21)  
+`aws_elasticache_cluster.memcached` (line 33)
+
+**What the rule requires**  
+ElastiCache clusters must not use the default subnet group. When no `subnet_group_name` is specified, AWS places the cluster in the default subnet group of the VPC (often the default VPC). Default subnet groups typically span all Availability Zones in a region and may reside in a VPC with overly permissive routing and network ACLs. This violates the principle of least privilege and can expose the cache to unintended network access.
+
+**What’s wrong in this file**  
+None of the four `aws_elasticache_cluster` resources define a `subnet_group_name`. Consequently, every cluster will be launched into the default subnet group.
+
+**How to fix it**  
+Create a custom subnet group (using `aws_elasticache_subnet_group`) that contains only the subnets you intend to use, and reference it in each cluster resource. For example, add:
+
+```hcl
+subnet_group_name = aws_elasticache_subnet_group.my_subnet_group.name
+```
+
+to every `aws_elasticache_cluster` block. This applies equally to Redis and Memcached engines.
+
+---
+
+### CKV_AWS_134 – Automatic backups not enabled (Redis only)
+**Affected resources:**  
+`aws_elasticache_cluster.pass2` (line 13)  
+`aws_elasticache_cluster.fail` (line 21)
+
+**What the rule requires**  
+Redis clusters must have automatic backups turned on. Backups protect against data loss and enable point-in-time recovery. The check is satisfied when `snapshot_retention_limit` is set to a value greater than 0.
+
+**What’s wrong in this file**  
+- `pass2` does not set `snapshot_retention_limit` at all, so it defaults to `0` (no backups).  
+- `fail` explicitly sets `snapshot_retention_limit = 0`, disabling backups.  
+- `pass` already has `snapshot_retention_limit = 5` and is compliant for this rule.  
+- `memcached` is not a Redis engine, so this rule does not apply.
+
+**How to fix it**  
+For both `pass2` and `fail`, add or change the attribute to a positive integer, e.g.:
+
+```hcl
+snapshot_retention_limit = 5
+```
+
+This enables daily automatic snapshots retained for the specified number of days.
+
+---
+
+### CKV_AWS_322 – Auto minor version upgrade disabled (Redis only)
+**Affected resource:**  
+`aws_elasticache_cluster.fail` (line 21)
+
+**What the rule requires**  
+Redis clusters should have automatic minor version upgrades enabled. This ensures the cluster receives security patches and critical bug fixes without manual intervention, reducing the window of exposure to known vulnerabilities.
+
+**What’s wrong in this file**  
+- `fail` explicitly sets `auto_minor_version_upgrade = false`.  
+- `pass` already has `auto_minor_version_upgrade = true` (compliant).  
+- `pass2` omits the attribute, which defaults to `true` in Terraform, so it is not flagged.  
+- `memcached` is not Redis, so the rule does not apply.
+
+**How to fix it**  
+Change the value in the `fail` resource to `true`:
+
+```hcl
+auto_minor_version_upgrade = true
+```
+
+Alternatively, you can remove the line entirely to rely on the default, but explicitly setting it to `true` makes the intent clear.
+
+---
+
+### Summary of required changes
+
+| Resource | Add/Change |
+|----------|------------|
+| `aws_elasticache_cluster.pass` | Add `subnet_group_name` referencing a custom subnet group |
+| `aws_elasticache_cluster.pass2` | Add `subnet_group_name` and `snapshot_retention_limit = 5` (or another positive number) |
+| `aws_elasticache_cluster.fail` | Add `subnet_group_name`, change `snapshot_retention_limit` to a positive number, change `auto_minor_version_upgrade` to `true` |
+| `aws_elasticache_cluster.memcached` | Add `subnet_group_name` referencing a custom subnet group |
+
+After applying these changes, all four clusters will comply with the flagged policies.

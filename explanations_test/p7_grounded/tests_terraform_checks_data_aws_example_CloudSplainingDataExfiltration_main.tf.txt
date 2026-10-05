@@ -1,0 +1,52 @@
+The scanner raised five distinct findings across your two `aws_iam_policy_document` data sources. I’ll break them down by resource and check ID, pointing to the exact lines and explaining why each is triggered.
+
+---
+
+### Resource: `aws_iam_policy_document.pass` (lines 3–17)
+
+This policy contains a single `Allow` statement with three actions and a wildcard resource.
+
+**1. CKV_AWS_111 – “Ensure IAM policies does not allow write access without constraints”**
+
+- **Triggered by:** lines 3–17, specifically the `actions` block (lines 8–12) and the `resources` block (lines 13–15).
+- **Why:** The actions `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, and `dynamodb:CreateTable` are **write** actions (they create resources). The `resources` field is set to `"*"`, meaning the policy grants write access to **all** Lambda functions, event source mappings, and DynamoDB tables in the account. The check flags any `Allow` statement that combines write actions with an unconstrained resource.
+
+**2. CKV_AWS_356 – “Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions”**
+
+- **Triggered by:** lines 3–17, specifically the `resources = ["*"]` on line 14.
+- **Why:** The actions in this statement (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) are all “restrictable” – they can be scoped to specific resources (e.g., a particular function name or table ARN). The check flags any policy that uses `"*"` as the resource for such actions, because it grants the action across all resources of that type.
+
+---
+
+### Resource: `aws_iam_policy_document.fail` (lines 21–41)
+
+This policy also contains a single `Allow` statement, but with a broader set of actions, all on `"*"`.
+
+**3. CKV_AWS_108 – “Ensure IAM policies does not allow data exfiltration”**
+
+- **Triggered by:** lines 21–41, specifically the actions `s3:GetObject`, `secretsmanager:GetSecretValue`, `ssm:GetParameter`, `ssm:GetParameters`, and `ssm:GetParametersByPath` (lines 27–32) combined with `resources = ["*"]` (line 37).
+- **Why:** These actions allow reading data from S3 buckets, Secrets Manager secrets, and SSM Parameter Store parameters. When granted on `"*"`, they permit reading any such data in the account, which the check classifies as a data exfiltration risk.
+
+**4. CKV_AWS_111 – “Ensure IAM policies does not allow write access without constraints”**
+
+- **Triggered by:** lines 21–41, specifically the write actions `s3:PutObject` and `ec2:CreateTags` (lines 33–34) with `resources = ["*"]`.
+- **Why:** `s3:PutObject` allows writing objects to S3 buckets; `ec2:CreateTags` allows adding/modifying tags on EC2 resources. Both are write actions, and the wildcard resource means they apply to all S3 buckets and all taggable EC2 resources in the account, without any constraint.
+
+**5. CKV_AWS_356 – “Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions”**
+
+- **Triggered by:** lines 21–41, again because `resources` is set to `["*"]` (line 37) and the listed actions are all restrictable (they can be scoped to specific ARNs).
+- **Why:** Same logic as for the `pass` resource – using `"*"` for restrictable actions is flagged regardless of the action type.
+
+**6. CKV_AWS_109 – “Ensure IAM policies does not allow permissions management / resource exposure without constraints”**
+
+- **Triggered by:** lines 21–41, specifically the `iam:PassRole` action (line 26) with `resources = ["*"]`.
+- **Why:** `iam:PassRole` is a permissions‑management action. It allows a principal to pass an IAM role to a service (e.g., EC2, Lambda), effectively granting that service the role’s permissions. When the resource is `"*"`, the policy allows passing **any** role in the account, which can lead to privilege escalation or unintended resource exposure. The check flags this as an unconstrained permissions‑management action.
+
+---
+
+### Summary of the evidence
+
+- **`data.aws_iam_policy_document.pass`** (lines 3–17) triggers **CKV_AWS_111** and **CKV_AWS_356** because it grants write actions (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) on `"*"`.
+- **`data.aws_iam_policy_document.fail`** (lines 21–41) triggers **CKV_AWS_108** (read actions on `"*"`), **CKV_AWS_111** (write actions on `"*"`), **CKV_AWS_356** (any restrictable action on `"*"`), and **CKV_AWS_109** (`iam:PassRole` on `"*"`).
+
+All findings are based solely on the combination of the listed actions and the wildcard resource `"*"` in the respective policy documents. No other context (e.g., attached principals, conditions) is present in the file, so the scanner treats these as overly permissive.

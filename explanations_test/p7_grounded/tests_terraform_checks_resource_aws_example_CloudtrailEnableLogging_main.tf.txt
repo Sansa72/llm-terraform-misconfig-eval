@@ -1,0 +1,86 @@
+The scanner evaluated three `aws_cloudtrail` resources in your file and raised multiple findings. I’ll break them down by check ID, showing exactly which resources are affected, what the check requires, and what the file currently provides.
+
+---
+
+### 1. CKV_AWS_251 – Ensure CloudTrail logging is enabled
+
+- **Affected resource:** `aws_cloudtrail.fail` (lines 1‑6)
+- **What the check requires:** The trail must have logging turned on so that API activity is recorded.
+- **What the file shows:**  
+  Line 5: `enable_logging = false`  
+  This explicitly disables logging. The trail will not capture any events.
+- **Why the other resources are not flagged:**  
+  `aws_cloudtrail.pass` (line 11) sets `enable_logging = true`.  
+  `aws_cloudtrail.pass2` does not set `enable_logging`; the AWS provider defaults it to `true`, so logging is enabled.
+
+---
+
+### 2. CKV_AWS_35 – Ensure CloudTrail logs are encrypted at rest using KMS CMKs
+
+- **Affected resource:** `aws_cloudtrail.fail` (lines 1‑6)
+- **What the check requires:** The trail must specify a KMS customer-managed key (CMK) for encrypting log files.
+- **What the file shows:**  
+  The `fail` resource has no `kms_key_id` argument. Logs will be encrypted with the default S3‑managed keys, not a CMK.
+- **Why the other resources are not flagged:**  
+  `aws_cloudtrail.pass` (line 12) and `aws_cloudtrail.pass2` (line 19) both include `kms_key_id = aws_kms_key.test.arn`.
+
+---
+
+### 3. CKV_AWS_252 – Ensure CloudTrail defines an SNS Topic
+
+- **Affected resources:**  
+  - `aws_cloudtrail.fail` (lines 1‑6)  
+  - `aws_cloudtrail.pass` (lines 8‑14)  
+  - `aws_cloudtrail.pass2` (lines 16‑21)
+- **What the check requires:** The trail should have an SNS topic configured (via `sns_topic_arn`) to send notifications on log file delivery.
+- **What the file shows:**  
+  None of the three resources contain an `sns_topic_arn` argument. No SNS topic is defined for any trail.
+
+---
+
+### 4. CKV_AWS_36 – Ensure CloudTrail log file validation is enabled
+
+- **Affected resources:**  
+  - `aws_cloudtrail.fail` (lines 1‑6)  
+  - `aws_cloudtrail.pass` (lines 8‑14)  
+  - `aws_cloudtrail.pass2` (lines 16‑21)
+- **What the check requires:** The trail must have `enable_log_file_validation = true` to enable integrity validation of delivered log files.
+- **What the file shows:**  
+  None of the resources set `enable_log_file_validation`. The provider default is `false`, so validation is disabled for all three trails.
+
+---
+
+### 5. CKV_AWS_67 – Ensure CloudTrail is enabled in all Regions
+
+- **Affected resources:**  
+  - `aws_cloudtrail.fail` (lines 1‑6)  
+  - `aws_cloudtrail.pass` (lines 8‑14)  
+  - `aws_cloudtrail.pass2` (lines 16‑21)
+- **What the check requires:** The trail must be a multi‑region trail (`is_multi_region_trail = true`) to capture activity from all AWS regions.
+- **What the file shows:**  
+  None of the resources set `is_multi_region_trail`. The default is `false`, so each trail only records events in the region where it is created.
+
+---
+
+### 6. CKV2_AWS_10 – Ensure CloudTrail trails are integrated with CloudWatch Logs
+
+- **Affected resources:**  
+  - `aws_cloudtrail.fail` (lines 1‑6)  
+  - `aws_cloudtrail.pass` (lines 8‑14)  
+  - `aws_cloudtrail.pass2` (lines 16‑21)
+- **What the check requires:** The trail must send logs to a CloudWatch Logs group, requiring both `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`.
+- **What the file shows:**  
+  None of the resources include these two arguments. No CloudWatch Logs integration is configured.
+
+---
+
+### Summary of required fixes
+
+For **`aws_cloudtrail.fail`** (lines 1‑6), you must:
+- Change `enable_logging` to `true` (or remove the line to accept the default).
+- Add `kms_key_id` pointing to a valid KMS key.
+- Add `sns_topic_arn`, `enable_log_file_validation = true`, `is_multi_region_trail = true`, and the CloudWatch Logs arguments (`cloud_watch_logs_group_arn`, `cloud_watch_logs_role_arn`).
+
+For **`aws_cloudtrail.pass`** (lines 8‑14) and **`aws_cloudtrail.pass2`** (lines 16‑21), you must add the same missing arguments: `sns_topic_arn`, `enable_log_file_validation = true`, `is_multi_region_trail = true`, and the CloudWatch Logs integration. (Note: `pass2` already has logging enabled by default, but explicitly setting `enable_logging = true` is recommended for clarity.)
+
+All claims above are directly supported by the scanner findings and the exact resource configurations shown in the provided file.

@@ -1,0 +1,196 @@
+Below is a remediation briefing covering every failing check in the order presented by the scanner. Each entry names the check and resource, states the problem in one line, explains why it matters, and describes the required change in prose. Interactions between fixes are noted where the existing file makes them relevant.
+
+---
+
+### 1. CKV_AWS_354 on `aws_rds_cluster_instance.fail` (lines 1-7)
+**What is wrong:** Performance Insights is not configured to use a customer-managed KMS key.  
+**Why it matters:** Without a KMS CMK, Performance Insights data is encrypted using the default AWS-managed key, which may not meet organizational key management or compliance requirements.  
+**Change needed:** Set `performance_insights_enabled = true` and provide a valid KMS key ARN in `performance_insights_kms_key_id`. This will also satisfy CKV_AWS_353 (Performance Insights enabled) for this resource.
+
+### 2. CKV_AWS_353 on `aws_rds_cluster_instance.fail` (lines 1-7)
+**What is wrong:** Performance Insights is explicitly disabled (`performance_insights_enabled = false`).  
+**Why it matters:** Performance Insights provides critical database performance monitoring and tuning data. Disabling it reduces visibility into query performance and resource bottlenecks.  
+**Change needed:** Set `performance_insights_enabled = true`. If you also apply the fix for CKV_AWS_354 by specifying a KMS key, this check will pass automatically.
+
+### 3. CKV_AWS_226 on `aws_rds_cluster_instance.fail` (lines 1-7)
+**What is wrong:** Automatic minor version upgrades are turned off (`auto_minor_version_upgrade = false`).  
+**Why it matters:** Without automatic minor upgrades, the instance may miss important security patches and bug fixes, increasing the risk of vulnerabilities.  
+**Change needed:** Set `auto_minor_version_upgrade = true`.
+
+### 4. CKV_AWS_17 on `aws_rds_cluster_instance.fail` (lines 1-7)
+**What is wrong:** The instance is publicly accessible (`publicly_accessible = true`).  
+**Why it matters:** Public accessibility exposes the database directly to the internet, significantly increasing the attack surface and the risk of unauthorized access.  
+**Change needed:** Set `publicly_accessible = false`. Ensure the instance is placed in a private subnet and accessed only through secure channels (e.g., VPN, bastion, or VPC peering).
+
+### 5. CKV_AWS_118 on `aws_rds_cluster_instance.fail` (lines 1-7)
+**What is wrong:** Enhanced monitoring is not enabled (the `monitoring_interval` attribute is missing or 0).  
+**Why it matters:** Enhanced monitoring provides real-time OS-level metrics that are essential for troubleshooting performance issues and detecting anomalies.  
+**Change needed:** Set `monitoring_interval` to a value greater than 0 (e.g., 60) and, if required, provide a monitoring IAM role ARN in `monitoring_role_arn`.
+
+---
+
+### 6. CKV_AWS_354 on `aws_rds_cluster_instance.fail2` (lines 9-14)
+**What is wrong:** Performance Insights is not encrypted with a KMS CMK.  
+**Why it matters:** Same as item 1 – default encryption may not meet compliance standards.  
+**Change needed:** Set `performance_insights_enabled = true` and specify a KMS key ARN in `performance_insights_kms_key_id`. This will also resolve CKV_AWS_353 for this resource.
+
+### 7. CKV_AWS_353 on `aws_rds_cluster_instance.fail2` (lines 9-14)
+**What is wrong:** Performance Insights is disabled.  
+**Why it matters:** Same as item 2 – loss of performance monitoring.  
+**Change needed:** Set `performance_insights_enabled = true`. The fix for CKV_AWS_354 will cover this.
+
+### 8. CKV_AWS_226 on `aws_rds_cluster_instance.fail2` (lines 9-14)
+**What is wrong:** Automatic minor version upgrades are not enabled (the attribute is absent, defaulting to `false`).  
+**Why it matters:** Same as item 3 – missing security patches.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 9. CKV_AWS_17 on `aws_rds_cluster_instance.fail2` (lines 9-14)
+**What is wrong:** The instance is publicly accessible.  
+**Why it matters:** Same as item 4 – internet exposure.  
+**Change needed:** Set `publicly_accessible = false`.
+
+### 10. CKV_AWS_118 on `aws_rds_cluster_instance.fail2` (lines 9-14)
+**What is wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as item 5 – missing OS-level metrics.  
+**Change needed:** Set `monitoring_interval` to a positive integer and provide a monitoring role ARN if needed.
+
+---
+
+### 11. CKV_AWS_161 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** IAM database authentication is not enabled.  
+**Why it matters:** IAM authentication allows you to manage database access using AWS IAM roles, eliminating the need to store long-lived database credentials and simplifying access management.  
+**Change needed:** Set `iam_database_authentication_enabled = true`.
+
+### 12. CKV_AWS_354 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Performance Insights is not encrypted with a KMS CMK.  
+**Why it matters:** Same as item 1 – default encryption may be insufficient.  
+**Change needed:** Enable Performance Insights (`performance_insights_enabled = true`) and provide a KMS key ARN in `performance_insights_kms_key_id`. This will also satisfy CKV_AWS_353 for this resource.
+
+### 13. CKV_AWS_293 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Without deletion protection, the database can be accidentally or maliciously deleted, leading to data loss and service disruption.  
+**Change needed:** Set `deletion_protection = true`.
+
+### 14. CKV_AWS_353 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Performance Insights is disabled.  
+**Why it matters:** Same as item 2 – loss of performance monitoring.  
+**Change needed:** Set `performance_insights_enabled = true`. The fix for CKV_AWS_354 will cover this.
+
+### 15. CKV_AWS_157 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Multi-AZ deployment is not enabled.  
+**Why it matters:** Multi-AZ provides high availability and automatic failover in case of an AZ outage, reducing downtime.  
+**Change needed:** Set `multi_az = true`.
+
+### 16. CKV_AWS_129 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Database logs are not exported to CloudWatch.  
+**Why it matters:** Exporting logs (e.g., error, general, slow query) to CloudWatch is essential for auditing, troubleshooting, and security monitoring.  
+**Change needed:** Add an `enabled_cloudwatch_logs_exports` list containing the desired log types (e.g., `["postgresql"]` for Postgres). This will also satisfy CKV2_AWS_30 (Postgres query logging) for this resource.
+
+### 17. CKV_AWS_133 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Backup retention period is set to 0, meaning automated backups are disabled.  
+**Why it matters:** Without automated backups, you cannot perform point-in-time recovery, increasing the risk of permanent data loss.  
+**Change needed:** Set `backup_retention_period` to a value between 1 and 35 (e.g., 7).
+
+### 18. CKV_AWS_226 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Automatic minor version upgrades are disabled (`auto_minor_version_upgrade = false`).  
+**Why it matters:** Same as item 3 – missing security patches.  
+**Change needed:** Set `auto_minor_version_upgrade = true`.
+
+### 19. CKV_AWS_17 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** The instance is publicly accessible.  
+**Why it matters:** Same as item 4 – internet exposure.  
+**Change needed:** Set `publicly_accessible = false`.
+
+### 20. CKV_AWS_118 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as item 5 – missing OS-level metrics.  
+**Change needed:** Set `monitoring_interval` to a positive integer and provide a monitoring role ARN if required.
+
+### 21. CKV_AWS_16 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Storage encryption is not enabled (the `storage_encrypted` attribute is commented out or missing).  
+**Why it matters:** Unencrypted storage exposes data at rest to unauthorized access if the underlying physical media is compromised.  
+**Change needed:** Set `storage_encrypted = true`. If a specific KMS key is required, also provide `kms_key_id`.
+
+### 22. CKV2_AWS_60 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Copy tags to snapshots is not enabled.  
+**Why it matters:** When tags are not copied to snapshots, cost allocation, access control, and compliance tagging are lost on backup data, complicating management.  
+**Change needed:** Set `copy_tags_to_snapshot = true`.
+
+### 23. CKV2_AWS_30 on `aws_db_instance.fail` (lines 36-43)
+**What is wrong:** Postgres query logging is not enabled.  
+**Why it matters:** Query logging is vital for performance analysis, security auditing, and detecting malicious activity in Postgres databases.  
+**Change needed:** Include `"postgresql"` in the `enabled_cloudwatch_logs_exports` list. This will also satisfy CKV_AWS_129 if the list is properly configured.
+
+---
+
+### 24. CKV_AWS_161 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** IAM database authentication is not enabled.  
+**Why it matters:** Same as item 11 – lack of IAM-based credential management.  
+**Change needed:** Set `iam_database_authentication_enabled = true`.
+
+### 25. CKV_AWS_354 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Performance Insights is not encrypted with a KMS CMK.  
+**Why it matters:** Same as item 1 – default encryption may be insufficient.  
+**Change needed:** Enable Performance Insights and provide a KMS key ARN. This will also fix CKV_AWS_353 for this resource.
+
+### 26. CKV_AWS_293 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same as item 13 – risk of accidental deletion.  
+**Change needed:** Set `deletion_protection = true`.
+
+### 27. CKV_AWS_353 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Performance Insights is disabled.  
+**Why it matters:** Same as item 2 – loss of performance monitoring.  
+**Change needed:** Set `performance_insights_enabled = true`. The fix for CKV_AWS_354 will cover this.
+
+### 28. CKV_AWS_157 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Multi-AZ is not enabled.  
+**Why it matters:** Same as item 15 – no high availability.  
+**Change needed:** Set `multi_az = true`.
+
+### 29. CKV_AWS_129 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Database logs are not exported to CloudWatch.  
+**Why it matters:** Same as item 16 – missing audit and troubleshooting data.  
+**Change needed:** Add `enabled_cloudwatch_logs_exports` with appropriate log types (e.g., `["postgresql"]`). This will also satisfy CKV2_AWS_30.
+
+### 30. CKV_AWS_133 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Backup retention period is 0 (automated backups disabled).  
+**Why it matters:** Same as item 17 – no point-in-time recovery.  
+**Change needed:** Set `backup_retention_period` to a value between 1 and 35.
+
+### 31. CKV_AWS_226 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Automatic minor version upgrades are not enabled (attribute missing).  
+**Why it matters:** Same as item 3 – missing security patches.  
+**Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 32. CKV_AWS_17 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** The instance is publicly accessible.  
+**Why it matters:** Same as item 4 – internet exposure.  
+**Change needed:** Set `publicly_accessible = false`.
+
+### 33. CKV_AWS_118 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Enhanced monitoring is not enabled.  
+**Why it matters:** Same as item 5 – missing OS-level metrics.  
+**Change needed:** Set `monitoring_interval` to a positive integer and provide a monitoring role ARN if needed.
+
+### 34. CKV_AWS_16 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Storage encryption is not enabled (the `storage_encrypted` attribute is commented out).  
+**Why it matters:** Same as item 21 – data at rest is unencrypted.  
+**Change needed:** Set `storage_encrypted = true`.
+
+### 35. CKV2_AWS_60 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Copy tags to snapshots is not enabled.  
+**Why it matters:** Same as item 22 – tags are lost on snapshots.  
+**Change needed:** Set `copy_tags_to_snapshot = true`.
+
+### 36. CKV2_AWS_30 on `aws_db_instance.fail2` (lines 45-51)
+**What is wrong:** Postgres query logging is not enabled.  
+**Why it matters:** Same as item 23 – missing query-level audit and performance data.  
+**Change needed:** Include `"postgresql"` in the `enabled_cloudwatch_logs_exports` list. This will also satisfy CKV_AWS_129.
+
+---
+
+**Interaction notes across fixes:**
+- For all resources, enabling Performance Insights (`performance_insights_enabled = true`) is a prerequisite for encrypting it with a KMS key (CKV_AWS_354). Applying the KMS key fix automatically resolves CKV_AWS_353.
+- For `aws_db_instance` resources, adding `"postgresql"` to `enabled_cloudwatch_logs_exports` satisfies both CKV_AWS_129 (log exports) and CKV2_AWS_30 (Postgres query logging).
+- The `aws_rds_cluster_instance.pass` and `aws_db_instance.pass` resources already pass many checks and can serve as reference patterns, though they still have some intentional failures (e.g., public accessibility) that should not be replicated.

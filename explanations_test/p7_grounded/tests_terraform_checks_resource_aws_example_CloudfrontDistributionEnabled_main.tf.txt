@@ -1,0 +1,85 @@
+The scanner raised multiple findings against two CloudFront distributions defined in the provided Terraform file. Below is a breakdown of each finding, the resource it applies to, the exact evidence in the file, and what must be fixed.
+
+---
+
+### Resource: `aws_cloudfront_distribution.pass` (lines 1–79)
+
+**1. CKV_AWS_34 – ViewerProtocolPolicy not set to HTTPS**  
+- **Evidence:**  
+  - `default_cache_behavior` block, line 30: `viewer_protocol_policy = "allow-all"`  
+  - `ordered_cache_behavior` block, line 52: `viewer_protocol_policy = "allow-all"`  
+- **Explanation:** The policy `allow-all` permits plain HTTP connections. The check requires the policy to enforce HTTPS (e.g., `redirect-to-https` or `https-only`). Both cache behaviors explicitly use `allow-all`.
+
+**2. CKV_AWS_86 – Access Logging not enabled**  
+- **Evidence:** The resource definition (lines 1–79) contains no `logging_config` block.  
+- **Explanation:** CloudFront access logging is configured via a `logging_config` block. Its complete absence means no logging is enabled.
+
+**3. CKV_AWS_68 – WAF not enabled**  
+- **Evidence:** The resource does not include a `web_acl_id` argument.  
+- **Explanation:** Attaching a WAF web ACL requires setting the `web_acl_id` argument. No such argument is present.
+
+**4. CKV_AWS_310 – Origin failover not configured**  
+- **Evidence:** The resource contains no `origin_group` block.  
+- **Explanation:** Origin failover is implemented with an origin group that defines a primary and a failover origin. The file only defines a dynamic `origin` block; no origin group is declared.
+
+**5. CKV2_AWS_42 – Custom SSL certificate not used**  
+- **Evidence:** `viewer_certificate` block, line 67: `cloudfront_default_certificate = var.viewer_certificate["cloudfront_default_certificate"]`  
+- **Explanation:** Setting `cloudfront_default_certificate` (the variable likely resolves to `true`) means the distribution uses the default CloudFront certificate instead of a custom ACM certificate. The check requires a custom certificate.
+
+**6. CKV2_AWS_32 – Response headers policy not attached**  
+- **Evidence:** Neither `default_cache_behavior` nor `ordered_cache_behavior` includes a `response_headers_policy_id` argument.  
+- **Explanation:** A response headers policy is attached by specifying its ID in the cache behavior. No such ID is present.
+
+**7. CKV2_AWS_47 – WAFv2 WebACL with AMR for Log4j not configured**  
+- **Evidence:** No WAFv2 WebACL is attached to the distribution (no `web_acl_id`).  
+- **Explanation:** The check expects a WAFv2 WebACL with AWS Managed Rules for Log4j vulnerability. Since no WAF is present at all, the requirement is not met.
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail` (lines 81–159)
+
+**1. CKV_AWS_216 – Distribution is disabled**  
+- **Evidence:** Line 93: `enabled = false`  
+- **Explanation:** The distribution is explicitly disabled. The check requires it to be enabled.
+
+**2. CKV_AWS_34 – ViewerProtocolPolicy not set to HTTPS**  
+- **Evidence:**  
+  - `default_cache_behavior` block, line 110: `viewer_protocol_policy = "allow-all"`  
+  - `ordered_cache_behavior` block, line 132: `viewer_protocol_policy = "allow-all"`  
+- **Explanation:** Same as the `pass` resource; both cache behaviors allow plain HTTP.
+
+**3. CKV_AWS_86 – Access Logging not enabled**  
+- **Evidence:** No `logging_config` block exists in the resource (lines 81–159).  
+- **Explanation:** Access logging is completely absent.
+
+**4. CKV_AWS_68 – WAF not enabled**  
+- **Evidence:** No `web_acl_id` argument is present.  
+- **Explanation:** The distribution has no WAF web ACL attached.
+
+**5. CKV_AWS_310 – Origin failover not configured**  
+- **Evidence:** No `origin_group` block is defined.  
+- **Explanation:** Only a dynamic `origin` block is present; failover requires an origin group.
+
+**6. CKV2_AWS_42 – Custom SSL certificate not used**  
+- **Evidence:** `viewer_certificate` block, line 147: `cloudfront_default_certificate = var.viewer_certificate["cloudfront_default_certificate"]`  
+- **Explanation:** The configuration points to the default CloudFront certificate, not a custom one.
+
+**7. CKV2_AWS_32 – Response headers policy not attached**  
+- **Evidence:** No `response_headers_policy_id` is set in any cache behavior.  
+- **Explanation:** The required policy ID is missing.
+
+**8. CKV2_AWS_47 – WAFv2 WebACL with AMR for Log4j not configured**  
+- **Evidence:** No WAFv2 WebACL is attached (no `web_acl_id`).  
+- **Explanation:** Without any WAF, the Log4j managed rule requirement cannot be satisfied.
+
+---
+
+### Summary of required fixes
+- **CKV_AWS_34:** Change `viewer_protocol_policy` to `redirect-to-https` or `https-only` in all cache behaviors.  
+- **CKV_AWS_86:** Add a `logging_config` block with a valid S3 bucket destination.  
+- **CKV_AWS_68:** Attach a WAF WebACL via the `web_acl_id` argument.  
+- **CKV_AWS_310:** Define an `origin_group` with a primary and a failover origin.  
+- **CKV2_AWS_42:** Replace `cloudfront_default_certificate` with `acm_certificate_arn` (and `ssl_support_method`) to use a custom certificate.  
+- **CKV2_AWS_32:** Add `response_headers_policy_id` to each cache behavior, referencing an existing response headers policy.  
+- **CKV2_AWS_47:** Ensure the attached WAFv2 WebACL includes the AWS Managed Rules for Log4j (e.g., `AWSManagedRulesKnownBadInputsRuleSet`).  
+- **CKV_AWS_216 (fail resource only):** Set `enabled = true`.

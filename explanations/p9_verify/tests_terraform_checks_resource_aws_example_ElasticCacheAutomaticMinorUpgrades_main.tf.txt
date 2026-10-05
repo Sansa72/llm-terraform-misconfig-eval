@@ -1,0 +1,44 @@
+The scanner identified three types of misconfigurations across the four ElastiCache cluster resources. Below is a breakdown of each finding, why it matters, and how to fix it.
+
+---
+
+### 1. Default subnet group in use (CKV_AWS_323)
+**Affected resources:** `aws_elasticache_cluster.pass`, `aws_elasticache_cluster.pass2`, `aws_elasticache_cluster.fail`, `aws_elasticache_cluster.memcached`
+
+None of the clusters specify a `subnet_group_name`. When omitted, ElastiCache places the cluster in the `default` subnet group, which often resides in the default VPC. This can expose the cache to a less restrictive network environment than intended.
+
+**Fix:** Create a custom subnet group in the desired VPC and reference it with `subnet_group_name = aws_elasticache_subnet_group.example.name`.
+
+---
+
+### 2. Automatic backups disabled (CKV_AWS_134)
+**Affected resources:** `aws_elasticache_cluster.pass2`, `aws_elasticache_cluster.fail`
+
+This check applies only to Redis clusters. Automatic backups are enabled by setting `snapshot_retention_limit` to a value greater than `0`.  
+- `pass2` omits the argument entirely, so it defaults to `0` (disabled).  
+- `fail` explicitly sets `snapshot_retention_limit = 0`.  
+Without automatic backups, data loss risk increases significantly.
+
+**Fix:** Set `snapshot_retention_limit` to at least `1` (e.g., `5` as in the `pass` resource). Note that the `pass` resource already has `snapshot_retention_limit = 5` and is therefore compliant for this check.
+
+---
+
+### 3. Auto minor version upgrade disabled (CKV_AWS_322)
+**Affected resource:** `aws_elasticache_cluster.fail`
+
+This check applies only to Redis clusters. The `fail` resource explicitly sets `auto_minor_version_upgrade = false`, preventing the cluster from automatically receiving minor engine upgrades that may include security patches. The `pass` resource sets this to `true` (compliant), and `pass2` omits the argument, which defaults to `true` (compliant). The `memcached` resource is not subject to this check.
+
+**Fix:** Set `auto_minor_version_upgrade = true` or remove the attribute to rely on the default.
+
+---
+
+### Summary of required changes
+
+| Resource          | Add / Change `subnet_group_name` | Set `snapshot_retention_limit` > 0 | Set `auto_minor_version_upgrade = true` |
+|-------------------|----------------------------------|-----------------------------------|----------------------------------------|
+| `aws_elasticache_cluster.pass`   | Yes (currently missing) | Already set to `5` (compliant) | Already set to `true` (compliant) |
+| `aws_elasticache_cluster.pass2`  | Yes (currently missing) | Yes (currently missing) | Already defaults to `true` (compliant) |
+| `aws_elasticache_cluster.fail`   | Yes (currently missing) | Yes (currently `0`) | Yes (currently `false`) |
+| `aws_elasticache_cluster.memcached` | Yes (currently missing) | N/A (Memcached) | N/A (Memcached) |
+
+After applying these changes, all flagged resources will satisfy the relevant security controls.

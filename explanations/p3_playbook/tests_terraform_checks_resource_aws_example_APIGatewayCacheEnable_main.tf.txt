@@ -1,0 +1,93 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported, with the required changes.  
+All changes apply to the `aws_api_gateway_stage` resources in the supplied file.  
+Where a fix requires additional resources (IAM role, log group, client certificate, WAF Web ACL), you must create those resources and reference them in the stage configuration.
+
+---
+
+### 1. CKV_AWS_73 on `aws_api_gateway_stage.pass` (lines 1‑4)
+**What is wrong:** X‑Ray tracing is not enabled on the stage.  
+**Why it matters:** Without tracing, you lose end‑to‑end visibility into requests flowing through API Gateway and integrated services, making performance troubleshooting and root‑cause analysis harder.  
+**Change needed:** Add the argument `xray_tracing_enabled = true` to the `aws_api_gateway_stage.pass` resource block.
+
+---
+
+### 2. CKV_AWS_76 on `aws_api_gateway_stage.pass` (lines 1‑4)
+**What is wrong:** Access logging is not configured for the stage.  
+**Why it matters:** Access logs provide detailed records of who accessed your API and when, which is essential for security auditing, compliance, and operational monitoring.  
+**Change needed:** Add an `access_log_settings` block inside the stage resource. The block must contain:
+- `destination_arn` – the ARN of a CloudWatch Log Group where logs will be delivered.
+- `format` – a log format string (e.g., a JSON structure of chosen fields).  
+You will also need to create an IAM role that grants API Gateway permission to write logs to CloudWatch Logs, and reference that role’s ARN in the stage (the stage resource does not directly take a role ARN; the role is assumed by API Gateway when writing to the log group, so the log group’s resource policy must allow the API Gateway service principal, or you can use the `aws_api_gateway_account` resource to set the CloudWatch role ARN globally for the region). Ensure the log group exists and the necessary permissions are in place.
+
+---
+
+### 3. CKV_AWS_120 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** API Gateway caching is not enabled on the stage.  
+**Why it matters:** Caching reduces latency and backend load, improving performance and resilience. Without it, every request reaches the backend, which may increase cost and risk of overload.  
+**Change needed:** Set `cache_cluster_enabled = true` in the `aws_api_gateway_stage.fail` resource. Optionally, specify a `cache_cluster_size` (e.g., `"0.5"`, `"1.6"`, `"6.1"`, etc.) to control cache capacity.
+
+---
+
+### 4. CKV_AWS_73 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** X‑Ray tracing is not enabled on the stage.  
+**Why it matters:** Same as check #1 – lack of tracing hampers observability.  
+**Change needed:** Add `xray_tracing_enabled = true` to the `aws_api_gateway_stage.fail` resource.
+
+---
+
+### 5. CKV_AWS_76 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** Same as check #2 – missing audit trail for API requests.  
+**Change needed:** Add an `access_log_settings` block with `destination_arn` and `format`, and ensure the required IAM role and log group are set up (the same supporting resources can be shared across stages if they log to the same log group, but each stage needs its own `access_log_settings` block).
+
+---
+
+### 6. CKV2_AWS_51 on `aws_api_gateway_stage.pass` (lines 1‑4)
+**What is wrong:** The stage does not use client certificate authentication.  
+**Why it matters:** Client certificates provide mutual TLS (mTLS), ensuring that only clients possessing a valid certificate can invoke the API. This adds a strong layer of authentication and prevents unauthorized access.  
+**Change needed:** Create an `aws_api_gateway_client_certificate` resource (which generates a certificate). Then set the stage’s `client_certificate_id` argument to the ID of that certificate. The same certificate can be used for multiple stages if desired.
+
+---
+
+### 7. CKV2_AWS_51 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** Client certificate authentication is not used.  
+**Why it matters:** Same as check #6 – missing mTLS protection.  
+**Change needed:** Add `client_certificate_id` referencing a valid client certificate (the same certificate created for the `pass` stage can be reused, or a separate one can be created).
+
+---
+
+### 8. CKV2_AWS_4 on `aws_api_gateway_stage.pass` (lines 1‑4)
+**What is wrong:** The stage does not have an appropriate logging level set (default is `OFF`).  
+**Why it matters:** Execution logging captures error and informational messages from API Gateway itself, aiding in debugging and monitoring. Without it, you lose visibility into integration failures, authorizer errors, and other operational issues.  
+**Change needed:** Set the `logging_level` argument to either `"INFO"` (to log errors and informational messages) or `"ERROR"` (to log only errors). For example, add `logging_level = "INFO"` to the stage resource.
+
+---
+
+### 9. CKV2_AWS_4 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** The stage has no logging level defined (defaults to `OFF`).  
+**Why it matters:** Same as check #8 – missing execution logs reduce operational visibility.  
+**Change needed:** Set `logging_level` to `"INFO"` or `"ERROR"` in the `fail` stage resource.
+
+---
+
+### 10. CKV2_AWS_29 on `aws_api_gateway_stage.pass` (lines 1‑4)
+**What is wrong:** The API Gateway stage is not associated with a WAF Web ACL.  
+**Why it matters:** A WAF protects your API from common web exploits (SQL injection, cross‑site scripting, etc.) and can filter malicious traffic before it reaches your backend.  
+**Change needed:** Create a WAF Web ACL (regional) using `aws_wafregional_web_acl` or `aws_wafv2_web_acl` (depending on your WAF version). Then create an association resource (`aws_wafregional_web_acl_association` or `aws_wafv2_web_acl_association`) that links the Web ACL’s ARN to the API Gateway stage’s ARN. The stage resource itself does not have a direct WAF argument; the association is a separate resource.
+
+---
+
+### 11. CKV2_AWS_29 on `aws_api_gateway_stage.fail` (lines 6‑8)
+**What is wrong:** The stage is not protected by a WAF.  
+**Why it matters:** Same as check #10 – missing WAF protection leaves the API exposed to application‑layer attacks.  
+**Change needed:** Create a WAF Web ACL (or reuse the one created for the `pass` stage) and an association resource that binds it to the `fail` stage’s ARN.
+
+---
+
+### Interaction Notes
+- **Access logging (CKV_AWS_76) and logging level (CKV2_AWS_4)** are independent settings; enabling one does not automatically satisfy the other. Both must be configured.
+- **Client certificate (CKV2_AWS_51)** requires a separate `aws_api_gateway_client_certificate` resource. The same certificate ID can be referenced in both stages.
+- **WAF (CKV2_AWS_29)** requires a Web ACL and an association resource. A single Web ACL can protect multiple stages if you create an association for each stage.
+- **X‑Ray (CKV_AWS_73)** and **caching (CKV_AWS_120)** are simple boolean/enabled flags on the stage resource and have no dependencies on other resources.

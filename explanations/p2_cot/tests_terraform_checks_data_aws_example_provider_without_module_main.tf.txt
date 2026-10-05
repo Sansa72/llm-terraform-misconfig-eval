@@ -1,0 +1,124 @@
+The scanner flagged several missing security controls on both S3 buckets defined in the file. Each finding points to a specific hardening measure that should be applied to reduce risk. Below is a summary of the required changes, why they matter, and how to implement them in Terraform.
+
+**1. Public Access Block (CKV2_AWS_6)**  
+Without an explicit public access block, a bucket could accidentally be made public through bucket policies or ACLs. Add the `aws_s3_bucket_public_access_block` resource to enforce that no part of the bucket can ever be publicly accessible.
+
+```hcl
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket_2" {
+  bucket = aws_s3_bucket.bucket_2.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+**2. Versioning (CKV_AWS_21)**  
+Versioning protects against accidental deletion or overwrites by keeping multiple variants of an object. Enable it with a separate `aws_s3_bucket_versioning` resource.
+
+```hcl
+resource "aws_s3_bucket_versioning" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "bucket_2" {
+  bucket = aws_s3_bucket.bucket_2.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+```
+
+**3. Default Encryption with KMS (CKV_AWS_145)**  
+Server-side encryption using a KMS key ensures data is encrypted at rest under your control. Add `aws_s3_bucket_server_side_encryption_configuration` and reference a KMS key (you can use an existing key or create one).
+
+```hcl
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3.arn   # example key
+    }
+  }
+}
+```
+Repeat for `bucket_2`. You’ll need to define a KMS key (e.g., `aws_kms_key.s3`) and its alias.
+
+**4. Access Logging (CKV_AWS_18)**  
+Server access logs provide an audit trail of requests made to the bucket. They must be written to a separate, dedicated logging bucket. Create a logging bucket and then attach a logging configuration to each data bucket.
+
+```hcl
+resource "aws_s3_bucket_logging" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  target_bucket = aws_s3_bucket.logs.id
+  target_prefix = "log/"
+}
+```
+Do the same for `bucket_2`. The logging bucket itself should also be secured (encryption, public block, etc.).
+
+**5. Lifecycle Configuration (CKV2_AWS_61)**  
+A lifecycle policy helps manage storage costs and compliance by transitioning objects to cheaper tiers or expiring them after a defined period. Add a `aws_s3_bucket_lifecycle_configuration` resource.
+
+```hcl
+resource "aws_s3_bucket_lifecycle_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+```
+Adjust the rules to match your data retention requirements.
+
+**6. Event Notifications (CKV2_AWS_62)**  
+Event notifications allow you to trigger workflows (e.g., Lambda, SQS, SNS) when objects are created or deleted. This is essential for security monitoring and automated response. Add `aws_s3_bucket_notification` and define at least one destination.
+
+```hcl
+resource "aws_s3_bucket_notification" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  topic {
+    topic_arn = aws_sns_topic.example.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+```
+You’ll need to create the SNS topic (or other target) and grant S3 permission to publish to it.
+
+**7. Cross-Region Replication (CKV_AWS_144)**  
+Replication to another region provides disaster recovery and compliance benefits. This requires a destination bucket in a different region, an IAM role, and enabling versioning on both buckets. Add `aws_s3_bucket_replication_configuration`.
+
+```hcl
+resource "aws_s3_bucket_replication_configuration" "bucket" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "replicate-all"
+    status = "Enabled"
+    destination {
+      bucket        = aws_s3_bucket.dest.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+The destination bucket must be in a different region and have versioning enabled. You’ll also need an IAM role that allows S3 to replicate objects.
+
+**Additional note on the provider alias**  
+The `aws.usw1` provider has an empty `region` string. This will likely cause an error at plan time. If the intent is to use `us-west-1`, set `region = "us-west-1"`. If the bucket should be in the same region as the default provider, remove the explicit provider argument.
+
+Implementing these changes will satisfy all the raised checks and significantly improve the security posture of your S3 buckets.

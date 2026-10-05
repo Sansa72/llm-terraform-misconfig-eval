@@ -1,0 +1,37 @@
+The scanner flagged `aws_db_snapshot_copy.fail` for violating **CKV_AWS_266**. Although the finding text mentions “App Flow connector profile”, the rule (and the linked reference) actually enforces that **RDS DB snapshots are encrypted using Customer Managed Keys (CMKs)**. The mislabeling is a scanner presentation issue; the underlying check is correct for this resource type.
+
+## What’s wrong
+In the `fail` resource, the `kms_key_id` argument is missing:
+
+```terraform
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+}
+```
+
+When you copy an RDS snapshot without specifying a KMS key, AWS encrypts the target snapshot using the **default AWS-managed KMS key** for the destination region. That key is automatically created, rotated, and managed by AWS. While it provides encryption at rest, you have no control over its key policy, you cannot disable it, schedule its deletion, or audit its usage with the same granularity as a CMK.
+
+## Why this matters
+Using a Customer Managed Key (CMK) gives you:
+- **Full control over key lifecycle** – you can rotate, disable, or revoke access.
+- **Fine‑grained access policies** – you can restrict which IAM principals or services can use the key, aligning with least privilege.
+- **Auditability** – CloudTrail logs every use of a CMK, making it easier to detect unauthorized access or meet compliance requirements.
+- **Compliance** – many frameworks (PCI‑DSS, HIPAA, etc.) require that encryption keys be managed by the customer, not solely by the cloud provider.
+
+The reference policy (CKV_AWS_266) codifies this requirement: RDS snapshots must use CMKs to ensure you retain control over the encryption protecting your data.
+
+## How to fix it
+Add the `kms_key_id` argument, pointing to a valid CMK ARN. The `pass` resource in the same file already shows the correct pattern:
+
+```terraform
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                   = aws_kms_key.example.id   # <-- add this
+}
+```
+
+Make sure the key exists and the caller has `kms:CreateGrant` and `kms:Encrypt` permissions on it. If the source snapshot is already encrypted with a CMK, the copy will use the specified key; if no key is given, it falls back to the AWS‑managed key, which is exactly what the rule prohibits.
+
+No other changes are needed. The fix is a one‑line addition that brings the resource into compliance.

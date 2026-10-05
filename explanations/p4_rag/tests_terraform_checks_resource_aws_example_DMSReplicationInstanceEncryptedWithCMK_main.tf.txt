@@ -1,0 +1,61 @@
+The scanner flagged five misconfigurations across your two DMS replication instances. Both resources share two issues, and the `fail` instance has an additional one. Here’s what each finding means in the context of your Terraform, why it matters, and how to fix it.
+
+---
+
+### 1. CKV_AWS_89: DMS replication instance should not be publicly accessible
+**Affected resources:** `aws_dms_replication_instance.pass` (line 1) and `aws_dms_replication_instance.fail` (line 12)
+
+Both instances have `publicly_accessible = true`. This assigns a public IP address to the replication instance, making it reachable from the internet. The policy rationale (Public‑13) is that exposing a database migration service to the public internet drastically increases the attack surface—anyone can attempt to connect, exploit vulnerabilities, or intercept data in transit. DMS is designed to replicate between private database endpoints; there is rarely a legitimate need for public accessibility.
+
+**Fix:** Set `publicly_accessible = false` in both resources. The instances will then only be accessible from within the VPC, using their private IPs.
+
+---
+
+### 2. CKV_AWS_222: Ensure DMS instance gets all minor upgrade automatically
+**Affected resources:** `aws_dms_replication_instance.pass` (line 1) and `aws_dms_replication_instance.fail` (line 12)
+
+The `auto_minor_version_upgrade` argument is commented out in both resources, which means it defaults to `false`. The policy (AWS general) requires this to be `true` so that the instance automatically receives minor engine upgrades—typically security patches and bug fixes. Without it, you remain on a fixed minor version and may miss critical fixes, leaving the instance vulnerable to known issues.
+
+**Fix:** Uncomment and set `auto_minor_version_upgrade = true` in both resource blocks.
+
+---
+
+### 3. CKV_AWS_212: Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)
+**Affected resource:** `aws_dms_replication_instance.fail` (line 12)
+
+The `fail` resource has `kms_key_arn` commented out, so it will use the default AWS‑managed key for DMS storage encryption. The policy requires a **customer managed key (CMK)** because it gives you control over key rotation, access policies, and auditing—essential for meeting compliance standards and ensuring that only authorised entities can decrypt the data. The `pass` resource already specifies `kms_key_arn = aws_kms_key.example.arn`, which satisfies this check.
+
+**Fix:** Uncomment and set `kms_key_arn` to a valid CMK ARN in the `fail` resource. You can reuse the same key as the `pass` instance or reference a different one, e.g.:
+```hcl
+kms_key_arn = aws_kms_key.example.arn
+```
+
+---
+
+### Corrected Terraform
+
+After applying all fixes, your configuration should look like this:
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  engine_version               = "3.1.4"
+  multi_az                     = false
+  publicly_accessible          = false   # CKV_AWS_89
+  replication_instance_class   = "dms.t2.micro"
+  replication_instance_id      = "test-dms-replication-instance-tf"
+  kms_key_arn                  = aws_kms_key.example.arn
+  auto_minor_version_upgrade   = true    # CKV_AWS_222
+}
+
+resource "aws_dms_replication_instance" "fail" {
+  engine_version               = "3.1.4"
+  multi_az                     = false
+  publicly_accessible          = false   # CKV_AWS_89
+  replication_instance_class   = "dms.t2.micro"
+  replication_instance_id      = "test-dms-replication-instance-tf"
+  kms_key_arn                  = aws_kms_key.example.arn  # CKV_AWS_212
+  auto_minor_version_upgrade   = true    # CKV_AWS_222
+}
+```
+
+Note: The resource name `pass` is misleading—it still had two violations. After these changes, both instances will comply with the flagged policies.

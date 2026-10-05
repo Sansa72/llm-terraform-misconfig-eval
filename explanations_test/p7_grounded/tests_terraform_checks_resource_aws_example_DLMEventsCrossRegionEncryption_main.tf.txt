@@ -1,0 +1,83 @@
+The scanner findings point to two specific resources in your Terraform file, each failing two related checks. Here’s what the evidence shows.
+
+---
+
+### Checks and their meaning
+
+- **CKV_AWS_253**: “Ensure DLM cross region events are encrypted”  
+  Requires that any `cross_region_copy` action in a DLM policy has encryption enabled.
+
+- **CKV_AWS_254**: “Ensure DLM cross region events are encrypted with Customer Managed Key”  
+  Requires that the encryption uses a customer-managed KMS key (not the default AWS-managed key).
+
+Both checks apply only when a `cross_region_copy` block is present.
+
+---
+
+### Resource `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+
+The relevant configuration is the `action` block at **lines 22–25**:
+
+```terraform
+    action {
+      name = "tf-acc-basic"
+      cross_region_copy {
+        encryption_configuration {}
+      }
+    }
+```
+
+- The `encryption_configuration` block is **empty** (line 24).  
+- No `encrypted` argument is set, so encryption is not enabled.  
+- No `cmk_arn` is provided, so no customer-managed key is specified.
+
+This directly violates both checks:
+- **CKV_AWS_253** – cross‑region copy is not encrypted.
+- **CKV_AWS_254** – no customer-managed key is used (nor could it be, because encryption itself is not enabled).
+
+---
+
+### Resource `aws_dlm_lifecycle_policy.fail2` (lines 76–110)
+
+The relevant `action` block is at **lines 93–96**:
+
+```terraform
+    action {
+      name = "tf-acc-basic"
+      cross_region_copy {
+        encryption_configuration {
+          cmk_arn    = aws_kms_key.test.arn
+          encryption = false
+        }
+```
+
+- `encryption` is explicitly set to **`false`** (line 96).  
+- Although a customer-managed key ARN is provided (`cmk_arn`), encryption is disabled.
+
+This fails:
+- **CKV_AWS_253** – because cross‑region copy is not encrypted.
+- **CKV_AWS_254** – because, even though a CMK is referenced, encryption is not enabled; the check requires both encryption to be enabled *and* a CMK to be used.
+
+---
+
+### What a passing configuration looks like
+
+The resource `aws_dlm_lifecycle_policy.pass` (lines 39–73) is not flagged. Its `cross_region_copy` block (lines 56–59) shows the expected pattern:
+
+```terraform
+        encryption_configuration {
+          cmk_arn    = aws_kms_key.test.arn
+          encryption = true
+        }
+```
+
+Here `encryption` is set to `true` and a CMK is supplied, satisfying both checks.
+
+---
+
+### Summary of required fixes
+
+- **For `aws_dlm_lifecycle_policy.fail`**: In the `encryption_configuration` block (line 24), set `encrypted = true` and provide a valid `cmk_arn` pointing to a customer-managed KMS key.
+- **For `aws_dlm_lifecycle_policy.fail2`**: In the `encryption_configuration` block (line 96), change `encryption = false` to `encryption = true`. The `cmk_arn` is already present.
+
+The resource `aws_dlm_lifecycle_policy.unknown` is not flagged because it does not contain a `cross_region_copy` action.

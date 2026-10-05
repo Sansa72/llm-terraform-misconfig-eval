@@ -1,0 +1,25 @@
+The `aws_cloudwatch_log_group` named `pass` has a retention period of 1 day, which is far below the 365-day minimum required by check **CKV_AWS_338**. The `fail` log group has the same retention issue and also lacks a KMS key, triggering **CKV_AWS_158**.
+
+**What this means**  
+- A 1-day retention means logs are automatically deleted after 24 hours. This prevents any meaningful auditing, troubleshooting, or forensic analysis of past events, and fails to meet common compliance requirements for log retention.  
+- Without a KMS key, log data is stored using the default AWS-managed encryption. While still encrypted at rest, you have no control over key rotation, access policies, or the ability to revoke access. Many security standards require customer-managed keys for sensitive data.
+
+**How to fix**  
+1. Set `retention_in_days` to at least `365` on both log groups.  
+2. Add a `kms_key_id` to the `fail` log group, referencing a valid KMS key ARN or alias.
+
+Example corrected configuration:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass" {
+  retention_in_days = 365
+  kms_key_id        = "someKey"
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = "someKey"   # or a different key as appropriate
+}
+```
+
+If the 1-day retention was intentional for a specific non-sensitive log group, document the exception and suppress the finding with a justification. For production or security-relevant logs, always enforce a minimum retention period and use customer-managed KMS keys.

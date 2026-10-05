@@ -1,0 +1,17 @@
+**Remediation Briefing: S3 Object Encryption**
+
+---
+
+### Finding 1: CKV_AWS_186 – `aws_s3_bucket_object.this_file_2` (lines 21–24)
+
+**What is wrong**  
+The S3 object resource does not specify server-side encryption using a customer-managed KMS key (CMK). It relies on the bucket’s default encryption or no encryption at all, which fails the requirement for explicit KMS encryption with a CMK.
+
+**Why it matters**  
+Without a customer-managed KMS key, the object’s encryption key lifecycle, access control, and audit trail are not under your direct control. A CMK allows you to enforce key rotation, restrict usage via key policies, and log all encrypt/decrypt operations in CloudTrail. This is critical for meeting compliance standards that mandate customer-controlled encryption for sensitive data.
+
+**What to change**  
+Add the `server_side_encryption` argument set to `"aws:kms"` and provide a valid KMS key ARN via the `kms_key_id` argument. The key must be a customer-managed key (not an AWS-managed key) to satisfy the check. For example, you could reference an existing key ARN from a variable or data source. The change ensures every upload of this object is encrypted with the specified CMK, and the object metadata reflects that encryption.
+
+**Interactions**  
+No other resources in the supplied file interact with this object. The fix is self-contained and does not affect the modules or the provider configuration.

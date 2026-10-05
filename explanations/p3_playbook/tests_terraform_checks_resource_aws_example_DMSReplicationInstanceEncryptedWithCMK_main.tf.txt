@@ -1,0 +1,42 @@
+**Remediation Briefing: DMS Replication Instance Security Findings**
+
+Below are the required changes, addressed per finding in the order reported. All changes are straightforward and independent, except where noted.
+
+---
+
+### 1. CKV_AWS_89 on `aws_dms_replication_instance.pass` (lines 1–9)
+**What’s wrong:** The instance has `publicly_accessible` set to `true`.  
+**Why it matters:** A publicly accessible DMS instance exposes the replication engine and its data transfer to the internet, significantly increasing the risk of unauthorized access, brute‑force attacks, and data exfiltration.  
+**Change needed:** Set `publicly_accessible = false` in this resource block. If the instance genuinely needs to communicate with on‑premises databases, use VPC peering, AWS Direct Connect, or a VPN instead of a public endpoint.
+
+---
+
+### 2. CKV_AWS_222 on `aws_dms_replication_instance.pass` (lines 1–9)
+**What’s wrong:** The `auto_minor_version_upgrade` argument is commented out, so it defaults to `false`.  
+**Why it matters:** Minor engine upgrades often contain critical security patches and bug fixes. Without automatic upgrades, the instance may remain vulnerable to known exploits.  
+**Change needed:** Uncomment the `auto_minor_version_upgrade` line and set it to `true`. This ensures the instance receives minor version patches without manual intervention.
+
+---
+
+### 3. CKV_AWS_212 on `aws_dms_replication_instance.fail` (lines 12–20)
+**What’s wrong:** The `kms_key_arn` argument is commented out, meaning the underlying EBS volumes are encrypted with the default AWS‑managed key (or not encrypted at all).  
+**Why it matters:** Using a customer‑managed KMS key gives you control over key rotation, access policies, and auditing. It also satisfies compliance requirements that mandate encryption with a key you own.  
+**Change needed:** Uncomment the `kms_key_arn` line and provide a valid ARN of a customer‑managed KMS key (e.g., the same `aws_kms_key.example.arn` used in the `pass` resource). This change only applies to the `fail` resource; the `pass` resource already has a CMK configured.
+
+---
+
+### 4. CKV_AWS_89 on `aws_dms_replication_instance.fail` (lines 12–20)
+**What’s wrong:** Identical to finding #1 – `publicly_accessible` is `true`.  
+**Why it matters:** Same exposure risk as described above.  
+**Change needed:** Set `publicly_accessible = false`. This is the same fix as for the `pass` resource; both instances should be private.
+
+---
+
+### 5. CKV_AWS_222 on `aws_dms_replication_instance.fail` (lines 12–20)
+**What’s wrong:** Identical to finding #2 – `auto_minor_version_upgrade` is commented out (default `false`).  
+**Why it matters:** Same patching risk as described above.  
+**Change needed:** Uncomment the `auto_minor_version_upgrade` line and set it to `true`. This is the same fix as for the `pass` resource.
+
+---
+
+**Interaction note:** The `kms_key_arn` fix for the `fail` resource is independent of the other changes. The `publicly_accessible` and `auto_minor_version_upgrade` fixes must be applied to both resources; they do not conflict with each other or with the encryption setting.

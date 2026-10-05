@@ -1,0 +1,28 @@
+The finding **CKV_AWS_271** flags the resource `aws_dynamodb_table_replica.fail` because it does not specify a customer-managed KMS key for encryption.
+
+**What the check requires**  
+CKV_AWS_271 enforces that DynamoDB table replicas use a customer-managed KMS key (CMK) instead of the default AWS-owned key. The check expects the `kms_key_arn` argument to be set.
+
+**Evidence in the file**  
+- The flagged resource is defined at **lines 12–19**:
+  ```terraform
+  resource "aws_dynamodb_table_replica" "fail" {
+    provider         = "aws.alt"
+    global_table_arn = aws_dynamodb_table.fail.arn
+
+    tags = {
+      Name = "taggy"
+    }
+  }
+  ```
+- There is **no `kms_key_arn` argument** in this block.  
+- By contrast, the `pass` resource (lines 3–10) includes `kms_key_arn = aws_kms_key.test.arn`, which satisfies the check.
+
+**What this means**  
+Without an explicit `kms_key_arn`, the replica will be encrypted with the default AWS-owned KMS key. The scanner requires a customer-managed key (CMK) to meet the policy.
+
+**What to fix**  
+Add a `kms_key_arn` argument to the `aws_dynamodb_table_replica.fail` resource, pointing to a valid customer-managed KMS key ARN. For example:
+```hcl
+kms_key_arn = aws_kms_key.replica_key.arn
+```

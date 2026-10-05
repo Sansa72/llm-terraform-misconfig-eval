@@ -1,0 +1,192 @@
+Here’s a breakdown of each flagged finding, what it means, and exactly where in the file the issue occurs.
+
+---
+
+### 1. CKV_AWS_111 on `aws_iam_policy_document.pass1` (lines 25–39)
+
+**What the check says:**  
+“Ensure IAM policies does not allow write access without constraints”
+
+**Where it’s triggered:**  
+Lines 25–39 define a policy document named `pass1`:
+
+```terraform
+data "aws_iam_policy_document" "pass1" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "lambda:CreateFunction",
+      "lambda:CreateEventSourceMapping",
+      "dynamodb:CreateTable",
+    ]
+    resources = [
+      "*",
+    ]
+  }
+}
+```
+
+**Why it’s flagged:**  
+The statement grants `Allow` for three write actions (`CreateFunction`, `CreateEventSourceMapping`, `CreateTable`) on **all resources** (`"*"`). There is no `condition` block to restrict when or by whom these actions can be used. The check interprets this as write access without constraints. Even though the resource is named `pass1`, the policy itself is overly permissive.
+
+---
+
+### 2. CKV_AWS_356 on `aws_iam_policy_document.pass1` (lines 25–39)
+
+**What the check says:**  
+“Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions”
+
+**Where it’s triggered:**  
+Same resource, same lines (25–39). The `resources` field is set to `["*"]`.
+
+**Why it’s flagged:**  
+The actions listed (`lambda:CreateFunction`, etc.) are considered “restrictable” – they should be scoped to specific resources. Using a wildcard `"*"` for the resource means the policy allows these actions on any Lambda function or DynamoDB table in the account. The check requires that restrictable actions are not paired with a wildcard resource.
+
+---
+
+### 3. CKV_AWS_358 on `aws_iam_policy_document.fail1` (lines 97–110)
+
+**What the check says:**  
+“Ensure GitHub Actions OIDC trust policies only allows actions from a specific known organization”
+
+**Where it’s triggered:**  
+Lines 97–110:
+
+```terraform
+data "aws_iam_policy_document" "fail1" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    action = [
+      "sts:AssumeRoleWithWebIdentity"
+    ]
+    principals {
+      identifiers = ["arn:aws:iam::123456123456:oidc-provider/token.actions.githubusercontent.com"]
+      type        = "Federated"
+    }
+  }
+}
+```
+
+**Why it’s flagged:**  
+The trust policy allows GitHub Actions to assume the role, but it contains **no `condition` block** to restrict which GitHub organization or repository can use it. Without a condition on the `sub` claim (e.g., `token.actions.githubusercontent.com:sub`), any GitHub Actions workflow from any repository could potentially assume this role. The check requires a condition that ties the trust to a specific known organization.
+
+---
+
+### 4. CKV_AWS_358 on `aws_iam_policy_document.fail2` (lines 112–131)
+
+**What the check says:**  
+Same as above.
+
+**Where it’s triggered:**  
+Lines 112–131:
+
+```terraform
+data "aws_iam_policy_document" "fail2" {
+  ...
+  statement {
+    ...
+    condition {
+      test     = "StringEquals"
+      values   = ["invalid"]
+      variable = "token.actions.githubusercontent.com:sub"
+    }
+  }
+}
+```
+
+**Why it’s flagged:**  
+A condition is present, but the value `"invalid"` does not represent a known GitHub organization or repository. The check expects a value that restricts the subject to a specific organization (e.g., `repo:myOrg/myRepo:*`). Because the value is not a valid organization constraint, the policy is still considered unrestricted.
+
+---
+
+### 5. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard` (lines 134–153)
+
+**What the check says:**  
+Same as above.
+
+**Where it’s triggered:**  
+Lines 134–153:
+
+```terraform
+condition {
+  test     = "StringEquals"
+  values   = ["*"]
+  variable = "token.actions.githubusercontent.com:sub"
+}
+```
+
+**Why it’s flagged:**  
+The condition value is a literal `"*"`, which matches any subject. This is equivalent to having no restriction at all. The check requires a specific known organization, not a wildcard.
+
+---
+
+### 6. CKV_AWS_358 on `aws_iam_policy_document.fail-wildcard-assertion` (lines 176–195)
+
+**What the check says:**  
+Same as above.
+
+**Where it’s triggered:**  
+Lines 176–195:
+
+```terraform
+condition {
+  test     = "StringEquals"
+  values   = ["repo:*"]
+  variable = "token.actions.githubusercontent.com:sub"
+}
+```
+
+**Why it’s flagged:**  
+The value `"repo:*"` uses a wildcard for the organization portion. It would match any repository from any organization. The check requires a specific known organization (e.g., `repo:myOrg/*`), so this is still too broad.
+
+---
+
+### 7. CKV_AWS_358 on `aws_iam_policy_document.fail-misused-repo` (lines 197–216)
+
+**What the check says:**  
+Same as above.
+
+**Where it’s triggered:**  
+Lines 197–216:
+
+```terraform
+condition {
+  test     = "StringEquals"
+  values   = ["repo:myOrg*"]
+  variable = "token.actions.githubusercontent.com:sub"
+}
+```
+
+**Why it’s flagged:**  
+The value `"repo:myOrg*"` contains a wildcard after the organization name. This could match organizations like `myOrg`, `myOrg2`, `myOrg-test`, etc. The check expects a precise, known organization without a trailing wildcard that could broaden the match beyond a single organization.
+
+---
+
+### 8. CKV_AWS_358 on `aws_iam_policy_document.pass-gh-org` (lines 240–264)
+
+**What the check says:**  
+Same as above.
+
+**Where it’s triggered:**  
+Lines 240–264:
+
+```terraform
+condition {
+  test     = "StringEquals"
+  values   = ["repo:myOrg/myRepo:ref:refs/heads/MyBranch"]
+  variable = "token.actions.githubusercontent.com/github-org:sub"
+}
+```
+
+**Why it’s flagged:**  
+The condition uses the claim `token.actions.githubusercontent.com/github-org:sub` instead of the standard `token.actions.githubusercontent.com:sub`. The check expects the restriction to be placed on the `sub` claim, which carries the full subject (including repository and branch). Using the `github-org:sub` claim is not recognised as a valid way to restrict to a specific known organization in the context of this check. The policy is therefore flagged as not properly scoping the trust to a known organization via the expected claim.
+
+---
+
+If you need to fix these, the general approach is:
+- For `pass1`: replace `"*"` with specific resource ARNs or add conditions.
+- For the OIDC trust policies: ensure every statement that allows `sts:AssumeRoleWithWebIdentity` for the GitHub Actions OIDC provider includes a `condition` that tests `token.actions.githubusercontent.com:sub` with a value like `repo:myOrg/myRepo:*` (or a more specific ref) and does **not** use wildcards in the organization part.

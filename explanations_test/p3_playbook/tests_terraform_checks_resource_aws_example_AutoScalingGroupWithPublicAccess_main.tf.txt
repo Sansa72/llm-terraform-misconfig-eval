@@ -1,0 +1,50 @@
+**Remediation Briefing: Terraform Security Findings**
+
+Below is a walk‑through of each failing check, in the order reported, with the required change described in prose. Where fixes interact, that is noted at the end.
+
+---
+
+### 1. CKV_AWS_79 on `aws_launch_configuration.fail` (lines 1–6)
+**What is wrong:** The launch configuration does not enforce IMDSv2; it allows Instance Metadata Service Version 1.  
+**Why it matters:** IMDSv1 is vulnerable to server‑side request forgery (SSRF) attacks that can expose IAM credentials and other sensitive data from the instance metadata endpoint.  
+**Change needed:** Add a `metadata_options` block inside the `aws_launch_configuration` resource and set `http_tokens = "required"`. This forces all metadata requests to use IMDSv2, which requires a session token and mitigates the SSRF risk.
+
+---
+
+### 2. CKV_AWS_8 on `aws_launch_configuration.fail` (lines 1–6)
+**What is wrong:** Neither the root block device nor any additional EBS volumes are configured to be encrypted.  
+**Why it matters:** Unencrypted EBS volumes can lead to data exposure if the underlying physical storage is compromised, and they violate many compliance frameworks.  
+**Change needed:** Add a `root_block_device` block (or an `ebs_block_device` block) with `encrypted = true`. If you need to use a custom KMS key, also specify `kms_key_id`; otherwise, the default AWS/EBS key will be used.
+
+---
+
+### 3. CKV_AWS_315 on `aws_autoscaling_group.vulnerable_asg` (lines 8–23)
+**What is wrong:** The Auto Scaling group uses a launch configuration (`launch_configuration` argument) instead of a launch template.  
+**Why it matters:** Launch configurations are a legacy feature; AWS recommends launch templates because they support newer instance types, multiple versions, and advanced features like mixed instances policies. Using launch configurations limits future flexibility and is considered a security best‑practice gap.  
+**Change needed:** Replace the `launch_configuration` argument with a `launch_template` block. You will need to create a new `aws_launch_template` resource (or reference an existing one) that includes the same AMI, instance type, and other settings. The `launch_template` block should reference the template’s `id` and optionally a `version`.
+
+---
+
+### 4. CKV_AWS_79 on `aws_launch_configuration.pass` (lines 29–34)
+**What is wrong:** Despite its name, this launch configuration also lacks a `metadata_options` block, so IMDSv1 remains enabled.  
+**Why it matters:** Same SSRF exposure as described in finding #1.  
+**Change needed:** Add a `metadata_options` block with `http_tokens = "required"` to this resource as well.
+
+---
+
+### 5. CKV_AWS_8 on `aws_launch_configuration.pass` (lines 29–34)
+**What is wrong:** The launch configuration does not enforce EBS encryption.  
+**Why it matters:** Same data‑at‑rest risk as finding #2.  
+**Change needed:** Add a `root_block_device` (or `ebs_block_device`) block with `encrypted = true` to this resource.
+
+---
+
+### 6. CKV_AWS_315 on `aws_autoscaling_group.safe_asg` (lines 36–52)
+**What is wrong:** The Auto Scaling group still uses a launch configuration (`launch_configuration`) instead of a launch template.  
+**Why it matters:** Same legacy‑feature concern as finding #3.  
+**Change needed:** Replace the `launch_configuration` argument with a `launch_template` block referencing a launch template resource. The launch template should incorporate the same instance settings (AMI, instance type, etc.) and also include the metadata and encryption settings that were missing from the launch configuration.
+
+---
+
+### Interaction note
+When you address findings #3 and #6 by converting the Auto Scaling groups to use launch templates, you will remove the dependency on the `aws_launch_configuration` resources. At that point, the launch configurations themselves (findings #1, #2, #4, #5) can be deleted. However, **the new launch templates must be configured with `metadata_options` (IMDSv2 required) and encrypted EBS volumes** to avoid reintroducing the same vulnerabilities. Ensure that the launch template’s `block_device_mappings` include `encrypted = true` and that `metadata_options` has `http_tokens = "required"`.

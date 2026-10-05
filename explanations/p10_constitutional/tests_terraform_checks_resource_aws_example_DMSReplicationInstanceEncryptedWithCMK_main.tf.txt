@@ -1,0 +1,35 @@
+Your Terraform file contains two DMS replication instances, both with security misconfigurations flagged by the scanner.
+
+**Resource `aws_dms_replication_instance.pass` (lines 1–9)**
+
+- **CKV_AWS_89 – DMS replication instance should not be publicly accessible**  
+  The attribute `publicly_accessible` is set to `true` on line 4. This exposes the instance to the internet, increasing the risk of unauthorized access and data exfiltration.
+
+- **CKV_AWS_222 – Ensure DMS instance gets all minor upgrade automatically**  
+  The attribute `auto_minor_version_upgrade` is not set. The commented line 8 (`# auto_minor_version_upgrade=false`) shows the intended omission. When absent, the AWS provider defaults this to `false`, meaning the instance will not automatically receive minor version upgrades, potentially leaving it vulnerable to unpatched security issues.
+
+**Resource `aws_dms_replication_instance.fail` (lines 12–20)**
+
+- **CKV_AWS_89 – DMS replication instance should not be publicly accessible**  
+  `publicly_accessible` is `true` on line 15, with the same risk as above.
+
+- **CKV_AWS_222 – Ensure DMS instance gets all minor upgrade automatically**  
+  `auto_minor_version_upgrade` is not set (commented out on line 19), again defaulting to `false`.
+
+- **CKV_AWS_212 – Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)**  
+  The `kms_key_arn` attribute is commented out on line 18 (`# kms_key_arn = ""`). Without a specified CMK, the EBS volume attached to the replication instance will not be encrypted with a customer-managed key, which may violate data-at-rest encryption requirements. (The `pass` resource does specify a CMK on line 7, so it is not flagged for this check.)
+
+**Remediation steps (changes to the file)**
+
+1. For both resources, set `publicly_accessible` to `false`:
+   - Line 4: `publicly_accessible = false`
+   - Line 15: `publicly_accessible = false`
+
+2. For both resources, enable automatic minor version upgrades by setting `auto_minor_version_upgrade = true`. You can uncomment and modify the existing lines:
+   - Line 8: change to `auto_minor_version_upgrade = true`
+   - Line 19: change to `auto_minor_version_upgrade = true`
+
+3. For the `fail` resource, provide a customer-managed KMS key for EBS encryption. Uncomment line 18 and set it to a valid key ARN, for example the same key used by the `pass` resource:
+   - Line 18: `kms_key_arn = aws_kms_key.example.arn`
+
+These changes will resolve all five scanner findings.

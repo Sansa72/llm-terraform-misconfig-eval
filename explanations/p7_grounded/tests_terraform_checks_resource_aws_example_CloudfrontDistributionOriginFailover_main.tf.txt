@@ -1,0 +1,66 @@
+The scanner flagged multiple misconfigurations across four CloudFront distributions. Below is a breakdown of each finding, the exact resource it applies to, and the specific lines in the file that trigger the check.
+
+---
+
+### Resource: `aws_cloudfront_distribution.pass` (lines 1–44)
+
+| Check ID | Finding | Evidence in file |
+|----------|---------|------------------|
+| **CKV_AWS_216** | Distribution is not enabled | Line 40: `enabled = false` |
+| **CKV_AWS_86** | Access Logging is not enabled | No `logging_config` block is present anywhere in lines 1–44 |
+| **CKV_AWS_174** | Viewer Certificate does not enforce TLS v1.2 | Line 42: `viewer_certificate {}` – empty block, no `minimum_protocol_version` specified |
+| **CKV_AWS_68** | No WAF is associated | No `web_acl_id` argument is present in the resource block |
+| **CKV_AWS_305** | No default root object configured | No `default_root_object` argument is present in the resource block |
+| **CKV2_AWS_42** | Uses the default CloudFront certificate (not a custom SSL certificate) | Line 42: `viewer_certificate {}` – no `acm_certificate_arn` or `iam_certificate_id` |
+| **CKV2_AWS_32** | No response headers policy attached | Lines 34–38: `default_cache_behavior` block contains only `target_origin_id = "groupS3"`; no `response_headers_policy_id` |
+| **CKV2_AWS_47** | WAFv2 WebACL with AMR for Log4j not configured | No `web_acl_id` is set, so no WAFv2 WebACL exists to carry the required managed rule |
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail` (lines 46–81)
+
+| Check ID | Finding | Evidence in file |
+|----------|---------|------------------|
+| **CKV_AWS_86** | Access Logging is not enabled | No `logging_config` block in lines 46–81 |
+| **CKV_AWS_174** | Viewer Certificate does not enforce TLS v1.2 | Lines 77–79: `viewer_certificate { cloudfront_default_certificate = true }` – no `minimum_protocol_version` |
+| **CKV_AWS_68** | No WAF is associated | No `web_acl_id` argument present |
+| **CKV_AWS_310** | No origin failover configured | Only a single `origin` block (lines 47–54); no `origin_group` block exists |
+| **CKV2_AWS_42** | Uses the default CloudFront certificate | Lines 77–79: `cloudfront_default_certificate = true` – no custom certificate ARN |
+| **CKV2_AWS_32** | No response headers policy attached | Lines 60–68: `default_cache_behavior` block lacks `response_headers_policy_id` |
+| **CKV2_AWS_47** | WAFv2 WebACL with AMR for Log4j not configured | No `web_acl_id` is set |
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail2` (lines 83–122)
+
+| Check ID | Finding | Evidence in file |
+|----------|---------|------------------|
+| **CKV_AWS_216** | Distribution is not enabled | Line 118: `enabled = false` |
+| **CKV_AWS_86** | Access Logging is not enabled | No `logging_config` block in lines 83–122 |
+| **CKV_AWS_174** | Viewer Certificate does not enforce TLS v1.2 | Line 121: `viewer_certificate {}` – empty block |
+| **CKV_AWS_68** | No WAF is associated | No `web_acl_id` argument present |
+| **CKV_AWS_310** | Origin failover is incomplete – `origin_group` exists but lacks `failover_criteria` | Lines 84–93: `origin_group` block contains `origin_id` and two `member` blocks, but no `failover_criteria` sub-block |
+| **CKV_AWS_305** | No default root object configured | No `default_root_object` argument present |
+| **CKV2_AWS_42** | Uses the default CloudFront certificate | Line 121: empty `viewer_certificate` block |
+| **CKV2_AWS_32** | No response headers policy attached | Lines 113–116: `default_cache_behavior` block only sets `target_origin_id = "groupS3"` |
+| **CKV2_AWS_47** | WAFv2 WebACL with AMR for Log4j not configured | No `web_acl_id` is set |
+
+---
+
+### Resource: `aws_cloudfront_distribution.fail3` (lines 124–160)
+
+| Check ID | Finding | Evidence in file |
+|----------|---------|------------------|
+| **CKV_AWS_216** | Distribution is not enabled | Line 155: `enabled = false` |
+| **CKV_AWS_86** | Access Logging is not enabled | No `logging_config` block in lines 124–160 |
+| **CKV_AWS_174** | Viewer Certificate does not enforce TLS v1.2 | Line 158: `viewer_certificate {}` – empty block |
+| **CKV_AWS_68** | No WAF is associated | No `web_acl_id` argument present |
+| **CKV_AWS_310** | Origin failover is incomplete – `origin_group` has `failover_criteria` but no `member` blocks | Lines 125–131: `origin_group` block contains `failover_criteria` but no `member` sub-blocks; failover requires at least two members |
+| **CKV_AWS_305** | No default root object configured | No `default_root_object` argument present |
+| **CKV2_AWS_42** | Uses the default CloudFront certificate | Line 158: empty `viewer_certificate` block |
+| **CKV2_AWS_32** | No response headers policy attached | Lines 150–153: `default_cache_behavior` block only sets `target_origin_id = "groupS3"` |
+| **CKV2_AWS_47** | WAFv2 WebACL with AMR for Log4j not configured | No `web_acl_id` is set |
+
+---
+
+**Note:** The scanner did **not** flag `CKV_AWS_216` on `fail` because that resource has `enabled = true` (line 55). Similarly, `CKV_AWS_305` was not raised on `fail` because it includes `default_root_object = "index.html"` (line 58). All other findings are directly attributable to the missing or incomplete configuration shown above.

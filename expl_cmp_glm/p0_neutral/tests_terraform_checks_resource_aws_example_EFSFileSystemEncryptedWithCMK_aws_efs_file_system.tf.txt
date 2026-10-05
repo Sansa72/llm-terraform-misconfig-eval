@@ -1,0 +1,10 @@
+**1. Misconfiguration**
+The `aws_efs_file_system.fail` resource has `encrypted = true` but does not specify a `kms_key_id`. Because no key is explicitly provided, AWS defaults to encrypting the file system using an AWS managed key (`aws/elasticfilesystem`) rather than a customer managed key (CMK).
+
+**2. Why it matters**
+Using an AWS managed key removes your ability to manage the key's lifecycle and access controls. You cannot apply custom key policies, control cross-account access, or dictate rotation schedules. Consequently, if an unauthorized principal gains access to your AWS account, you lack the granular control to independently revoke their access to the encryption key, increasing the blast radius to the data stored on the EFS file system. 
+
+**3. How to fix it safely**
+Add a `kms_key_id` attribute to the `aws_efs_file_system.fail` resource, pointing to the ARN of a customer managed key (as seen in the `aws_efs_file_system.pass` resource). 
+
+*Note:* EFS encryption keys cannot be changed on an existing file system. If this resource has already been deployed, you must create a new EFS file system with the CMK, migrate the data, and delete the old file system. Ensure the CMK's policy grants the necessary permissions to the EFS service and your authorized IAM principals.

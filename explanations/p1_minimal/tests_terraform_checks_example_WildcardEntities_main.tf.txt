@@ -1,0 +1,202 @@
+The scanner flagged several missing security controls in your Terraform configuration. Below I explain each finding, why it matters, and how to fix it.
+
+---
+
+## IAM Password Policy (lines 28–35)
+
+### 1. CKV_AWS_9 – Password expiration
+**Problem:** The password policy does not set a maximum password age. Without it, passwords never expire, increasing the risk of long‑term credential compromise.
+
+**Fix:** Add `max_password_age = 90` (or fewer days) to the `aws_iam_account_password_policy` resource.
+
+### 2. CKV_AWS_13 – Password reuse prevention
+**Problem:** The policy does not prevent users from reusing old passwords. Without this, users can cycle through the same few passwords, weakening the policy.
+
+**Fix:** Add `password_reuse_prevention = 24` (or any value ≥1) to block reuse of the last *N* passwords.
+
+**Updated resource:**
+```hcl
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+  max_password_age               = 90
+  password_reuse_prevention      = 24
+}
+```
+
+---
+
+## S3 Bucket `template_bucket` (lines 57–62)
+
+All remaining findings apply to this bucket. The current definition is bare:
+
+```hcl
+resource "aws_s3_bucket" "template_bucket" {
+  region        = var.region
+  bucket        = local.bucket_name
+  acl           = var.acl
+  force_destroy = true
+}
+```
+
+We need to add several configurations. I’ll show the modern approach using separate resources (recommended for AWS provider ≥4.0). If you’re using an older provider, some of these can be in‑line blocks; adjust accordingly.
+
+### 3. CKV2_AWS_61 – Lifecycle configuration
+**Problem:** No lifecycle rules are defined. Lifecycle rules help manage storage costs and data retention by automatically transitioning or expiring objects.
+
+**Fix:** Add a lifecycle configuration. The simplest is a rule that expires old versions or moves objects to cheaper storage. Example:
+
+```hcl
+resource "aws_s3_bucket_lifecycle_configuration" "template_bucket_lifecycle" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+```
+
+### 4. CKV_AWS_18 – Access logging
+**Problem:** Server access logging is not enabled. Logging provides an audit trail of all requests to the bucket, essential for security investigations.
+
+**Fix:** Create a target bucket for logs (or use an existing one) and attach a logging configuration. The target bucket must allow the source bucket to write logs.
+
+```hcl
+resource "aws_s3_bucket" "log_bucket" {
+  bucket = "${local.bucket_name}-logs"
+  # ... other settings
+}
+
+resource "aws_s3_bucket_logging" "template_bucket_logging" {
+  bucket        = aws_s3_bucket.template_bucket.id
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/"
+}
+```
+
+### 5. CKV2_AWS_62 – Event notifications
+**Problem:** No event notifications are configured. Notifications allow you to react to object changes (e.g., trigger a Lambda, send to SQS/SNS) for security monitoring or processing.
+
+**Fix:** Add an event notification. The simplest is to send events to an SNS topic.
+
+```hcl
+resource "aws_sns_topic" "bucket_events" {
+  name = "template-bucket-events"
+}
+
+resource "aws_s3_bucket_notification" "template_bucket_notification" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.bucket_events.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+```
+
+### 6. CKV2_AWS_6 – Public Access Block
+**Problem:** The bucket does not have a public access block configuration. Without it, the bucket could accidentally be made public through ACLs or policies.
+
+**Fix:** Add a public access block that blocks all public access.
+
+```hcl
+resource "aws_s3_bucket_public_access_block" "template_bucket_block" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+### 7. CKV_AWS_145 – Default encryption with KMS
+**Problem:** The bucket does not enforce default encryption using KMS. While S3 now applies SSE‑S3 by default, the check explicitly requires KMS (SSE‑KMS) for stronger key management and auditability.
+
+**Fix:** Add server‑side encryption configuration with a KMS key. You can use the AWS managed key (`aws/s3`) or a customer‑managed key.
+
+```hcl
+resource "aws_s3_bucket_server_side_encryption_configuration" "template_bucket_encryption" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3_key.arn   # or "aws/s3"
+    }
+  }
+}
+
+resource "aws_kms_key" "s3_key" {
+  description = "KMS key for S3 bucket encryption"
+}
+```
+
+### 8. CKV_AWS_144 – Cross‑region replication
+**Problem:** No replication configuration exists. Cross‑region replication (CRR) is important for disaster recovery and compliance.
+
+**Fix:** Add a replication configuration. This requires a destination bucket in a different region and appropriate IAM roles.
+
+```hcl
+# Destination bucket in another region (e.g., us-west-2)
+resource "aws_s3_bucket" "replica" {
+  provider = aws.replica
+  bucket  = "${local.bucket_name}-replica"
+}
+
+resource "aws_s3_bucket_versioning" "replica_versioning" {
+  provider = aws.replica
+  bucket   = aws_s3_bucket.replica.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_replication_configuration" "template_bucket_replication" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    id     = "replicate-to-west"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.replica.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+### 9. CKV_AWS_21 – Versioning
+**Problem:** Versioning is not enabled. Versioning protects against accidental deletion and allows easy recovery of previous object versions.
+
+**Fix:** Enable versioning on the bucket.
+
+```hcl
+resource "aws_s3_bucket_versioning" "template_bucket_versioning" {
+  bucket = aws_s3_bucket.template_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+```
+
+---
+
+## Important notes
+- The `aws_s3_bucket` resource in the provided snippet uses `acl = var.acl`. With public access block enabled, the ACL should be `private` to avoid conflicts. Consider removing the `acl` argument or setting it to `"private"`.
+- For replication, you need a second AWS provider alias (`aws.replica`) configured for the destination region.
+- For logging, the target bucket must have an appropriate bucket policy allowing `s3:PutObject` from the source bucket.
+- If you are using an older AWS provider (before 4.0), some of these settings (like logging, versioning, encryption) were in‑line blocks inside the `aws_s3_bucket` resource. The separate resources shown above are the current best practice and will work with provider >=4.0.
+
+Apply these changes to satisfy all flagged checks and significantly improve the security posture of your S3 bucket and IAM password policy.

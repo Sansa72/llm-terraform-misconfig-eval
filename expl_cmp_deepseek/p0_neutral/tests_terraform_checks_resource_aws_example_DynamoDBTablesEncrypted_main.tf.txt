@@ -1,0 +1,121 @@
+Checkov flagged three issues across the four DynamoDB tables in this file:
+
+| Finding | Affected tables |
+|---|---|
+| CKV_AWS_28: Point-in-time recovery disabled | `cmk`, `default`, `encrypted_false`, `encrypted_no_cmk` |
+| CKV_AWS_119: Not using a customer managed KMS key | `default`, `encrypted_false`, `encrypted_no_cmk` |
+| CKV2_AWS_16: Auto Scaling not enabled | `cmk`, `default`, `encrypted_false`, `encrypted_no_cmk` |
+
+---
+
+## 1. What the misconfigurations are
+
+### CKV_AWS_28 — Point-in-time recovery (PITR) is disabled
+
+None of the tables define:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+DynamoDB PITR defaults to **disabled**.
+
+### CKV_AWS_119 — Tables are not encrypted with a customer managed CMK
+
+- `cmk` passes because it sets `kms_key_arn` with `enabled = true`.
+- `default` has no `server_side_encryption` block.
+- `encrypted_false` explicitly sets `enabled = false`.
+- `encrypted_no_cmk` sets `enabled = true` but does not provide `kms_key_arn`.
+
+These tables are not using a KMS **customer managed** CMK.
+
+### CKV2_AWS_16 — Auto Scaling is not enabled
+
+All four tables use `billing_mode = "PROVISIONED"` with fixed `read_capacity` and `write_capacity`. No `aws_appautoscaling_target` or scaling policies are present in the file, so capacity does not scale automatically.
+
+---
+
+## 2. Why it matters
+
+### PITR disabled
+
+Without point-in-time recovery, you cannot restore a table to an earlier point in time. If data is accidentally deleted, overwritten, or corrupted by an application bug, you lose the ability to recover a consistent recent state. On-demand backups are not shown in this file, so there may be no recovery mechanism at all.
+
+### Customer managed CMK not used
+
+DynamoDB may still encrypt data at rest using an AWS-owned key, but without a customer managed CMK you lose:
+
+- Control over the KMS key policy.
+- Ability to rotate or revoke the key independently.
+- Cross-account key usage and audit granularity.
+- Ability to enforce separation of duties for access to the table encryption key.
+
+`encrypted_false` explicitly disables the server-side encryption setting, meaning no customer managed CMK is configured.
+
+### Auto Scaling disabled
+
+Provisioned capacity is fixed at 20 RCU/WCU per table. If traffic exceeds this capacity, DynamoDB throttles requests, causing API errors and increased latency. If traffic is low, you overpay for unused capacity. Auto Scaling would adjust capacity within configured bounds.
+
+---
+
+## 3. How to fix safely
+
+### Enable point-in-time recovery
+
+Add this to each of the four table resources:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+### Use a customer managed KMS CMK
+
+For `default`, `encrypted_false`, and `encrypted_no_cmk`, update or add the `server_side_encryption` block:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = aws_kms_key.dynamodb.arn
+}
+```
+
+- For `encrypted_false`, change `enabled` from `false` to `true`.
+- For `encrypted_no_cmk`, add the `kms_key_arn`.
+- For `default`, add the whole block.
+
+Ensure the referenced KMS key exists and its key policy allows DynamoDB to use it for table encryption.
+
+### Enable Auto Scaling
+
+For each provisioned table, add an Application Auto Scaling target and scaling policies for both read and write capacity. Example for one table:
+
+```hcl
+resource "aws_appautoscaling_target" "read" {
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.cmk.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "read" {
+  name               = "dynamodb-read-autoscale"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.read.resource_id
+  scalable_dimension = aws_appautoscaling_target.read.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.read.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+```
+
+Repeat the same pattern for `WriteCapacityUnits` and for each of the other tables.

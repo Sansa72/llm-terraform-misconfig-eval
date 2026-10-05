@@ -1,0 +1,42 @@
+The scanner flagged four issues across two AppSync API resources. Here’s what the findings mean, based strictly on the provided file and check descriptions.
+
+---
+
+### 1. Missing field‑level logging on `aws_appsync_graphql_api.default`
+**Check:** `CKV_AWS_194` – “Ensure AppSync has Field-Level logs enabled”  
+**Resource:** `aws_appsync_graphql_api.default` (lines 15–18)
+
+The resource definition is:
+```terraform
+resource "aws_appsync_graphql_api" "default" {
+  authentication_type = "API_KEY"
+  name                = "example"
+}
+```
+There is no `log_config` block. Because field‑level logging is configured inside `log_config` via the `field_log_level` argument, the check fails. The resource must include a `log_config` block with `field_log_level` set to `ALL`, `ERROR`, or `NONE` (the check expects it to be explicitly enabled).
+
+---
+
+### 2. Missing general logging on `aws_appsync_graphql_api.default`
+**Check:** `CKV_AWS_193` – “Ensure AppSync has Logging enabled”  
+**Resource:** `aws_appsync_graphql_api.default` (lines 15–18)
+
+The same resource lacks a `log_config` block entirely. This check requires that the API has logging enabled, which is done by providing a `log_config` block with a `cloudwatch_logs_role_arn`. Without it, no CloudWatch Logs role is associated, and logging is not active.
+
+---
+
+### 3. No WAF protection on both AppSync APIs
+**Check:** `CKV2_AWS_33` – “Ensure AppSync is protected by WAF”  
+**Resources:**
+- `aws_appsync_graphql_api.enabled` (lines 3–11)
+- `aws_appsync_graphql_api.default` (lines 15–18)
+
+The file contains no `aws_wafv2_web_acl_association` or any other resource that would associate a WAF Web ACL with either API. The check requires that an AppSync GraphQL API be associated with an AWS WAF Web ACL. Because no such association exists in the given Terraform configuration, both resources are flagged.
+
+---
+
+### Summary of what the file shows
+- The `enabled` resource (lines 3–11) **does** have a `log_config` with `field_log_level = "ERROR"` and a `cloudwatch_logs_role_arn`, so it passes `CKV_AWS_193` and `CKV_AWS_194`. It fails only `CKV2_AWS_33` (no WAF).
+- The `default` resource (lines 15–18) has **no** `log_config` block, so it fails `CKV_AWS_193`, `CKV_AWS_194`, and `CKV2_AWS_33`.
+
+No other findings are present in the provided scan results.

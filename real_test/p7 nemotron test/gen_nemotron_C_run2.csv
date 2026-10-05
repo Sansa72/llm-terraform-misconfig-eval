@@ -1,0 +1,101 @@
+file,condition,start_fails,attempts,final_fails,reached_zero,valid,outcome,trajectory,note
+tests_terraform_checks_data_aws_example_AdminPolicyDocument_main.tf,C,18,5,0,False,False,gamed_scanner,18->20->19->18->0->0,budget exhausted
+tests_terraform_checks_data_aws_example_CloudSplainingDataExfiltration_main.tf,C,6,4,0,True,True,fixed,6->6->5->2->0,
+tests_terraform_checks_data_aws_example_CloudSplainingPrivilegeEscalation_main.tf,C,6,4,0,True,True,fixed,6->6->2->4->0,
+tests_terraform_checks_data_aws_example_CloudsplainingIAMWrite_main.tf,C,4,2,0,True,True,fixed,4->4->0,
+tests_terraform_checks_data_aws_example_CloudsplainingPermissionsManagement_main.tf,C,5,2,0,True,True,fixed,5->1->0,
+tests_terraform_checks_data_aws_example_GithubActionsOIDCTrustPolicy_main.tf,C,8,2,0,True,True,fixed,8->2->0,
+tests_terraform_checks_data_aws_example_IAMManagedAdminPolicy_IAMManagedAdminPolicy.tf,C,2,3,0,True,True,fixed,2->2->2->0,
+tests_terraform_checks_data_aws_example_IAMPublicActionsPolicy_public_actions.tf,C,3,5,1,False,True,not_fixed,3->5->4->3->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_ModuleProvider_example_main.tf,C,7,5,6,False,True,not_fixed,7->7->7->7->6->6,budget exhausted
+tests_terraform_checks_data_aws_example_ResourcePolicyDocument_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->None,budget exhausted
+tests_terraform_checks_data_aws_example_StarActionPolicyDocument_main.tf,C,5,5,6,False,False,not_fixed,5->6->6->0->6->6,budget exhausted
+tests_terraform_checks_data_aws_example_provider_edge_case_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_provider_edge_case_nesting_2_main.tf,C,1,5,1,False,False,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_provider_edge_case_nesting_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_provider_edge_case_nesting_nesting_l2_2_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_provider_edge_case_nesting_nesting_l2_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_data_aws_example_provider_with_nested_module_example_example2_main.tf,C,7,5,7,False,True,not_fixed,7->7->7->7->None->7,budget exhausted
+tests_terraform_checks_resource_aws_example_ACMCertCreateBeforeDestroy_main.tf,C,2,5,2,False,True,not_fixed,2->2->2->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_ACMCertSetLoggingPreference_main.tf,C,4,5,2,False,True,not_fixed,4->2->2->None->4->2,budget exhausted
+tests_terraform_checks_resource_aws_example_ALBDesyncMode_main.tf,C,17,5,11,False,True,not_fixed,17->15->12->12->11->11,budget exhausted
+tests_terraform_checks_resource_aws_example_ALBDropHttpHeaders_main.tf,C,27,5,28,False,True,not_fixed,27->27->28->0->28->28,budget exhausted
+tests_terraform_checks_resource_aws_example_AMICopyIsEncrypted_main.tf,C,5,3,0,True,True,fixed,5->5->3->0,
+tests_terraform_checks_resource_aws_example_AMICopyUsesCMK_main.tf,C,2,5,4,False,True,not_fixed,2->4->None->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_AMIEncryption_main.tf,C,3,5,3,False,True,not_fixed,3->3->1->None->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_AMILaunchIsShared_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->None->1->None,budget exhausted
+tests_terraform_checks_resource_aws_example_APIGatewayDeploymentCreateBeforeDestroy_main.tf,C,2,2,0,True,True,fixed,2->1->0,
+tests_terraform_checks_resource_aws_example_APIGatewayDomainNameTLS_main.tf,C,3,1,0,True,True,fixed,3->0,
+tests_terraform_checks_resource_aws_example_APIGatewayMethodSettingsCacheEnabled_main.tf,C,2,5,2,False,True,not_fixed,2->2->2->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_APIGatewayV2RouteDefinesAuthorizationType_main.tf,C,2,5,3,False,True,not_fixed,2->2->3->3->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_AppFlowConnectorProfileUsesCMK_main.tf,C,1,5,1,False,True,not_fixed,1->1->0->0->None->1,budget exhausted
+tests_terraform_checks_resource_aws_example_AppSyncFieldLevelLogs_main.tf,C,4,5,9,False,True,not_fixed,4->4->4->9->9->9,budget exhausted
+tests_terraform_checks_resource_aws_example_AppSyncLogging_main.tf,C,4,5,6,False,True,not_fixed,4->4->6->6->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_AppsyncAPICacheEncryptionAtRest_main.tf,C,4,1,0,True,True,fixed,4->0,
+tests_terraform_checks_resource_aws_example_AppsyncAPICacheEncryptionInTransit_main.tf,C,4,2,0,True,True,fixed,4->0->0,
+tests_terraform_checks_resource_aws_example_AthenaWorkgroupEncryption_main.tf,C,1,3,0,True,True,fixed,1->1->1->0,
+tests_terraform_checks_resource_aws_example_AutoScalingGroupWithPublicAccess_main.tf,C,6,5,2,False,True,not_fixed,6->6->6->4->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_AutoScalingLaunchTemplate_main.tf,C,6,5,6,False,True,not_fixed,6->6->None->None->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_AutoScalingTagging_main.tf,C,4,5,4,False,True,not_fixed,4->4->4->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_BackupVaultEncrypted_main.tf,C,1,3,0,True,True,fixed,1->1->2->0,
+tests_terraform_checks_resource_aws_example_CloudFrontGeoRestrictionDisabled_main.tf,C,14,5,14,False,True,not_fixed,14->14->14->14->14->14,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudFrontResponseHeaderStrictTransportSecurity_main.tf,C,3,5,0,False,False,gamed_scanner,3->2->0->4->4->0,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudWatchLogGroupRetention_main.tf,C,5,5,4,False,True,not_fixed,5->4->2->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudfrontDistributionEnabled_main.tf,C,15,5,15,False,True,not_fixed,15->15->15->15->15->15,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudfrontTLS12_main.tf,C,38,5,42,False,True,not_fixed,38->39->40->40->40->42,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudsearchDomainEnforceHttps_main.tf,C,4,1,0,True,True,fixed,4->0,
+tests_terraform_checks_resource_aws_example_CloudtrailDefinesSNSTopic_main.tf,C,12,5,8,False,False,not_fixed,12->12->10->8->8->8,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudtrailEnableLogging_main.tf,C,14,5,10,False,True,not_fixed,14->14->14->13->13->10,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudtrailEncryptedWithCMK_aws_cloudtrail.tf,C,9,5,6,False,True,not_fixed,9->8->6->6->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudtrailEventDataStoreUsesCMK_main.tf,C,2,1,0,True,True,fixed,2->0,
+tests_terraform_checks_resource_aws_example_CodeArtifactDomainEncryptedWithCMK_main.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_CodeBuildPrivilegedMode_main.tf,C,5,5,6,False,False,not_fixed,5->5->4->3->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_CodeBuildProjectEncryption_main.tf,C,8,5,7,False,True,not_fixed,8->8->8->7->7->7,budget exhausted
+tests_terraform_checks_resource_aws_example_CodePipelineArtifactsEncrypted_main.tf,C,1,2,0,True,True,fixed,1->0->0,
+tests_terraform_checks_resource_aws_example_CodebuildHasLogs_main.tf,C,2,5,5,False,False,not_fixed,2->2->4->4->3->5,budget exhausted
+tests_terraform_checks_resource_aws_example_CodebuildUsesCMK_main.tf,C,4,5,7,False,False,not_fixed,4->4->4->4->7->7,budget exhausted
+tests_terraform_checks_resource_aws_example_CodecommitApprovalsRulesRequireMin2_main.tf,C,1,5,1,False,True,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_resource_aws_example_ComprehendEntityRecognizerModelUsesCMK_main.tf,C,3,5,4,False,True,not_fixed,3->4->4->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_ComprehendEntityRecognizerVolumeUsesCMK_main.tf,C,3,5,2,False,True,not_fixed,3->2->2->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_ConnectInstanceS3StorageConfigUsesCMK_main.tf,C,3,5,2,False,True,not_fixed,3->2->2->0->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_DAXEncryption_main.tf,C,5,5,6,False,True,not_fixed,5->5->5->5->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_DAXEndpointTLS_main.tf,C,5,5,5,False,True,not_fixed,5->None->5->0->None->5,budget exhausted
+tests_terraform_checks_resource_aws_example_DBInstanceBackupRetentionPeriod_main.tf,C,85,5,86,False,True,not_fixed,85->None->83->82->81->86,budget exhausted
+tests_terraform_checks_resource_aws_example_DBInstanceLogging_main.tf,C,39,5,39,False,True,not_fixed,39->39->39->0->0->39,budget exhausted
+tests_terraform_checks_resource_aws_example_DBInstanceMinorUpgrade_main.tf,C,52,5,39,False,True,not_fixed,52->48->None->0->39->39,budget exhausted
+tests_terraform_checks_resource_aws_example_DBSnapshotsArePrivate_main.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_DLMEventsCrossRegionEncryption_main.tf,C,4,5,0,False,False,gamed_scanner,4->-1->2->2->2->0,budget exhausted
+tests_terraform_checks_resource_aws_example_DLMScheduleCrossRegionEncryptionWithCMK_main.tf,C,5,5,0,False,False,gamed_scanner,5->2->2->2->6->0,budget exhausted
+tests_terraform_checks_resource_aws_example_DLMScheduleCrossRegionEncryption_main.tf,C,4,5,0,True,True,fixed,4->2->None->2->0->0,
+tests_terraform_checks_resource_aws_example_DMSEndpointUsesCMK_main.tf,C,8,5,10,False,True,not_fixed,8->8->10->10->10->10,budget exhausted
+tests_terraform_checks_resource_aws_example_DMSReplicationInstanceMinorUpgrade_main.tf,C,4,5,3,False,True,not_fixed,4->4->4->5->5->3,budget exhausted
+tests_terraform_checks_resource_aws_example_DMSS3UsesCMK_main.tf,C,2,5,2,False,True,not_fixed,2->2->2->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_DeprecatedLambdaRuntime_main.tf,C,17,5,15,False,True,not_fixed,17->15->15->15->15->15,budget exhausted
+tests_terraform_checks_resource_aws_example_DocDBGlobalClusterEncryption_main.tf,C,2,4,0,True,True,fixed,2->3->3->3->0,
+tests_terraform_checks_resource_aws_example_DynamoDBTableReplicaKMSUsesCMK_main.tf,C,1,3,0,True,True,fixed,1->1->1->0,
+tests_terraform_checks_resource_aws_example_EBSSnapshotCopyEncryptedWithCMK_aws_ebs_snapshot_copy.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_EBSVolumeEncryptedWithCMK_aws_ebs_volume.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_EC2PublicIP_foreach_module_main.tf,C,11,5,11,False,True,not_fixed,11->11->11->11->11->11,budget exhausted
+tests_terraform_checks_resource_aws_example_EC2PublicIP_main.tf,C,64,5,0,False,False,gamed_scanner,64->59->58->58->58->0,budget exhausted
+tests_terraform_checks_resource_aws_example_ECRImmutableTags_main.tf,C,8,5,3,False,True,not_fixed,8->8->9->8->6->3,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSClusterLoggingEnabled_main.tf,C,6,5,6,False,True,not_fixed,6->6->6->6->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSClusterLoggingEncryptedWithCMK_main.tf,C,15,5,18,False,True,not_fixed,15->17->17->17->17->18,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSContainerHostProcess_main.tf,C,5,5,3,False,True,not_fixed,5->3->3->3->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSContainerPrivilege_main.tf,C,3,5,2,False,True,not_fixed,3->2->2->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSServiceFargateLatest_main.tf,C,1,5,5,False,False,not_fixed,1->1->1->1->5->5,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSServicePublicIP_main.tf,C,1,5,1,False,True,not_fixed,1->0->1->1->1->1,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSTaskDefinitionRoleCheck_main.tf,C,3,5,2,False,False,not_fixed,3->3->2->0->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_EFSAccessPointRoot_main.tf,C,5,5,3,False,False,not_fixed,5->3->3->3->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_EFSAccessUserIdentity_main.tf,C,1,2,0,True,True,fixed,1->1->0,
+tests_terraform_checks_resource_aws_example_EFSEncryptionEnabled_main.tf,C,5,5,3,False,True,not_fixed,5->3->4->2->4->3,budget exhausted
+tests_terraform_checks_resource_aws_example_EKSControlPlaneLogging_main.tf,C,9,5,13,False,True,not_fixed,9->9->13->13->13->13,budget exhausted
+tests_terraform_checks_resource_aws_example_EKSPlatformVersion_main.tf,C,18,5,20,False,True,not_fixed,18->20->20->20->20->20,budget exhausted
+tests_terraform_checks_resource_aws_example_EKSPublicAccessCIDR_main.tf,C,17,5,12,False,False,not_fixed,17->11->13->15->12->12,budget exhausted
+tests_terraform_checks_resource_aws_example_ELBPolicyUsesSecureProtocols_main.tf,C,6,5,4,False,True,not_fixed,6->5->4->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_ELBv2AccessLogs_main.tf,C,28,5,28,False,True,not_fixed,28->0->28->26->None->28,budget exhausted
+tests_terraform_checks_resource_aws_example_ELBwListenerNotTLSSSL_main.tf,C,6,5,7,False,True,not_fixed,6->5->7->7->7->7,budget exhausted
+tests_terraform_checks_resource_aws_example_EMRClusterConfEncryptsEBS_main.tf,C,10,5,10,False,True,not_fixed,10->10->None->10->10->10,budget exhausted
+tests_terraform_checks_resource_aws_example_EMRClusterConfEncryptsInTransit_main.tf,C,9,5,9,False,True,not_fixed,9->9->9->9->8->9,budget exhausted
+tests_terraform_checks_resource_aws_example_EMRClusterIsEncryptedKMS_main.tf,C,4,5,3,False,True,not_fixed,4->None->4->5->3->None,budget exhausted
+tests_terraform_checks_resource_aws_example_ElasticBeanstalkUseManagedUpdates_main.tf,C,5,5,5,False,True,not_fixed,5->5->5->6->5->5,budget exhausted
+tests_terraform_checks_resource_aws_example_ElasticCacheAutomaticBackup_main.tf,C,6,5,6,False,True,not_fixed,6->6->6->6->0->6,budget exhausted

@@ -1,0 +1,29 @@
+**Remediation briefing: Comprehend Entity Recognizer encryption findings**
+
+---
+
+### 1. CKV_AWS_267 on `aws_comprehend_entity_recognizer.pass` (lines 2–29)
+
+- **What triggers it:** The resource block at lines 2–29 defines a `volume_kms_key_id` but does **not** include a `model_kms_key_id` argument.  
+- **What is wrong:** The entity recognizer’s model is not encrypted with a customer-managed KMS key. Without this, the model data at rest is not protected by a key under the customer’s control.  
+- **How to fix:** Add a `model_kms_key_id` argument to the resource, referencing a customer-managed KMS key (for example, the same key already used for `volume_kms_key_id`). This ensures the model is encrypted with a CMK.
+
+---
+
+### 2. CKV_AWS_268 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+- **What triggers it:** The resource block at lines 40–66 does **not** include a `volume_kms_key_id` argument.  
+- **What is wrong:** The training volume is not encrypted with a customer-managed KMS key, leaving volume data at rest without customer-controlled encryption.  
+- **How to fix:** Add a `volume_kms_key_id` argument to the resource, referencing a customer-managed KMS key (e.g., `aws_kms_key.test.id` or another valid CMK ARN).
+
+---
+
+### 3. CKV_AWS_267 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+- **What triggers it:** The same resource block at lines 40–66 does **not** include a `model_kms_key_id` argument.  
+- **What is wrong:** The entity recognizer’s model is not encrypted with a customer-managed KMS key, leaving the model data at rest without customer-controlled encryption.  
+- **How to fix:** Add a `model_kms_key_id` argument to the resource, referencing a customer-managed KMS key (the same key used for volume encryption or a separate one). This ensures the model is encrypted with a CMK.
+
+---
+
+**Note:** Both resources should use KMS keys that the account owns and manages (not the default AWS-managed key) to satisfy these checks. The `pass` resource already has a `volume_kms_key_id`; it only needs the `model_kms_key_id` added. The `fail` resource needs both `volume_kms_key_id` and `model_kms_key_id` arguments.

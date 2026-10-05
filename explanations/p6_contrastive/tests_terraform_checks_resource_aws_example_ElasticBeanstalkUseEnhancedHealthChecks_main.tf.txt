@@ -1,0 +1,76 @@
+The scanner flagged two distinct misconfigurations across your Elastic Beanstalk environments. Below I contrast the current state with the required state for each check, then give a concise fix summary.
+
+---
+
+### CKV_AWS_340 – Managed Platform Updates Not Enabled
+
+**What the current configuration does (all resources: `fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`):**  
+None of the environment definitions include a `setting` block that enables managed platform updates. The `aws:elasticbeanstalk:managedactions` namespace is completely absent. This means AWS will not automatically apply minor and patch platform updates during a weekly maintenance window, leaving the environment on an outdated platform version.
+
+**What a passing configuration would do:**  
+A passing configuration would contain a `setting` block that explicitly turns on managed platform updates, instructing Elastic Beanstalk to automatically upgrade the environment’s platform to the latest compatible version during the designated maintenance window.
+
+**Precise difference:**  
+Add the following `setting` block inside each `aws_elastic_beanstalk_environment` resource:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+The rest of the resource (name, application, tier, etc.) remains unchanged. The critical security improvement is that automatic platform updates ensure the environment receives security patches and bug fixes without manual intervention, reducing the window of exposure to known vulnerabilities.
+
+---
+
+### CKV_AWS_312 – Enhanced Health Reporting Not Enabled
+
+**What the current configuration does (resources `fail`, `fail2`, `fail3`, `fail4`):**  
+- `fail` – omits any health reporting settings entirely.  
+- `fail2` – explicitly sets `SystemType` to `"basic"`, which disables enhanced health.  
+- `fail3` – sets `HealthStreamingEnabled` to `"False"` (and a stray `SystemType` in a wrong namespace).  
+- `fail4` – sets `HealthStreamingEnabled` to an empty string, effectively disabling it.  
+
+In all cases, enhanced health reporting is off. The environment will only provide basic health information, lacking detailed metrics, request tracing, and streaming logs that are essential for rapid incident detection and response.
+
+**What a passing configuration would do (as demonstrated by `pass` and `pass2`):**  
+A passing configuration includes a `setting` block that enables health streaming, which is the mechanism used to activate enhanced health reporting. The `pass` and `pass2` resources already do this correctly with:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "HealthStreamingEnabled"
+  value     = "true"
+}
+```
+
+**Precise difference:**  
+For the failing resources, you must either add the above `setting` block (if missing) or change the `value` from `"basic"`, `"False"`, or `""` to `"true"`. The `pass` resources already satisfy this check, so they need no change for CKV_AWS_312. Enhanced health reporting provides deeper visibility into environment performance and errors, enabling faster security incident detection and response.
+
+---
+
+### What the Engineer Must Change
+
+- **For every environment (including `pass` and `pass2`):**  
+  Add a `setting` block to enable managed platform updates. This is the only missing piece for CKV_AWS_340.  
+  ```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+  ```
+
+- **For `fail`, `fail2`, `fail3`, `fail4` only:**  
+  Ensure enhanced health reporting is enabled by adding (or correcting) the `HealthStreamingEnabled` setting to `"true"`. The `pass` resources already have this, so they need no change for CKV_AWS_312.  
+  ```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "HealthStreamingEnabled"
+    value     = "true"
+  }
+  ```
+
+Both settings are independent; you can add them as separate `setting` blocks inside each environment resource. The key security rationale: managed platform updates keep the runtime patched against vulnerabilities, and enhanced health reporting gives you the observability needed to detect and respond to security events quickly.

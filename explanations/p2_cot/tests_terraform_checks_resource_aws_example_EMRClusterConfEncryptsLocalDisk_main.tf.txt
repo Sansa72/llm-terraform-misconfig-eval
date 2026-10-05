@@ -1,0 +1,56 @@
+The scanner flagged several EMR security configuration resources for missing or insufficient encryption. Here’s what each check requires and how to fix the configurations.
+
+**Checks explained**
+
+- **CKV_AWS_351 (InTransit encryption)**: `EnableInTransitEncryption` must be `true`. This ensures data moving between EMR cluster nodes and services is encrypted, protecting it from interception on the network.
+- **CKV_AWS_171 (SSE-KMS for S3)**: The S3 encryption configuration must use `SSE-KMS`, not `SSE-S3`. SSE-KMS gives you control over the encryption keys via AWS KMS, provides audit trails, and allows you to enforce key policies.
+- **CKV_AWS_350 (EBS disk encryption)**: `LocalDiskEncryptionConfiguration` must be present with `EnableEbsEncryption` set to `true`. This encrypts EBS volumes attached to cluster nodes.
+- **CKV_AWS_349 (Local disk encryption)**: `LocalDiskEncryptionConfiguration` must be present with `EncryptionKeyProviderType` set to `AwsKms` and a valid KMS key ARN. This encrypts instance store volumes (local disks) on the nodes.
+
+**Current state of the resources**
+
+- `aws_emr_security_configuration.pass`: In-transit encryption is disabled (`false`). S3 encryption uses `SSE-S3`. Local disk encryption is correctly configured with KMS. Fails CKV_AWS_351 and CKV_AWS_171.
+- `aws_emr_security_configuration.fail`: In-transit encryption disabled. S3 encryption uses `SSE-S3`. No local disk encryption block at all. Fails all four checks.
+- `aws_emr_security_configuration.fail2`: In-transit encryption disabled. At-rest encryption entirely disabled. No encryption configuration. Fails all four checks.
+
+**Required changes**
+
+All three resources must be updated to:
+1. Set `EnableInTransitEncryption` to `true`.
+2. Change S3 `EncryptionMode` to `SSE-KMS` and provide a KMS key ARN (or omit the key to use the default S3 KMS key, but explicitly specifying a key is best practice).
+3. Include a `LocalDiskEncryptionConfiguration` block with `EnableEbsEncryption: true`, `EncryptionKeyProviderType: "AwsKms"`, and a valid KMS key ARN.
+
+Below is a single, fully compliant configuration that can replace all three resources. Adjust the `name` and KMS key ARN as needed for each.
+
+```hcl
+resource "aws_emr_security_configuration" "compliant" {
+  name = "emrsc_other" # change per resource
+
+  configuration = <<EOF
+{
+  "EncryptionConfiguration": {
+    "AtRestEncryptionConfiguration": {
+      "S3EncryptionConfiguration": {
+        "EncryptionMode": "SSE-KMS",
+        "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+      },
+      "LocalDiskEncryptionConfiguration": {
+        "EnableEbsEncryption": true,
+        "EncryptionKeyProviderType": "AwsKms",
+        "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+      }
+    },
+    "EnableInTransitEncryption": true,
+    "EnableAtRestEncryption": true
+  }
+}
+EOF
+}
+```
+
+If you need to keep the three separate resources, apply the same changes to each:
+- For `pass`: enable in-transit encryption and switch S3 encryption mode to `SSE-KMS` with a KMS key ARN.
+- For `fail`: add the full `AtRestEncryptionConfiguration` as shown (S3 with SSE-KMS, local disk encryption with KMS) and enable in-transit encryption.
+- For `fail2`: add the entire `EncryptionConfiguration` block with both at-rest and in-transit encryption enabled.
+
+After these changes, all four checks will pass.

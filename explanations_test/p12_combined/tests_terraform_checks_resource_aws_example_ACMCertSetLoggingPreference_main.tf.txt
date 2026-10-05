@@ -1,0 +1,51 @@
+## Remediation Briefing
+
+### Finding 1: CKV_AWS_233 on `aws_acm_certificate.pass` (lines 1–14)
+
+**Triggering lines**  
+Lines 10–12: the commented-out `lifecycle` block.
+
+**What is wrong**  
+The resource does not have `create_before_destroy` enabled because the `lifecycle` block is commented out. This means that if the certificate is replaced (e.g., due to a change that forces recreation), Terraform will destroy the existing certificate before creating the new one, causing a period without a valid certificate.
+
+**Remediation**  
+Uncomment the `lifecycle` block (lines 10–12) so that `create_before_destroy = true` is active. If you prefer to keep the block commented for documentation, add a new, uncommented `lifecycle` block with `create_before_destroy = true`.
+
+---
+
+### Finding 2: CKV_AWS_233 on `aws_acm_certificate.pass2` (lines 16–29)
+
+**Triggering lines**  
+Lines 25–27: the commented-out `lifecycle` block.
+
+**What is wrong**  
+Same as above: the `create_before_destroy` lifecycle rule is commented out, so the resource will be destroyed before a replacement is created during an update that forces recreation.
+
+**Remediation**  
+Uncomment the `lifecycle` block (lines 25–27) or add a new, uncommented `lifecycle` block with `create_before_destroy = true`.
+
+---
+
+### Finding 3: CKV_AWS_234 on `aws_acm_certificate.fail` (lines 31–44)
+
+**Triggering line**  
+Line 40: `certificate_transparency_logging_preference = "DISABLED"`.
+
+**What is wrong**  
+The certificate transparency logging preference is explicitly set to `DISABLED`. This disables logging of the certificate to public CT logs, which are used to detect misissued certificates.
+
+**Remediation**  
+Change the value from `"DISABLED"` to `"ENABLED"` on line 40. If the `options` block is not required for other reasons, you may also remove the entire `options` block to rely on the default (`ENABLED`), but explicitly setting `ENABLED` is clearer and ensures the check passes.
+
+---
+
+### Finding 4: CKV_AWS_233 on `aws_acm_certificate.fail` (lines 31–44)
+
+**Triggering lines**  
+Lines 41–43: the commented-out `lifecycle` block.
+
+**What is wrong**  
+The `create_before_destroy` lifecycle rule is commented out, so the resource will be destroyed before a replacement is created when a change forces recreation.
+
+**Remediation**  
+Uncomment the `lifecycle` block (lines 41–43) or add a new, uncommented `lifecycle` block with `create_before_destroy = true`.

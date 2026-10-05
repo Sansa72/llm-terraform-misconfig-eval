@@ -1,0 +1,23 @@
+The `aws_elasticache_cluster.fail` resource has two security misconfigurations:
+
+1. **Automatic backups are disabled** – `snapshot_retention_limit` is set to `0`, which turns off automatic daily snapshots. For Redis clusters, you should enable backups by setting this to a positive integer (e.g., `5` days) to support point-in-time recovery and data protection.
+
+2. **Default subnet group is used** – No `subnet_group_name` is specified, so the cluster will be placed in the default subnet group. This group is often shared across multiple resources and may not provide the network isolation required for security best practices. You should create and assign a dedicated subnet group (e.g., `"mysubnet"` as used in the `pass` resource).
+
+**Fix:**  
+- Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5`).  
+- Add `subnet_group_name` with the name of a custom subnet group.  
+
+Example correction:
+
+```hcl
+resource "aws_elasticache_cluster" "fail" {
+  cluster_id           = "cluster"
+  engine               = "redis"
+  node_type            = "cache.m5.large"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  subnet_group_name    = "mysubnet"                # use custom subnet group
+  snapshot_retention_limit = 5                     # enable automatic backups
+}
+```

@@ -1,0 +1,76 @@
+The scanner flagged multiple misconfigurations across three EMR security configuration resources. Below I break down each finding, the exact lines that trigger it, and why it is a problem.
+
+---
+
+### Resource: `aws_emr_security_configuration.pass` (lines 1–22)
+
+**Finding 1: CKV_AWS_351 – Ensure EMR Cluster security configuration encrypts InTransit**
+
+- **Trigger:** Line 16  
+  `"EnableInTransitEncryption": false`
+- **Explanation:** The check requires that in-transit encryption be enabled. The configuration explicitly sets `EnableInTransitEncryption` to `false`, which disables encryption for data moving between EMR cluster nodes. This directly violates the check.
+
+**Finding 2: CKV_AWS_171 – Ensure Cluster security configuration encryption is using SSE-KMS**
+
+- **Trigger:** Line 9  
+  `"EncryptionMode": "SSE-S3"`
+- **Explanation:** This check expects S3 encryption to use SSE-KMS (AWS Key Management Service). The configuration uses `SSE-S3` instead, which does not meet the requirement for KMS-managed keys.
+
+---
+
+### Resource: `aws_emr_security_configuration.fail` (lines 24–40)
+
+**Finding 1: CKV_AWS_351 – Ensure EMR Cluster security configuration encrypts InTransit**
+
+- **Trigger:** Line 35  
+  `"EnableInTransitEncryption": false`
+- **Explanation:** Same as above; in-transit encryption is explicitly disabled.
+
+**Finding 2: CKV_AWS_171 – Ensure Cluster security configuration encryption is using SSE-KMS**
+
+- **Trigger:** Line 30  
+  `"EncryptionMode": "SSE-S3"`
+- **Explanation:** S3 encryption is set to SSE-S3, not SSE-KMS as required.
+
+**Finding 3: CKV_AWS_350 – Ensure EMR Cluster security configuration encrypts ebs disks**
+
+- **Trigger:** The entire `AtRestEncryptionConfiguration` block (lines 27–32) **lacks** a `LocalDiskEncryptionConfiguration` section.
+- **Explanation:** The check requires that EBS disk encryption be enabled. The configuration does not define any local disk encryption settings, so EBS encryption is not enabled.
+
+**Finding 4: CKV_AWS_349 – Ensure EMR Cluster security configuration encrypts local disks**
+
+- **Trigger:** Same as above – missing `LocalDiskEncryptionConfiguration`.
+- **Explanation:** Without a `LocalDiskEncryptionConfiguration` block, local disk encryption is not enabled, failing this check.
+
+---
+
+### Resource: `aws_emr_security_configuration.fail2` (lines 43–54)
+
+**Finding 1: CKV_AWS_351 – Ensure EMR Cluster security configuration encrypts InTransit**
+
+- **Trigger:** Line 49  
+  `"EnableInTransitEncryption": false`
+- **Explanation:** In-transit encryption is explicitly disabled.
+
+**Finding 2: CKV_AWS_171 – Ensure Cluster security configuration encryption is using SSE-KMS**
+
+- **Trigger:** The entire configuration (lines 45–53) contains no S3 encryption settings, and line 50 sets `"EnableAtRestEncryption": false`.
+- **Explanation:** At-rest encryption is disabled entirely, so there is no SSE-KMS configuration for S3. The check fails because SSE-KMS is not used.
+
+**Finding 3: CKV_AWS_350 – Ensure EMR Cluster security configuration encrypts ebs disks**
+
+- **Trigger:** Missing `LocalDiskEncryptionConfiguration` block.
+- **Explanation:** No local disk encryption is configured, so EBS encryption is not enabled.
+
+**Finding 4: CKV_AWS_349 – Ensure EMR Cluster security configuration encrypts local disks**
+
+- **Trigger:** Same missing `LocalDiskEncryptionConfiguration` block.
+- **Explanation:** Local disk encryption is not enabled.
+
+---
+
+**Summary of required fixes:**
+
+- For all resources: set `EnableInTransitEncryption` to `true` to satisfy CKV_AWS_351.
+- For S3 encryption: use `EncryptionMode: "SSE-KMS"` (and optionally provide a KMS key ARN) to satisfy CKV_AWS_171.
+- For local disk encryption: include a `LocalDiskEncryptionConfiguration` block with `EnableEbsEncryption` set to `true` and an appropriate key provider (e.g., `AwsKms`) to satisfy CKV_AWS_350 and CKV_AWS_349.

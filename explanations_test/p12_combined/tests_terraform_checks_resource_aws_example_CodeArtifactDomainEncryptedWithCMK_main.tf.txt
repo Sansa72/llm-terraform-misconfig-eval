@@ -1,0 +1,11 @@
+**Check ID:** CKV_AWS_221  
+**Resource:** `aws_codeartifact_domain.fail` (lines 1–7)
+
+**Evidence**  
+The `encryption_key` argument is commented out on line 3 (`# encryption_key =`). No other `encryption_key` assignment is present in the resource block. The scanner finding confirms the domain is not configured to use a customer-managed KMS key.
+
+**What is wrong**  
+The CodeArtifact domain is not set to use a customer-managed KMS key for encryption. Without an explicit `encryption_key`, the domain defaults to an AWS-managed key, which does not meet the check’s requirement for a customer-managed key (CMK). This limits your control over key rotation, access policies, and auditing.
+
+**Remediation**  
+Uncomment the `encryption_key` argument and supply the ARN of a valid KMS key that you manage. The key must exist in the same region and the domain’s IAM role must have permissions to use it. The `pass` resource in the same file (lines 9–14) shows the correct pattern: `encryption_key = aws_kms_key.example.arn`. Follow that approach, ensuring the key ARN references a real customer-managed key.

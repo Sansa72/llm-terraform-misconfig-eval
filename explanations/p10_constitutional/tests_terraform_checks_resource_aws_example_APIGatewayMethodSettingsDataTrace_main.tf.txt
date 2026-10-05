@@ -1,0 +1,24 @@
+The scanner flagged the following checks against the provided Terraform file:
+
+- **CKV_AWS_276** on `aws_api_gateway_method_settings` resource **"fail"** (lines 1‑9):  
+  The `settings` block explicitly sets `data_trace_enabled = true` (line 7). This directly violates the rule that data trace must not be enabled.
+
+- **CKV_AWS_225** (caching enabled) and **CKV_AWS_308** (caching encrypted) on all three resources:  
+  - **"fail"** (lines 1‑9): The `settings` block (lines 6‑8) does not contain `caching_enabled` or `cache_data_encrypted`. Because caching is not explicitly enabled, the rule CKV_AWS_225 is triggered; because caching is not set to encrypted, CKV_AWS_308 is triggered.  
+  - **"pass_explicit"** (lines 11‑19): The `settings` block (lines 16‑18) likewise lacks `caching_enabled` and `cache_data_encrypted`, triggering both CKV_AWS_225 and CKV_AWS_308.  
+  - **"pass_implicit"** (lines 21‑25): No `settings` block is present at all, so caching is neither enabled nor encrypted, triggering both CKV_AWS_225 and CKV_AWS_308.
+
+**Remediation required:**
+
+- In resource **"fail"** (lines 1‑9), within the existing `settings` block:  
+  - Change `data_trace_enabled` from `true` to `false` (line 7).  
+  - Add `caching_enabled = true` and `cache_data_encrypted = true`.
+
+- In resource **"pass_explicit"** (lines 11‑19), within the existing `settings` block:  
+  - Add `caching_enabled = true` and `cache_data_encrypted = true`.
+
+- In resource **"pass_implicit"** (lines 21‑25), add a `settings` block containing:  
+  - `caching_enabled = true`  
+  - `cache_data_encrypted = true`
+
+These changes will resolve all seven flagged findings.

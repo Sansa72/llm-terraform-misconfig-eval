@@ -1,0 +1,77 @@
+Below is a remediation briefing for each failing check, in the order they appear in the scanner output. All changes are described in prose; no complete Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_58 on `aws_eks_cluster.disabled` (lines 3–12)
+**What’s wrong:** The cluster does not have envelope encryption of Kubernetes secrets enabled.  
+**Why it matters:** Without a KMS key for secrets encryption, sensitive data stored in etcd (such as Secrets) is only encrypted at rest by the default AWS-managed encryption. Envelope encryption with a customer-managed key provides an additional layer of security and allows you to control key rotation and access.  
+**Change needed:** Add an `encryption_config` block inside the `aws_eks_cluster` resource. Within it, specify a `resources` list containing `["secrets"]` and a `provider` block that references a KMS key ARN. The key can be an existing one or a new `aws_kms_key` resource. Ensure the cluster’s IAM role has permissions to use the KMS key.
+
+---
+
+### 2. CKV_AWS_37 on `aws_eks_cluster.disabled` (lines 3–12)
+**What’s wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** EKS control plane logs (API server, audit, authenticator, controller manager, scheduler) are essential for security monitoring, auditing, and troubleshooting. Without them, you lose visibility into cluster operations and potential malicious activity.  
+**Change needed:** Add an `enabled_cluster_log_types` argument inside the `aws_eks_cluster` resource, set to the list `["api", "audit", "authenticator", "controllerManager", "scheduler"]`. This enables all five log types. No other resource changes are required.
+
+---
+
+### 3. CKV_AWS_39 on `aws_eks_cluster.default` (lines 16–23)
+**What’s wrong:** The cluster’s public endpoint is not disabled; it is left at its default (enabled).  
+**Why it matters:** A publicly accessible endpoint exposes the Kubernetes API server to the internet, increasing the attack surface. If workers are in private subnets and only private access is needed, the public endpoint should be turned off.  
+**Change needed:** Inside the `vpc_config` block, set `endpoint_public_access = false`. This will disable the public endpoint entirely. (Note: this change also resolves CKV_AWS_38 for this resource, because with no public endpoint the CIDR restriction becomes irrelevant.)
+
+---
+
+### 4. CKV_AWS_58 on `aws_eks_cluster.default` (lines 16–23)
+**What’s wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as check #1 – unencrypted secrets in etcd are a risk.  
+**Change needed:** Add an `encryption_config` block as described in check #1, referencing a KMS key and the `["secrets"]` resource list. This is independent of the endpoint changes.
+
+---
+
+### 5. CKV_AWS_38 on `aws_eks_cluster.default` (lines 16–23)
+**What’s wrong:** The public endpoint is accessible from `0.0.0.0/0` (the default CIDR).  
+**Why it matters:** Even if a public endpoint is required, allowing access from any IP address is overly permissive and violates the principle of least privilege. It exposes the API server to the entire internet.  
+**Change needed:** If you must keep the public endpoint enabled, add a `public_access_cidrs` list inside `vpc_config` containing only the specific CIDR blocks that should be allowed (e.g., your corporate VPN or a bastion host’s IP). If you disable the public endpoint (as recommended in check #3), this check will pass automatically because the endpoint is no longer accessible. The two checks are linked: setting `endpoint_public_access = false` resolves both CKV_AWS_39 and CKV_AWS_38.
+
+---
+
+### 6. CKV_AWS_37 on `aws_eks_cluster.default` (lines 16–23)
+**What’s wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as check #2 – missing logs hinder security monitoring.  
+**Change needed:** Add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]` to the resource. This is independent of the endpoint and encryption settings.
+
+---
+
+### 7. CKV_AWS_39 on `aws_eks_cluster.enabled` (lines 25–34)
+**What’s wrong:** The public endpoint is explicitly enabled (`endpoint_public_access = true`).  
+**Why it matters:** Same as check #3 – an internet-facing API server increases risk.  
+**Change needed:** Change `endpoint_public_access` to `false` inside the `vpc_config` block. This will also satisfy CKV_AWS_38 for this resource.
+
+---
+
+### 8. CKV_AWS_58 on `aws_eks_cluster.enabled` (lines 25–34)
+**What’s wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as check #1.  
+**Change needed:** Add an `encryption_config` block with a KMS key and `["secrets"]` resources. Independent of other fixes.
+
+---
+
+### 9. CKV_AWS_38 on `aws_eks_cluster.enabled` (lines 25–34)
+**What’s wrong:** The public endpoint is accessible from `0.0.0.0/0` (default CIDR, since none is specified).  
+**Why it matters:** Same as check #5 – unrestricted public access is dangerous.  
+**Change needed:** If you disable the public endpoint (as recommended in check #7), this check passes automatically. If you must keep it enabled, add a `public_access_cidrs` list with only the necessary IP ranges. The two checks are interdependent: disabling the endpoint is the simplest way to pass both.
+
+---
+
+### 10. CKV_AWS_37 on `aws_eks_cluster.enabled` (lines 25–34)
+**What’s wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as check #2.  
+**Change needed:** Add `enabled_cluster_log_types` with all five log types. Independent of other fixes.
+
+---
+
+### Summary of interactions
+- For the `default` and `enabled` clusters, **CKV_AWS_39** (disable public endpoint) and **CKV_AWS_38** (restrict public CIDR) are linked. Disabling the public endpoint (`endpoint_public_access = false`) resolves both checks in one change. If a public endpoint is required, you must set `endpoint_public_access = true` and provide a restrictive `public_access_cidrs` list to pass CKV_AWS_38, but CKV_AWS_39 will still fail because the endpoint remains enabled. The most secure and straightforward remediation is to disable the public endpoint unless there is a specific need for it.
+- **CKV_AWS_58** (secrets encryption) and **CKV_AWS_37** (logging) are independent of each other and of the endpoint configuration. They must be addressed separately on every cluster.

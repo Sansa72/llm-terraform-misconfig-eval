@@ -1,0 +1,55 @@
+### 1. What the misconfiguration is
+The `aws_api_gateway_stage.fail` resource (lines 6-8) is configured with only a `name` attribute. Checkov flagged it for missing several critical security and observability controls:
+- **Caching** (`cache_cluster_enabled`) is disabled.
+- **X-Ray Tracing** (`xray_tracing_enabled`) is disabled.
+- **Access Logging** (`access_log_settings` block) is not configured.
+- **Client Certificate Authentication** (`client_certificate_id`) is missing.
+- **Execution Logging** (logging level) is not defined.
+- **WAF Protection** is not associated with the stage.
+
+*(Note: The `pass` resource only passes the caching check; it is also missing the other five configurations and requires the same fixes below except for caching).*
+
+### 2. Why it matters
+- **Logging**: Without access and execution logs, there is no audit trail of API requests or backend execution failures. This prevents forensic analysis and incident response.
+- **Tracing**: Disabling X-Ray removes the ability to troubleshoot latency, bottlenecks, or errors across the API request lifecycle.
+- **Authentication**: Without a client certificate, the API stage cannot cryptographically verify the identity of the calling client, relying entirely on network controls or potentially unauthenticated access.
+- **WAF**: Without a Web Application Firewall, the API endpoint is unprotected against common web exploits (e.g., SQL injection, cross-site scripting).
+- **Caching**: Without caching enabled, the backend services handle every request directly, which can lead to availability degradation or outages under high request volumes.
+
+### 3. How to fix it safely
+Update the `aws_api_gateway_stage.fail` resource to enable caching, X-Ray tracing, client certificate authentication, and access logging. You must also associate a WAF and define the execution logging level. 
+
+Because the current file does not contain the prerequisite resources (log groups, certificates, WAFs), you must either create them or reference existing ones.
+
+```hcl
+# Update the stage resource
+resource "aws_api_gateway_stage" "fail" {
+  name                  = "example"
+  cache_cluster_enabled = true
+  xray_tracing_enabled  = true
+  client_certificate_id = aws_api_gateway_client_certificate.example.id # Reference or create this
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.example.arn # Reference or create this
+    format          = "{\"requestId\":\"$context.requestId\", \"ip\":\"$context.identity.sourceIp\", \"requestTime\":\"$context.requestTime\", \"httpMethod\":\"$context.httpMethod\", \"resourcePath\":\"$context.resourcePath\", \"status\":\"$context.status\"}"
+  }
+}
+
+# Add execution logging via method settings
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_stage.fail.rest_api_id
+  stage_name  = aws_api_gateway_stage.fail.stage_name
+  method_path = "*/*"
+
+  settings {
+    logging_level = "INFO"
+  }
+}
+
+# Associate a WAF with the stage
+resource "aws_wafv2_web_acl_association" "fail" {
+  resource_arn = aws_api_gateway_stage.fail.arn
+  web_acl_arn  = aws_wafv2_web_acl.example.arn # Reference or create this
+}
+```
+Apply the same `xray_tracing_enabled`, `client_certificate_id`, `access_log_settings`, method settings, and WAF association to the `aws_api_gateway_stage.pass` resource to resolve its outstanding Checkov failures.

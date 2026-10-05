@@ -1,0 +1,47 @@
+The scanner flagged four issues across the two `aws_emr_security_configuration` resources in your file. I’ll break them down by check ID, pointing to the exact lines and the missing or incorrect configuration.
+
+---
+
+### 1. CKV_AWS_351 on `aws_emr_security_configuration.fail` (lines 1–19)
+**Finding:** Ensure EMR Cluster security configuration encrypts in-transit data.
+
+**Evidence:** The `configuration` block (lines 3–17) contains no `EnableInTransitEncryption` property.  
+Compare with the `pass` resource (line 40), which explicitly sets `"EnableInTransitEncryption": true`.  
+The `fail` resource has only at-rest encryption enabled (line 6: `"EnableAtRestEncryption": true`), but in-transit encryption is completely absent.
+
+---
+
+### 2. CKV_AWS_171 on `aws_emr_security_configuration.fail` (lines 1–19)
+**Finding:** Ensure Cluster security configuration encryption is using SSE-KMS.
+
+**Evidence:** The at-rest encryption settings in the `fail` resource use non-KMS key providers:
+- S3 encryption: `"EncryptionMode": "SSE-S3"` (line 9) – this uses Amazon S3-managed keys, not KMS.
+- Local disk encryption: `"EncryptionKeyProviderType": "AwsS3"` (line 12) – this also does not use a KMS key.
+
+The check requires KMS-based encryption. The `pass` resource (lines 28–35) demonstrates the expected pattern: `"EncryptionMode": "SSE-KMS"` with an `AwsKmsKey` for S3, and `"EncryptionKeyProviderType": "AwsKms"` with an `AwsKmsKey` for local disks.
+
+---
+
+### 3. CKV_AWS_350 on `aws_emr_security_configuration.fail` (lines 1–19) and `aws_emr_security_configuration.pass` (lines 22–43)
+**Finding:** Ensure EMR Cluster security configuration encrypts EBS disks.
+
+**Evidence:** Neither resource includes an `EbsEncryptionConfiguration` block.  
+- The `fail` resource (lines 3–17) only defines `S3EncryptionConfiguration` and `LocalDiskEncryptionConfiguration`.  
+- The `pass` resource (lines 24–41) also defines only those two blocks, despite correctly enabling in-transit encryption and using KMS for S3 and local disks.
+
+The check specifically looks for EBS volume encryption settings (e.g., `"EbsEncryptionConfiguration"` with `"EbsEncryption"` and `"EbsVolumeEncryptionOptions"`). Because that block is missing from both configurations, the scanner flags both resources.
+
+---
+
+### What needs to be fixed
+
+For the `fail` resource (lines 1–19):
+- Add `"EnableInTransitEncryption": true` inside the top-level `EncryptionConfiguration` object.
+- Change the S3 encryption mode to `"SSE-KMS"` and provide a KMS key ARN/alias.
+- Change the local disk encryption provider type to `"AwsKms"` and provide a KMS key ARN/alias.
+- Add an `EbsEncryptionConfiguration` block (e.g., `"EbsEncryptionConfiguration": { "EbsEncryption": { "EbsVolumeEncryptionOptions": { "VolumeEncryptionKeyProvider": "AwsKms", "AwsKmsKey": "<key>" } } }`).
+
+For the `pass` resource (lines 22–43):
+- Add the same `EbsEncryptionConfiguration` block; the other checks are already satisfied.
+
+The exact KMS key references (like `module.encryption_module.kms_key_alias`) can be reused from the `pass` resource for consistency.

@@ -1,0 +1,64 @@
+The scanner flagged two types of misconfiguration across your DMS endpoints. Here’s what each finding means, backed by the exact resources and lines in your file.
+
+---
+
+### 1. CKV_AWS_296 – DMS endpoint is not using a Customer Managed Key (CMK)
+
+**What the check requires**  
+The endpoint must be encrypted at rest using a KMS key that you control (a Customer Managed Key), not an AWS‑owned key or no encryption.
+
+**Resources flagged**
+
+- **`aws_dms_endpoint.fail`** (lines 42–60)  
+  Line 50 explicitly sets `kms_key_arn = ""`. An empty string means no CMK is used.  
+  *Evidence*: `kms_key_arn = ""` on line 50.
+
+- **`aws_dms_endpoint.fail2`** (lines 62–79)  
+  The `kms_key_arn` argument is completely absent. Without it, the endpoint does not use a CMK.  
+  *Evidence*: No `kms_key_arn` line anywhere in the block (lines 62–79).
+
+- **`aws_dms_endpoint.fail3`** (lines 83–100)  
+  This endpoint has `engine_name = "s3"`. For S3 endpoints, the CMK is specified inside an `s3_settings` block, not via the top‑level `kms_key_arn`. The resource has no `s3_settings` block at all, so no CMK is configured.  
+  *Evidence*: The block (lines 83–100) contains no `s3_settings` block and no `kms_key_arn`.
+
+**How to fix**  
+- For non‑S3 engines (like `aurora`, `mongod`), set `kms_key_arn` to the ARN of a valid KMS key, e.g. `aws_kms_key.pike.arn` as done in `pass2` and `pass4`.  
+- For S3 endpoints, add an `s3_settings` block and set `server_side_encryption_kms_key_id` to a CMK ARN, as shown in `pass3` (lines 112–114).
+
+---
+
+### 2. CKV2_AWS_49 – DMS endpoint does not have SSL configured
+
+**What the check requires**  
+The endpoint must enforce SSL/TLS for data in transit. The `ssl_mode` attribute must not be set to `"none"`.
+
+**Resources flagged**
+
+- **`aws_dms_endpoint.pass`** (lines 2–20)  
+  Line 12: `ssl_mode = "none"` – SSL is explicitly disabled.  
+  *Evidence*: `ssl_mode = "none"` on line 12.
+
+- **`aws_dms_endpoint.pass2`** (lines 22–40)  
+  Line 32: `ssl_mode = "none"`.  
+  *Evidence*: `ssl_mode = "none"` on line 32.
+
+- **`aws_dms_endpoint.fail`** (lines 42–60)  
+  Line 52: `ssl_mode = "none"`.  
+  *Evidence*: `ssl_mode = "none"` on line 52.
+
+- **`aws_dms_endpoint.fail2`** (lines 62–79)  
+  Line 70: `ssl_mode = "none"`.  
+  *Evidence*: `ssl_mode = "none"` on line 70.
+
+- **`aws_dms_endpoint.pass4`** (lines 124–142)  
+  Line 133: `ssl_mode = "none"`.  
+  *Evidence*: `ssl_mode = "none"` on line 133.
+
+**Note:** The scanner did **not** flag `fail3` (lines 83–100) or `pass3` (lines 102–122), both of which also have `ssl_mode = "none"`. Those endpoints use `engine_name = "s3"`. The check appears to exclude S3 endpoints, so the finding is only raised for non‑S3 engines.
+
+**How to fix**  
+Change `ssl_mode` from `"none"` to a value that enforces SSL, such as `"require"`, `"verify-ca"`, or `"verify-full"`, depending on your certificate validation needs. For example, `ssl_mode = "require"` will encrypt the connection without validating the server certificate.
+
+---
+
+If you need guidance on which SSL mode to choose or how to supply the necessary certificates, let me know.

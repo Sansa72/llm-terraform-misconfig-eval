@@ -1,0 +1,35 @@
+**Remediation Briefing: CKV_AWS_292 – DocDB Global Cluster Encryption at Rest**
+
+Below are the two failing findings, addressed in the order they appear in the scanner output. Both relate to the same check and the same underlying issue, but apply to separate resources.
+
+---
+
+### 1. CKV_AWS_292 on `aws_docdb_global_cluster.fail` (lines 1–5)
+
+**What is wrong**  
+The `storage_encrypted` argument is not set, so the global cluster defaults to unencrypted storage.
+
+**Why it matters**  
+Without encryption at rest, the underlying data volumes, snapshots, and replicas are stored in plaintext. If the physical media is compromised or improperly disposed of, sensitive data can be exposed. Encryption at rest is a baseline security control required by most compliance frameworks (e.g., PCI DSS, HIPAA, SOC 2).
+
+**Change needed**  
+Add the `storage_encrypted = true` argument to the `aws_docdb_global_cluster` resource named `fail`. This will instruct AWS to encrypt the cluster’s storage using an AWS-managed KMS key by default. No other modifications are required; the engine version and identifier can remain as they are.
+
+---
+
+### 2. CKV_AWS_292 on `aws_docdb_global_cluster.fail2` (lines 7–12)
+
+**What is wrong**  
+The `storage_encrypted` argument is explicitly set to `false`, which disables encryption at rest.
+
+**Why it matters**  
+The risk is identical to the first finding: unencrypted storage exposes data to unauthorised access if the underlying storage is compromised. Explicitly disabling encryption is a clear misconfiguration that must be corrected.
+
+**Change needed**  
+Change the value of `storage_encrypted` from `false` to `true` in the `aws_docdb_global_cluster` resource named `fail2`. This will enable encryption for that global cluster. The rest of the resource block can stay unchanged.
+
+---
+
+### Interactions between fixes
+
+There are no interactions between the two fixes. Each resource is independent; enabling encryption on one does not affect the other. Both changes can be applied simultaneously without conflict.

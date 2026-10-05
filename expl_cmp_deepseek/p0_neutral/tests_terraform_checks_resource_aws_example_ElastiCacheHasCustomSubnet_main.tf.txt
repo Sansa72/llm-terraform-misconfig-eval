@@ -1,0 +1,13 @@
+**CKV_AWS_134 — Automatic backups are disabled**
+
+- **What:** The `fail` cluster sets `snapshot_retention_limit = 0`, which disables automatic snapshots for the Redis cluster.
+- **Why it matters:** If the cluster’s data is lost, corrupted, or accidentally deleted, there is no automated point-in-time backup to restore from. Recovery would require rebuilding the data from scratch or relying on manual snapshots that are not configured here. Blast radius: the entire dataset in this Redis cluster.
+- **Fix:** Set `snapshot_retention_limit` to a value between `1` and `35` days, for example `5`, as done in the `pass` resource.
+
+---
+
+**CKV_AWS_323 — Default subnet group is used**
+
+- **What:** The `fail` cluster does not set `subnet_group_name`, so ElastiCache uses the VPC’s default subnet group.
+- **Why it matters:** The default subnet group includes all subnets in the VPC. This can place Redis nodes in subnets that are not intended for the cache—potentially public or broadly shared subnets—reducing network segmentation and increasing unintended network exposure. The actual blast radius depends on your VPC subnet design and associated security group rules.
+- **Fix:** Create an `aws_elasticache_subnet_group` containing only private, intended subnets, and set `subnet_group_name` on the cluster to reference that subnet group.

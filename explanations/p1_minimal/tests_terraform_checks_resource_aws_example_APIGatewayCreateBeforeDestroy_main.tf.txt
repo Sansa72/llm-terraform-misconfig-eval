@@ -1,0 +1,53 @@
+The scanner flagged two API Gateway resources (`aws_api_gateway_rest_api.fail` and `aws_api_gateway_rest_api.fail2`) for violating check **CKV_AWS_237**, which requires `create_before_destroy = true` in the resource’s `lifecycle` block.
+
+## What’s the problem?
+
+When Terraform needs to replace an API Gateway REST API (for example, because you changed its `name` or another attribute that forces recreation), the default behavior is to **destroy the existing API first, then create the new one**. This causes:
+
+- **Downtime** – The API is completely unavailable between the destroy and the create.
+- **Risk of permanent loss** – If the new creation fails, you’re left with no API at all.
+
+Setting `create_before_destroy = true` reverses the order: Terraform will **create the replacement API first**, and only after it succeeds will it destroy the old one. This keeps the API available during the transition and provides a safe rollback point.
+
+## Why the flagged resources fail
+
+- **`aws_api_gateway_rest_api.fail` (lines 1‑7):** The `lifecycle` block is commented out, so `create_before_destroy` defaults to `false`.
+- **`aws_api_gateway_rest_api.fail2` (lines 9‑15):** The `lifecycle` block explicitly sets `create_before_destroy = false`.
+
+Both configurations will cause a destroy‑then‑create cycle, which is what the scanner is warning about.
+
+## How to fix it
+
+Add (or uncomment) a `lifecycle` block with `create_before_destroy = true` in each affected resource.
+
+**Important caveat:** API Gateway REST APIs have a **unique name constraint** per region per account. If you simply enable `create_before_destroy` without changing the `name`, Terraform will try to create a new API with the same name while the old one still exists, resulting in a conflict error. To avoid this, you must also make the API name **unique on each deployment**, for example by appending a random suffix or a timestamp.
+
+### Recommended fix
+
+```hcl
+resource "random_string" "api_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example-${random_string.api_suffix.result}"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_rest_api" "fail2" {
+  name = "example-${random_string.api_suffix.result}"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+If you cannot change the API name (e.g., it’s hard‑coded in clients), you may need to accept the downtime and suppress the check with a documented exception. However, the recommended approach is to use a unique name and enable `create_before_destroy` to maintain availability during updates.

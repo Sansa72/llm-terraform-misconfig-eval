@@ -1,0 +1,72 @@
+The scanner flagged two missing security configurations across all your Elastic Beanstalk environments:
+
+- **CKV_AWS_340 – Managed platform updates not enabled** (all environments: `fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`)
+- **CKV_AWS_312 – Enhanced health reporting not enabled** (environments `fail`, `fail2`, `fail3`, `fail4`)
+
+### What these checks require
+
+1. **Managed platform updates** (`CKV_AWS_340`)  
+   Elastic Beanstalk can automatically apply minor and patch updates to the underlying platform (OS, runtime, components) during a maintenance window. Without this, your environment remains on an outdated stack, missing security patches and bug fixes. The check expects the setting `ManagedActionsEnabled` to be `true` under the `aws:elasticbeanstalk:managedactions` namespace.
+
+2. **Enhanced health reporting** (`CKV_AWS_312`)  
+   Basic health reporting only provides a coarse status (e.g., “Ok”, “Warning”). Enhanced health reporting streams detailed metrics and logs to CloudWatch, giving you visibility into instance and application health. This is essential for detecting and responding to security incidents or performance issues. The check expects the `SystemType` setting under `aws:elasticbeanstalk:healthreporting:system` to be set to `enhanced`.
+
+### Why this matters
+
+- **Without managed updates**, your environment will not receive critical security patches for the operating system, language runtime, or Elastic Beanstalk components. This leaves known vulnerabilities unaddressed and increases the risk of compromise.
+- **Without enhanced health reporting**, you lose detailed insight into the health of your instances and application. In the event of an attack or misconfiguration, you may not have the necessary telemetry to detect, investigate, or respond effectively.
+
+### How to fix
+
+Add the following `setting` blocks to each of your `aws_elastic_beanstalk_environment` resources. The `pass` and `pass2` environments already have enhanced health reporting enabled, so they only need the managed platform updates block. The `fail` environments need both.
+
+**For enhanced health reporting:**
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "SystemType"
+  value     = "enhanced"
+}
+```
+
+**For managed platform updates:**
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+**Example – fixing the `fail` resource:**
+```hcl
+resource "aws_elastic_beanstalk_environment" "fail" {
+  name                   = "beany"
+  application            = var.elastic_beanstalk_application_name
+  description            = var.description
+  tier                   = var.tier
+  solution_stack_name    = var.solution_stack_name
+  wait_for_ready_timeout = var.wait_for_ready_timeout
+  version_label          = var.version_label
+  tags                   = local.tags
+
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+}
+```
+
+**Additional notes:**
+- In `fail3`, you have a setting with namespace `"guff"` that appears to be a typo or test artifact. Remove it to avoid confusion.
+- The `pass` and `pass2` environments already have `HealthStreamingEnabled` set to `true`/`"true"`, which satisfies enhanced health reporting. You only need to add the managed platform updates block to those resources.
+- The `value` fields should be strings (`"true"`, `"enhanced"`), but Terraform will coerce booleans; using explicit strings is safer.
+
+After applying these changes, all environments will comply with both checks.

@@ -1,0 +1,33 @@
+**Remediation Briefing: ACM Certificate Misconfigurations**
+
+---
+
+### 1. CKV_AWS_233 on `aws_acm_certificate.pass` (lines 1–14)
+**What’s wrong:** The resource does not have a `lifecycle` block with `create_before_destroy = true`.  
+**Why it matters:** When an ACM certificate is replaced (e.g., due to a change in `domain_name` or `validation_method`), Terraform will destroy the existing certificate before creating the new one. This can cause downtime for services that depend on the certificate, because the old certificate is removed before the new one is ready. Enabling `create_before_destroy` ensures the replacement certificate is issued and available before the old one is deleted.  
+**Change needed:** Uncomment the existing `lifecycle` block (lines 12–14) and set `create_before_destroy = true` inside it. The block should be placed at the top level of the resource, not inside `options`.
+
+---
+
+### 2. CKV_AWS_233 on `aws_acm_certificate.pass2` (lines 16–29)
+**What’s wrong:** Same as above – the resource lacks a `lifecycle` block with `create_before_destroy = true`.  
+**Why it matters:** Identical risk of downtime during certificate replacement.  
+**Change needed:** Uncomment the `lifecycle` block (lines 27–29) and ensure it contains `create_before_destroy = true`. The block should be placed at the resource’s top level.
+
+---
+
+### 3. CKV_AWS_234 on `aws_acm_certificate.fail` (lines 31–44)
+**What’s wrong:** The `certificate_transparency_logging_preference` is explicitly set to `"DISABLED"`.  
+**Why it matters:** Certificate Transparency (CT) logging is a security best practice that makes TLS certificates publicly auditable, helping detect misissued or malicious certificates. Disabling CT logging removes this safeguard and may violate organisational or regulatory requirements.  
+**Change needed:** In the `options` block, change the value of `certificate_transparency_logging_preference` from `"DISABLED"` to `"ENABLED"`. If the `options` block is not required for any other setting, you may also remove the entire block, as the provider default is `"ENABLED"` – but explicitly setting it to `"ENABLED"` is clearer and satisfies the check.
+
+---
+
+### 4. CKV_AWS_233 on `aws_acm_certificate.fail` (lines 31–44)
+**What’s wrong:** The resource is missing a `lifecycle` block with `create_before_destroy = true`.  
+**Why it matters:** Same downtime risk as described for the other certificates.  
+**Change needed:** Uncomment the `lifecycle` block (lines 42–44) and set `create_before_destroy = true` at the resource’s top level. This fix is independent of the CT logging change above; both must be applied to this resource.
+
+---
+
+**Interaction note:** The two fixes for `aws_acm_certificate.fail` (CKV_AWS_234 and CKV_AWS_233) do not conflict. Apply both: enable CT logging in the `options` block and add the `lifecycle` block with `create_before_destroy`. The `lifecycle` block is already present in commented form, so simply uncomment it and correct the value.

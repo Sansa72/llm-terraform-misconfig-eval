@@ -1,0 +1,47 @@
+The scanner flagged two distinct policy checks against three EBS volume resources in your Terraform file. Here is the evidence-based breakdown.
+
+### Check IDs and Their Meaning
+- **CKV_AWS_3**: “Ensure all data stored in the EBS is securely encrypted” – requires the volume to be encrypted (i.e., `encrypted = true`).
+- **CKV_AWS_189**: “Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)” – requires the volume to be encrypted *and* to use a customer-managed KMS key (via the `kms_key_id` argument). Simply enabling encryption with the default AWS-managed key is not sufficient.
+
+### Resource-by-Resource Analysis
+
+#### 1. `aws_ebs_volume.enabled` (lines 3–8)
+```terraform
+resource "aws_ebs_volume" "enabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+
+  encrypted = True
+}
+```
+- **CKV_AWS_189** is raised.  
+  The volume has `encrypted = True`, so it is encrypted, but no `kms_key_id` is specified. This means it uses the default AWS-managed EBS key, not a customer-managed key (CMK). Therefore, it fails the requirement for a CMK.
+- **CKV_AWS_3** is *not* raised. The volume is encrypted, so it satisfies the basic encryption check.
+
+#### 2. `aws_ebs_volume.default` (lines 12–15)
+```terraform
+resource "aws_ebs_volume" "default" {
+  availability_zone = "us-west-2a"
+  size              = 20
+}
+```
+- **CKV_AWS_3** and **CKV_AWS_189** are both raised.  
+  The `encrypted` argument is not set. In Terraform’s AWS provider, the default value for `encrypted` is `false`. Therefore, the volume is unencrypted, failing both checks.
+
+#### 3. `aws_ebs_volume.disabled` (lines 17–22)
+```terraform
+resource "aws_ebs_volume" "disabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+
+  encrypted = False
+}
+```
+- **CKV_AWS_3** and **CKV_AWS_189** are both raised.  
+  The volume explicitly sets `encrypted = False`, so it is unencrypted, failing both checks.
+
+### Summary of Required Fixes
+- For `aws_ebs_volume.enabled`: Add a `kms_key_id` argument pointing to a customer-managed KMS key to satisfy CKV_AWS_189.
+- For `aws_ebs_volume.default`: Set `encrypted = true` and provide a `kms_key_id` to satisfy both checks.
+- For `aws_ebs_volume.disabled`: Change `encrypted = False` to `encrypted = true` and provide a `kms_key_id` to satisfy both checks.

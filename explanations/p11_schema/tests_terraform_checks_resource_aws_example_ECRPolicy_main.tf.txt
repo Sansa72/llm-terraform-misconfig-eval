@@ -1,0 +1,174 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_163",
+      "resource": "aws_ecr_repository.public",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"public\" {\n  name = \"public_repo\"\n}"
+      ],
+      "risk": "Images pushed to the repository are not automatically scanned for vulnerabilities.",
+      "remediation": "Add an image_scanning_configuration block with scan_on_push set to true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_136",
+      "resource": "aws_ecr_repository.public",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"public\" {\n  name = \"public_repo\"\n}"
+      ],
+      "risk": "Repository images are encrypted with the default ECR encryption instead of a customer-managed KMS key, reducing control over encryption.",
+      "remediation": "Add an encryption_configuration block specifying a KMS key.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_51",
+      "resource": "aws_ecr_repository.public",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"public\" {\n  name = \"public_repo\"\n}"
+      ],
+      "risk": "Image tags can be overwritten, which could allow malicious images to replace trusted ones.",
+      "remediation": "Set image_tag_mutability to \"IMMUTABLE\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_32",
+      "resource": "aws_ecr_repository_policy.fail",
+      "evidence": [
+        "resource \"aws_ecr_repository_policy\" \"fail\" {\n  repository = aws_ecr_repository.public.name\n  policy     = <<POLICY\n{   \"Version\": \"2008-10-17\",\n    \"Statement\": [\n        {\n            \"Sid\": \"new policy\",\n            \"Effect\": \"Allow\",\n            \"Principal\": \"*\",\n            \"Action\": [\n                \"ecr:GetDownloadUrlForLayer\",\n                \"ecr:BatchGetImage\",\n                \"ecr:BatchCheckLayerAvailability\",                \n                \"ecr:PutImage\",\n                \"ecr:InitiateLayerUpload\",                \n                \"ecr:UploadLayerPart\",\n                \"ecr:CompleteLayerUpload\",                \n                \"ecr:DescribeRepositories\",                \n                \"ecr:GetRepositoryPolicy\",                \n                \"ecr:ListImages\",                \n                \"ecr:DeleteRepository\",\n                \"ecr:BatchDeleteImage\",                \n                \"ecr:SetRepositoryPolicy\",\n                \"ecr:DeleteRepositoryPolicy\"\n            ]        \n        }   \n    ]\n    }\nPOLICY\n}"
+      ],
+      "risk": "The repository policy allows public access because Principal is set to \"*\" without any condition restricting access.",
+      "remediation": "Restrict the Principal to specific AWS accounts or IAM users, or add a condition that limits access to trusted principals.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_163",
+      "resource": "aws_ecr_repository.private",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"private\" {\n  name = \"private_repo\"\n}"
+      ],
+      "risk": "Images pushed to the repository are not automatically scanned for vulnerabilities.",
+      "remediation": "Add an image_scanning_configuration block with scan_on_push set to true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_136",
+      "resource": "aws_ecr_repository.private",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"private\" {\n  name = \"private_repo\"\n}"
+      ],
+      "risk": "Repository images are encrypted with the default ECR encryption instead of a customer-managed KMS key, reducing control over encryption.",
+      "remediation": "Add an encryption_configuration block specifying a KMS key.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_51",
+      "resource": "aws_ecr_repository.private",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"private\" {\n  name = \"private_repo\"\n}"
+      ],
+      "risk": "Image tags can be overwritten, which could allow malicious images to replace trusted ones.",
+      "remediation": "Set image_tag_mutability to \"IMMUTABLE\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_163",
+      "resource": "aws_ecr_repository.empty",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"empty\" {\n  name = \"nopolicy_repo\"\n}"
+      ],
+      "risk": "Images pushed to the repository are not automatically scanned for vulnerabilities.",
+      "remediation": "Add an image_scanning_configuration block with scan_on_push set to true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_136",
+      "resource": "aws_ecr_repository.empty",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"empty\" {\n  name = \"nopolicy_repo\"\n}"
+      ],
+      "risk": "Repository images are encrypted with the default ECR encryption instead of a customer-managed KMS key, reducing control over encryption.",
+      "remediation": "Add an encryption_configuration block specifying a KMS key.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_51",
+      "resource": "aws_ecr_repository.empty",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"empty\" {\n  name = \"nopolicy_repo\"\n}"
+      ],
+      "risk": "Image tags can be overwritten, which could allow malicious images to replace trusted ones.",
+      "remediation": "Set image_tag_mutability to \"IMMUTABLE\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_163",
+      "resource": "aws_ecr_repository.conditional_ok",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_ok\" {\n  name = \"conditional_ok_repo\"\n}"
+      ],
+      "risk": "Images pushed to the repository are not automatically scanned for vulnerabilities.",
+      "remediation": "Add an image_scanning_configuration block with scan_on_push set to true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_136",
+      "resource": "aws_ecr_repository.conditional_ok",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_ok\" {\n  name = \"conditional_ok_repo\"\n}"
+      ],
+      "risk": "Repository images are encrypted with the default ECR encryption instead of a customer-managed KMS key, reducing control over encryption.",
+      "remediation": "Add an encryption_configuration block specifying a KMS key.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_51",
+      "resource": "aws_ecr_repository.conditional_ok",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_ok\" {\n  name = \"conditional_ok_repo\"\n}"
+      ],
+      "risk": "Image tags can be overwritten, which could allow malicious images to replace trusted ones.",
+      "remediation": "Set image_tag_mutability to \"IMMUTABLE\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_163",
+      "resource": "aws_ecr_repository.conditional_bad",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_bad\" {\n  name = \"conditional_bad_repo\"\n}"
+      ],
+      "risk": "Images pushed to the repository are not automatically scanned for vulnerabilities.",
+      "remediation": "Add an image_scanning_configuration block with scan_on_push set to true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_136",
+      "resource": "aws_ecr_repository.conditional_bad",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_bad\" {\n  name = \"conditional_bad_repo\"\n}"
+      ],
+      "risk": "Repository images are encrypted with the default ECR encryption instead of a customer-managed KMS key, reducing control over encryption.",
+      "remediation": "Add an encryption_configuration block specifying a KMS key.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_51",
+      "resource": "aws_ecr_repository.conditional_bad",
+      "evidence": [
+        "resource \"aws_ecr_repository\" \"conditional_bad\" {\n  name = \"conditional_bad_repo\"\n}"
+      ],
+      "risk": "Image tags can be overwritten, which could allow malicious images to replace trusted ones.",
+      "remediation": "Set image_tag_mutability to \"IMMUTABLE\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_32",
+      "resource": "aws_ecr_repository_policy.fail_conditional",
+      "evidence": [
+        "resource \"aws_ecr_repository_policy\" \"fail_conditional\" {\n  repository = aws_ecr_repository.conditional_bad.name\n  policy     = <<POLICY\n{   \"Version\": \"2008-10-17\",\n    \"Statement\": [\n        {\n            \"Sid\": \"new policy\",\n            \"Effect\": \"Allow\",\n            \"Principal\": \"*\",\n            \"Action\": [\n                \"ecr:GetDownloadUrlForLayer\",\n                \"ecr:BatchGetImage\",\n                \"ecr:BatchCheckLayerAvailability\",                \n                \"ecr:PutImage\",\n                \"ecr:InitiateLayerUpload\",                \n                \"ecr:UploadLayerPart\",\n                \"ecr:CompleteLayerUpload\",                \n                \"ecr:DescribeRepositories\",                \n                \"ecr:GetRepositoryPolicy\",                \n                \"ecr:ListImages\",                \n                \"ecr:DeleteRepository\",\n                \"ecr:BatchDeleteImage\",                \n                \"ecr:SetRepositoryPolicy\",\n                \"ecr:DeleteRepositoryPolicy\"\n            ],\n            \"Condition\": {\n                \"ForAllValues:StringEquals\": {\n                    \"aws:username\": \"pull-user-1\"\n                }\n            }\n        }   \n    ]\n    }\nPOLICY\n}"
+      ],
+      "risk": "The policy uses Principal \"*\" with a condition on aws:username, which does not effectively restrict access because the username can be chosen by any IAM user, leaving the repository publicly accessible.",
+      "remediation": "Replace Principal \"*\" with specific AWS account ARNs or use a condition on a strong attribute like aws:PrincipalOrgID.",
+      "confidence": "high"
+    }
+  ]
+}

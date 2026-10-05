@@ -1,0 +1,46 @@
+The scanner raised two check failures on three Auto Scaling group resources. Here is what the findings and the file tell you.
+
+---
+
+### CKV_AWS_153: Autoscaling groups should supply tags to launch configurations
+
+This check requires that the ASG resource includes `tag` blocks so that tags are propagated to instances at launch.
+
+**Flagged resources and evidence:**
+
+- **`aws_autoscaling_group.fail` (lines 27–33)**  
+  The resource uses a launch configuration (`launch_configuration = aws_launch_configuration.foobar.name` on line 29).  
+  There are **no `tag` blocks** anywhere in this resource block.  
+  Compare with the un‑flagged `aws_autoscaling_group.pass` (lines 1–26), which contains a `tag` block with `propagate_at_launch = true` (lines 14–18).
+
+- **`aws_autoscaling_group.pass_mixed` (lines 35–59)**  
+  This resource uses a mixed instances policy with launch templates.  
+  There are **no `tag` blocks** in the resource definition.
+
+- **`aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)**  
+  Same situation: mixed instances policy, launch templates, **no `tag` blocks**.
+
+**What to do:**  
+Add one or more `tag` blocks with `propagate_at_launch = true` to each flagged ASG, similar to the pattern shown in the `pass` resource.
+
+---
+
+### CKV_AWS_315: Ensure EC2 Auto Scaling groups use EC2 launch templates
+
+This check requires that the ASG uses an EC2 launch template rather than a launch configuration.
+
+**Flagged resources and evidence:**
+
+- **`aws_autoscaling_group.fail` (lines 27–33)**  
+  Line 29 explicitly sets `launch_configuration`, which is a launch configuration, not a launch template. This directly violates the check.
+
+- **`aws_autoscaling_group.pass_mixed` (lines 35–59)**  
+  The resource does **not** have a top‑level `launch_template` block. It does contain a `launch_template` block inside `mixed_instances_policy` (lines 42–55), but the scanner still flags the resource.  
+  The finding indicates the scanner does not consider this sufficient to satisfy the check, or it expects a top‑level `launch_template` block (as seen in the un‑flagged `pass` resource, lines 8–11).
+
+- **`aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)**  
+  Identical situation: launch templates are present only inside `mixed_instances_policy` (lines 68–87), and the resource is flagged.
+
+**What to do:**  
+- For `fail`: replace `launch_configuration` with a top‑level `launch_template` block referencing an `aws_launch_template` resource.  
+- For `pass_mixed` and `pass_mixed_multiple`: the scanner’s flagging may be a false positive if the mixed instances policy already uses launch templates. However, based on the finding, you should verify whether the check’s definition accepts launch templates inside `mixed_instances_policy`. If it does not, you may need to restructure the configuration (e.g., add a top‑level `launch_template` for the default instance type) or suppress the finding with justification.

@@ -1,0 +1,21 @@
+**1. What the misconfiguration is**
+Both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail` set `retention_in_days = 1`, which violates the policy requiring logs to be retained for at least 1 year (365 days). Additionally, `aws_cloudwatch_log_group.fail` lacks a `kms_key_id` attribute, failing the requirement for customer-managed KMS encryption.
+
+**2. Why it matters**
+* **Retention:** A 1-day retention policy permanently deletes logs after 24 hours. This destroys historical data required for incident response, forensic investigations, and compliance auditing of events older than a single day.
+* **Encryption:** Without a customer-managed KMS key, the `fail` log group relies on default AWS-managed encryption. This prevents you from enforcing custom key access policies, key rotation schedules, and granular IAM control over the encryption keys securing the logs.
+
+**3. How to fix it safely**
+Update `retention_in_days` to 365 for both log groups, and add a `kms_key_id` to the `fail` resource referencing a valid KMS key ARN or alias.
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass" {
+  retention_in_days = 365
+  kms_key_id        = "someKey"
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = "someKey" # Replace with a valid KMS key reference
+}
+```

@@ -1,0 +1,47 @@
+The scanner identified three misconfigurations in the provided Terraform file. Here is the evidence for each finding.
+
+### 1. CKV_AWS_336: ECS containers should have read-only root filesystems
+
+**Resources flagged:**
+- `aws_ecs_task_definition.pass` (lines 1–41)
+- `aws_ecs_task_definition.pass2` (lines 43–84)
+- `aws_ecs_task_definition.fail` (lines 86–128)
+
+**What the check requires:**  
+Each container definition must include `"readonlyRootFilesystem": true` to prevent write access to the container’s root filesystem.
+
+**Evidence in the file:**  
+None of the container definitions in any of the three resources contain the `readonlyRootFilesystem` attribute. For example:
+- In `aws_ecs_task_definition.pass`, the container definitions are on lines 3–40. No `readonlyRootFilesystem` key is present.
+- In `aws_ecs_task_definition.pass2`, the container definitions are on lines 45–82. No `readonlyRootFilesystem` key is present.
+- In `aws_ecs_task_definition.fail`, the container definitions are on lines 88–126. No `readonlyRootFilesystem` key is present.
+
+**Fix:** Add `"readonlyRootFilesystem": true` to each container definition in all three resources.
+
+---
+
+### 2. CKV_AWS_334: ECS containers should not be privileged
+
+**Resource flagged:** `aws_ecs_task_definition.fail` (lines 86–128)
+
+**What the check requires:**  
+Containers must not run with elevated privileges (`privileged: true`).
+
+**Evidence in the file:**  
+The second container definition (lines 112–121) explicitly sets `"privilege": true` on line 114. This grants the container full access to the host’s devices and capabilities, violating the check.
+
+**Fix:** Remove the `"privilege": true` line or change it to `"privilege": false`.
+
+---
+
+### 3. CKV_AWS_335: ECS task definitions should not share the host’s process namespace
+
+**Resource flagged:** `aws_ecs_task_definition.fail` (lines 86–128)
+
+**What the check requires:**  
+Containers must not use `pidMode = "host"`, which allows them to see and interact with processes on the host.
+
+**Evidence in the file:**  
+The second container definition (lines 112–121) sets `"pidMode": "host"` on line 115. This directly violates the check.
+
+**Fix:** Remove the `"pidMode": "host"` line or change it to `"pidMode": "task"` (the default). Note that the `pass2` resource already uses `"pidMode": "task"` on line 56 without triggering the check, confirming that `"task"` is acceptable.

@@ -1,0 +1,20 @@
+**What the current configuration does (and why it fails the check)**  
+The resource `aws_ebs_encryption_by_default "disabled"` explicitly sets `enabled = false`. This disables the account‑level default encryption for new EBS volumes. The scanner flags this because it expects default encryption to be **enabled** to protect data at rest automatically.
+
+**What a passing configuration would do**  
+A passing configuration would set `enabled = true` on the same resource. This would ensure that every new EBS volume created in the account is encrypted by default, using the specified KMS key (or the AWS managed key if no custom key is provided). The rest of the resource block—its name, any other arguments—remains unchanged.
+
+**Precise difference**  
+The only difference is the value of the `enabled` argument:  
+- **Current (failing):** `enabled = false`  
+- **Required (passing):** `enabled = true`  
+
+This single boolean controls whether the account‑wide “encryption by default” setting is active. When `false`, volumes are created unencrypted unless the user explicitly requests encryption. When `true`, every new EBS volume is encrypted automatically, closing a common data‑at‑rest exposure.
+
+**Why this matters for security**  
+Without default encryption, a developer or automated process that forgets to specify encryption will create unencrypted volumes. Those volumes can later be snapshotted, shared, or exposed, leading to potential data leakage. Enabling default encryption removes that human/process dependency and ensures all new volumes are encrypted by design.
+
+---
+
+**Fix summary for the engineer**  
+Change the `enabled` argument of the `aws_ebs_encryption_by_default` resource named `"disabled"` from `false` to `true`. No other modifications are needed. This will satisfy the check and enforce EBS encryption by default across the account.

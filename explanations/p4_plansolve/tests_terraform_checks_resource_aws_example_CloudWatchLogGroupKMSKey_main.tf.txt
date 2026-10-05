@@ -1,0 +1,27 @@
+The scanner found three misconfigurations in the provided Terraform file. Here’s what needs to be fixed and why.
+
+---
+
+### 1. CKV_AWS_338 on `aws_cloudwatch_log_group.pass` (line 1–4)
+**Problem:** The log group’s retention is set to `1` day.  
+**Why it matters:** Short retention periods can lead to premature deletion of logs, making incident investigation, auditing, and compliance impossible. The check requires logs to be kept for at least one year (365 days).  
+**Fix:** Change `retention_in_days` from `1` to a value of `365` or greater (e.g., `365`, `400`, `545`, `731`, `1827`, `3653`).
+
+---
+
+### 2. CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (line 6–8)
+**Problem:** Same as above – retention is set to `1` day.  
+**Why it matters:** Identical risk of losing forensic data and failing compliance requirements.  
+**Fix:** Set `retention_in_days` to at least `365`.
+
+---
+
+### 3. CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (line 6–8)
+**Problem:** The log group is not encrypted with a customer-managed KMS key.  
+**Why it matters:** Without specifying a KMS key, CloudWatch Logs uses the default AWS-managed key for encryption at rest. While data is still encrypted, using a customer-managed key gives you control over key rotation, access policies, and auditing, which is often required for regulatory compliance.  
+**Fix:** Add a `kms_key_id` argument referencing a valid KMS key ARN, alias, or ID. For example:  
+`kms_key_id = aws_kms_key.log_key.arn` (if you define a key) or `kms_key_id = "arn:aws:kms:region:account:key/your-key-id"`.
+
+---
+
+After applying these changes, both log groups will meet the required standards for retention and encryption.

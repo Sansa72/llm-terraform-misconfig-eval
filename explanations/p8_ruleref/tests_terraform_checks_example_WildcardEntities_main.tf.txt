@@ -1,0 +1,163 @@
+The scanner flagged two issues with the IAM password policy and seven with the S3 bucket. Below I explain each finding, why it matters, and exactly what needs to change in your Terraform file.
+
+---
+
+## IAM Password Policy (`aws_iam_account_password_policy.password-policy`)
+
+### CKV_AWS_9 – Password expiration not set
+**What the rule requires:** Passwords must expire after 90 days or less.  
+**Why it matters:** Without expiration, a compromised password remains valid indefinitely, giving an attacker persistent access. Regular rotation limits the window of opportunity.  
+**What’s missing in your file:** The resource defines minimum length, complexity, and allows users to change passwords, but does **not** set `max_password_age`. The AWS default is `0`, meaning passwords never expire.  
+**Fix:** Add `max_password_age = 90` (or a lower value if your policy requires it).
+
+### CKV_AWS_13 – Password reuse not prevented
+**What the rule requires:** The policy must prevent reuse of previous passwords (typically the last 24).  
+**Why it matters:** If users can cycle back to old passwords, the benefit of forced expiration is lost. An attacker who learns an old password can reuse it.  
+**What’s missing in your file:** The `password_reuse_prevention` attribute is absent. The default is `0`, which disables reuse prevention.  
+**Fix:** Add `password_reuse_prevention = 24` (or another number ≥ 1; 24 is the common standard).
+
+**Updated resource block:**
+```hcl
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+  max_password_age               = 90
+  password_reuse_prevention      = 24
+}
+```
+
+---
+
+## S3 Bucket (`aws_s3_bucket.template_bucket`)
+
+### CKV_AWS_21 – Versioning not enabled
+**What the rule requires:** S3 bucket versioning must be enabled.  
+**Why it matters:** Versioning protects against accidental or malicious overwrites and deletions by keeping multiple variants of an object. It is also a prerequisite for replication (CKV_AWS_144).  
+**What’s missing:** No `versioning` block exists in the bucket resource.  
+**Fix:** Add:
+```hcl
+versioning {
+  enabled = true
+}
+```
+
+### CKV2_AWS_6 – No public access block
+**What the rule requires:** An `aws_s3_bucket_public_access_block` must be attached to the bucket, with all four block settings enabled.  
+**Why it matters:** Even if the bucket ACL or policy is restrictive, a missing public access block leaves a gap. The block overrides any permissive settings at the account or bucket level, ensuring objects are never publicly exposed.  
+**What’s missing:** The bucket resource has no associated public access block.  
+**Fix:** Add a separate resource (or use the `aws_s3_bucket_public_access_block` resource) that references this bucket and sets all four flags to `true`:
+```hcl
+resource "aws_s3_bucket_public_access_block" "template_bucket_block" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+### CKV_AWS_145 – Default encryption not using KMS
+**What the rule requires:** The bucket’s default server-side encryption must use AWS KMS (SSE-KMS), not SSE-S3.  
+**Why it matters:** SSE-KMS gives you more control over key rotation, access auditing via CloudTrail, and the ability to set key policies. SSE-S3 is simpler but lacks these security controls.  
+**What’s missing:** No `server_side_encryption_configuration` block is present.  
+**Fix:** Add a default encryption rule using `aws:kms`. You can reference a specific KMS key ARN or use the AWS-managed key (`aws/s3`). Example:
+```hcl
+server_side_encryption_configuration {
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = var.kms_key_arn   # or "aws/s3" for the default service key
+    }
+  }
+}
+```
+
+### CKV_AWS_144 – Cross-region replication not enabled
+**What the rule requires:** The bucket must have a replication configuration that copies objects to a bucket in a different region.  
+**Why it matters:** Cross-region replication (CRR) provides geographic redundancy and can help meet compliance requirements for data durability and disaster recovery.  
+**What’s missing:** No `replication_configuration` block exists.  
+**Fix:** You need to:
+1. Enable versioning (already covered above).
+2. Create a destination bucket in another region with versioning enabled.
+3. Create an IAM role that allows S3 to replicate objects.
+4. Add a `replication_configuration` block to the source bucket referencing the role and destination bucket.
+
+A minimal example:
+```hcl
+resource "aws_s3_bucket" "template_bucket" {
+  # ... existing arguments ...
+  versioning { enabled = true }
+
+  replication_configuration {
+    role = aws_iam_role.replication_role.arn
+    rules {
+      id     = "replicate-all"
+      status = "Enabled"
+      destination {
+        bucket        = aws_s3_bucket.replica_bucket.arn
+        storage_class = "STANDARD"
+      }
+    }
+  }
+}
+```
+You will also need to define the IAM role and the destination bucket.
+
+### CKV_AWS_18 – Access logging not enabled
+**What the rule requires:** Server access logs must be enabled, writing to a separate logging bucket.  
+**Why it matters:** Access logs provide a detailed record of requests made to the bucket, which is essential for security audits, anomaly detection, and forensic investigations.  
+**What’s missing:** No `logging` block is present.  
+**Fix:** Create a dedicated logging bucket (or use an existing one) and add a `logging` block to `template_bucket`:
+```hcl
+logging {
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/template_bucket/"
+}
+```
+Ensure the logging bucket has appropriate permissions to receive logs.
+
+### CKV2_AWS_61 – No lifecycle configuration
+**What the rule requires:** The bucket must have at least one lifecycle rule.  
+**Why it matters:** Lifecycle rules help manage storage costs and enforce data retention policies. They can automatically transition objects to cheaper storage classes or expire them after a defined period, reducing the risk of stale data accumulating indefinitely.  
+**What’s missing:** No `lifecycle_rule` block exists.  
+**Fix:** Add a lifecycle rule appropriate for your data. For example, to move objects to STANDARD_IA after 30 days and expire after 365 days:
+```hcl
+lifecycle_rule {
+  id      = "default-rule"
+  enabled = true
+  transition {
+    days          = 30
+    storage_class = "STANDARD_IA"
+  }
+  expiration {
+    days = 365
+  }
+}
+```
+Adjust the rules to match your data retention needs.
+
+### CKV2_AWS_62 – Event notifications not enabled
+**What the rule requires:** The bucket must have at least one event notification configured (e.g., to Lambda, SQS, or SNS).  
+**Why it matters:** Event notifications allow you to react automatically to changes in the bucket, such as triggering malware scans, data processing pipelines, or compliance checks. Without them, you lose real-time visibility into object operations.  
+**What’s missing:** No `notification` block (or separate `aws_s3_bucket_notification` resource) is present.  
+**Fix:** Add a notification configuration. For instance, to send all object-creation events to an SQS queue:
+```hcl
+notification {
+  queue_arn = aws_sqs_queue.my_queue.arn
+  events    = ["s3:ObjectCreated:*"]
+}
+```
+You can also use `lambda_function` or `topic` blocks. Choose the destination that fits your architecture.
+
+---
+
+## Summary of required changes
+1. **IAM password policy:** Add `max_password_age` and `password_reuse_prevention`.
+2. **S3 bucket:** Add `versioning`, a public access block resource, SSE-KMS encryption, cross-region replication (with IAM role and destination bucket), access logging, a lifecycle rule, and event notifications.
+
+Each of these changes closes a specific security gap. Implement them in the order that best fits your deployment pipeline, but ensure all are addressed to pass the compliance checks.

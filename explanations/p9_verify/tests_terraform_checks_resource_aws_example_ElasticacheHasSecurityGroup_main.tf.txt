@@ -1,0 +1,23 @@
+The Terraform configuration contains two resources that trigger multiple security findings. The root cause is the use of a legacy `aws_elasticache_security_group` (for EC2-Classic, which is deprecated) and an unattached, rule-less `aws_security_group` that serves no purpose in a VPC-based environment.
+
+**Findings and fixes:**
+
+1. **CKV_AWS_196 on `aws_elasticache_security_group.exists`**  
+   This resource type is only valid for ElastiCache clusters running in EC2-Classic, which is deprecated. AWS now requires ElastiCache clusters to run in a VPC and use VPC security groups.  
+   **Fix:** Remove the `aws_elasticache_security_group` resource entirely. Instead, attach a VPC security group directly to the ElastiCache cluster using the `security_group_ids` argument.
+
+2. **CKV_AWS_23 on `aws_elasticache_security_group.exists`**  
+   The check expects all security group rules to have descriptions. Although this legacy resource does not define rules, the finding is resolved by removing the resource as recommended above.
+
+3. **CKV_AWS_23 on `aws_security_group.bar`**  
+   The security group `bar` has no ingress or egress rules defined, so there are no rules to describe. The scanner flags this because any rules that do exist (including the default outbound rule that AWS may apply) lack a description.  
+   **Fix:** Remove the unused security group. If it is needed for other resources, define explicit ingress/egress rules with descriptions, and ensure the group is attached to a resource (see next finding).
+
+4. **CKV2_AWS_5 on `aws_security_group.bar`**  
+   The security group is not attached to any resource. It is only referenced by the deprecated `aws_elasticache_security_group`, which does not constitute a valid VPC attachment.  
+   **Fix:** Remove the unused security group. If it is intended to protect an ElastiCache cluster, create a new security group with the required rules (each with a description) and attach it directly to the ElastiCache cluster via the `security_group_ids` argument.
+
+**Summary of recommended actions:**
+- Delete the `aws_elasticache_security_group.exists` resource.
+- Delete the `aws_security_group.bar` resource.
+- If a security group is needed for ElastiCache, define a new `aws_security_group` with explicit ingress/egress rules that include descriptions, and reference it in the ElastiCache cluster’s `security_group_ids`.

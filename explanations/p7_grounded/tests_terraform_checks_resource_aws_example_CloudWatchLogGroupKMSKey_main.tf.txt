@@ -1,0 +1,75 @@
+The scanner raised two distinct checks against the `aws_cloudwatch_log_group` resources in your file. Here’s what each finding means, backed by the exact lines and check IDs.
+
+---
+
+### 1. CKV_AWS_338 – Log retention below 1 year
+
+**Finding:**  
+- `CKV_AWS_338` on `aws_cloudwatch_log_group.pass` (lines 1-4)  
+- `CKV_AWS_338` on `aws_cloudwatch_log_group.fail` (lines 6-8)
+
+**What the check requires:**  
+CloudWatch log groups must retain logs for at least 365 days (1 year).
+
+**Evidence in the file:**  
+Both resources set `retention_in_days = 1`:
+
+```terraform
+resource "aws_cloudwatch_log_group" "pass" {
+  retention_in_days = 1          # line 2
+  kms_key_id        = "someKey"
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 1          # line 7
+}
+```
+
+The value `1` is far below the required minimum of `365`. The presence of `kms_key_id` in the `pass` resource does not affect this check; it only evaluates the retention period.
+
+**Fix:**  
+Change `retention_in_days` to `365` or a higher value (e.g., `365`, `400`, `731`) in both resources.
+
+---
+
+### 2. CKV_AWS_158 – Missing KMS encryption
+
+**Finding:**  
+- `CKV_AWS_158` on `aws_cloudwatch_log_group.fail` (lines 6-8)
+
+**What the check requires:**  
+CloudWatch log groups must be encrypted using a KMS key.
+
+**Evidence in the file:**  
+The `fail` resource does not include a `kms_key_id` argument:
+
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 1          # line 7
+  # No kms_key_id specified
+}
+```
+
+The `pass` resource (lines 1-4) does specify `kms_key_id = "someKey"`, which is why it was **not** flagged by this check.
+
+**Fix:**  
+Add a `kms_key_id` argument to the `fail` resource, pointing to a valid KMS key ARN, alias, or ID. For example:
+
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = "arn:aws:kms:region:account:key/your-key-id"
+}
+```
+
+---
+
+### Summary of required changes
+
+| Resource | Line(s) | Issue | Required action |
+|----------|---------|-------|-----------------|
+| `aws_cloudwatch_log_group.pass` | 2 | `retention_in_days = 1` violates CKV_AWS_338 | Set `retention_in_days` to ≥ 365 |
+| `aws_cloudwatch_log_group.fail` | 7 | `retention_in_days = 1` violates CKV_AWS_338 | Set `retention_in_days` to ≥ 365 |
+| `aws_cloudwatch_log_group.fail` | 6-8 | Missing `kms_key_id` violates CKV_AWS_158 | Add `kms_key_id` with a valid KMS key |
+
+No other resources or checks are present in the provided file, so these are the only issues to address.

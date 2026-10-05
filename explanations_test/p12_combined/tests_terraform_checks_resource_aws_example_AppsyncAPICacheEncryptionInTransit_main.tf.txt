@@ -1,0 +1,61 @@
+We have reviewed the scanner findings against the provided Terraform file. The file defines three `aws_appsync_api_cache` resources: `pass` (correctly configured), `fail`, and `fail2`. The scanner flagged only `fail` and `fail2`. Below is the remediation guidance for each failing check, in the order they appear.
+
+---
+
+### 1. CKV_AWS_215 on `aws_appsync_api_cache.fail` (lines 10–17)
+
+**Triggering lines:**  
+Line 12: `transit_encryption_enabled = false`
+
+**What is wrong and why it matters:**  
+The resource explicitly disables encryption in transit (`transit_encryption_enabled = false`). This means data moving between the AppSync API cache and clients is not encrypted, which could expose sensitive information in transit.
+
+**Change needed:**  
+Set the `transit_encryption_enabled` argument to `true` so that all cache traffic is encrypted in transit. The `pass` resource in the same file (lines 2–9) shows the correct configuration.
+
+---
+
+### 2. CKV_AWS_214 on `aws_appsync_api_cache.fail` (lines 10–17)
+
+**Triggering lines:**  
+Line 13: `at_rest_encryption_enabled = false`
+
+**What is wrong and why it matters:**  
+The resource explicitly disables encryption at rest (`at_rest_encryption_enabled = false`). This leaves cached data stored on disk unencrypted, which could lead to data exposure if the underlying storage is compromised.
+
+**Change needed:**  
+Set `at_rest_encryption_enabled` to `true` so that the cache contents are encrypted when persisted to disk. Again, the `pass` resource demonstrates the required setting.
+
+---
+
+### 3. CKV_AWS_215 on `aws_appsync_api_cache.fail2` (lines 19–24)
+
+**Triggering lines:**  
+The `transit_encryption_enabled` argument is absent from the resource block (lines 19–24). In Terraform, omitting this argument defaults to `false`.
+
+**What is wrong and why it matters:**  
+Because `transit_encryption_enabled` is not set, it defaults to `false`, meaning data in transit is not encrypted. This creates the same risk of data interception as an explicit `false`.
+
+**Change needed:**  
+Add the argument `transit_encryption_enabled = true` to the `aws_appsync_api_cache` resource named `fail2`. This will enable encryption in transit and align the resource with the security requirement.
+
+---
+
+### 4. CKV_AWS_214 on `aws_appsync_api_cache.fail2` (lines 19–24)
+
+**Triggering lines:**  
+The `at_rest_encryption_enabled` argument is absent from the resource block (lines 19–24). The default value is `false`.
+
+**What is wrong and why it matters:**  
+Without an explicit `at_rest_encryption_enabled = true`, the cache is not encrypted at rest. Unencrypted cached data on disk is vulnerable to unauthorised access if the storage medium is compromised.
+
+**Change needed:**  
+Add `at_rest_encryption_enabled = true` to the resource definition. This will ensure that all data written to the cache is encrypted at rest, matching the behaviour of the `pass` resource.
+
+---
+
+**Summary of required actions:**
+- In `aws_appsync_api_cache.fail`, change both `transit_encryption_enabled` and `at_rest_encryption_enabled` from `false` to `true`.
+- In `aws_appsync_api_cache.fail2`, add both `transit_encryption_enabled = true` and `at_rest_encryption_enabled = true`.
+
+No other resources or configurations need to be modified. The `pass` resource already satisfies both checks and can serve as a reference.

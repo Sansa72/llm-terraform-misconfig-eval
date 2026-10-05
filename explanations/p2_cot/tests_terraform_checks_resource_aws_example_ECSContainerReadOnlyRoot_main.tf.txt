@@ -1,0 +1,44 @@
+The scanner flagged several security misconfigurations in the `aws_ecs_task_definition` resources named `fail` and `fail2`. These checks enforce container hardening best practices that reduce the blast radius of a compromised container. Below is a breakdown of each issue and how to fix it.
+
+---
+
+### Resource: `aws_ecs_task_definition.fail`
+
+**Finding: CKV_AWS_336 – Ensure ECS containers are limited to read-only access to root filesystems**
+
+The `first` container correctly sets `readonlyRootFilesystem = true`, but the `second` container omits this setting, which defaults to `false`. A writable root filesystem allows an attacker who gains code execution inside the container to modify system binaries, install malicious tools, or tamper with configuration files, making post‑exploitation easier and potentially enabling persistence.
+
+**Fix:** Add `readonlyRootFilesystem = true` to the `second` container definition. If the application genuinely needs to write temporary data, mount a dedicated writable volume at a specific path (e.g., `/tmp`) rather than making the entire root filesystem writable.
+
+---
+
+### Resource: `aws_ecs_task_definition.fail2`
+
+This resource triggers three separate checks. All issues are in the container definitions.
+
+#### 1. CKV_AWS_336 – Read‑only root filesystem
+Both containers have `readonlyRootFilesystem = false`. As described above, this weakens the container’s security posture.
+
+**Fix:** Set `readonlyRootFilesystem = true` for both containers. If the application requires write access to certain directories, mount writable volumes for those specific paths.
+
+#### 2. CKV_AWS_334 – Containers must not be privileged
+The `second` container has `privilege = true`. A privileged container has almost all the capabilities of the host machine, including access to all devices. If this container is compromised, an attacker could easily escape to the underlying host, access sensitive host resources, or interfere with other containers.
+
+**Fix:** Remove `privilege = true` from the `second` container definition. If the container needs specific Linux capabilities (e.g., `NET_ADMIN`), add only those capabilities explicitly via `linuxParameters.capabilities` rather than granting full privileged mode.
+
+#### 3. CKV_AWS_335 – ECS task definitions should not share the host’s process namespace
+The `second` container definition includes `pidMode = "host"`. This setting (which is actually a task‑level property, not a container‑level one) would cause the container to share the host’s PID namespace, making host processes visible inside the container. An attacker who compromises the container could then inspect or signal host processes, significantly increasing the risk of host escape or information disclosure.
+
+**Fix:** Remove `pidMode = "host"` from the container definition. The default task PID mode is `"task"`, which isolates each container’s process namespace. If you intended to set a task‑level PID mode, do so at the task definition level, but avoid `"host"` unless strictly necessary and after a thorough security review.
+
+---
+
+### Summary of required changes
+
+- **`fail` task definition:** Add `readonlyRootFilesystem = true` to the `second` container.
+- **`fail2` task definition:**
+  - Set `readonlyRootFilesystem = true` for both containers.
+  - Remove `privilege = true` from the `second` container.
+  - Remove `pidMode = "host"` from the `second` container (and do not set it at the task level).
+
+These adjustments align the task definitions with the principle of least privilege, reducing the attack surface of each container and limiting the impact of a potential compromise.

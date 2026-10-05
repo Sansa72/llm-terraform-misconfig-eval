@@ -1,0 +1,54 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_189",
+      "resource": "aws_ebs_volume.enabled",
+      "evidence": [
+        "resource \"aws_ebs_volume\" \"enabled\" {\n  availability_zone = \"us-west-2a\"\n  size              = 20\n\n  encrypted = True\n}"
+      ],
+      "risk": "EBS volume is encrypted but uses the default AWS managed key instead of a customer managed key (CMK), which may not meet compliance requirements for key management and control.",
+      "remediation": "Add a kms_key_id attribute referencing a customer managed KMS key to ensure encryption uses a CMK.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_189",
+      "resource": "aws_ebs_volume.default",
+      "evidence": [
+        "resource \"aws_ebs_volume\" \"default\" {\n  availability_zone = \"us-west-2a\"\n  size              = 20\n}"
+      ],
+      "risk": "EBS volume is not encrypted at all, leaving data at rest unprotected.",
+      "remediation": "Set encrypted = true and provide a customer managed KMS key via kms_key_id to enable encryption.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_3",
+      "resource": "aws_ebs_volume.default",
+      "evidence": [
+        "resource \"aws_ebs_volume\" \"default\" {\n  availability_zone = \"us-west-2a\"\n  size              = 20\n}"
+      ],
+      "risk": "EBS volume is not encrypted, exposing data at rest to unauthorized access.",
+      "remediation": "Set encrypted = true to enable default EBS encryption.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_189",
+      "resource": "aws_ebs_volume.disabled",
+      "evidence": [
+        "resource \"aws_ebs_volume\" \"disabled\" {\n  availability_zone = \"us-west-2a\"\n  size              = 20\n\n  encrypted = False\n}"
+      ],
+      "risk": "EBS volume is explicitly not encrypted, leaving data at rest unprotected.",
+      "remediation": "Set encrypted = true and provide a customer managed KMS key via kms_key_id to enable encryption with a CMK.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_3",
+      "resource": "aws_ebs_volume.disabled",
+      "evidence": [
+        "resource \"aws_ebs_volume\" \"disabled\" {\n  availability_zone = \"us-west-2a\"\n  size              = 20\n\n  encrypted = False\n}"
+      ],
+      "risk": "EBS volume is explicitly not encrypted, leaving data at rest unprotected.",
+      "remediation": "Set encrypted = true to enable default EBS encryption.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_351",
+      "resource": "aws_emr_security_configuration.pass",
+      "evidence": [
+        "\"EnableInTransitEncryption\": false"
+      ],
+      "risk": "Data in transit between EMR cluster nodes and clients is not encrypted, potentially exposing sensitive information to interception.",
+      "remediation": "Set \"EnableInTransitEncryption\" to true in the EncryptionConfiguration.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_171",
+      "resource": "aws_emr_security_configuration.pass",
+      "evidence": [
+        "\"EncryptionMode\": \"SSE-S3\""
+      ],
+      "risk": "S3 data at rest is encrypted with SSE-S3 instead of SSE-KMS, reducing control over key management and access.",
+      "remediation": "Change the S3 encryption mode to \"SSE-KMS\" and optionally specify a KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_351",
+      "resource": "aws_emr_security_configuration.fail",
+      "evidence": [
+        "\"EnableInTransitEncryption\": false"
+      ],
+      "risk": "Data in transit between EMR cluster nodes and clients is not encrypted, potentially exposing sensitive information to interception.",
+      "remediation": "Set \"EnableInTransitEncryption\" to true in the EncryptionConfiguration.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_171",
+      "resource": "aws_emr_security_configuration.fail",
+      "evidence": [
+        "\"EncryptionMode\": \"SSE-S3\""
+      ],
+      "risk": "S3 data at rest is encrypted with SSE-S3 instead of SSE-KMS, reducing control over key management and access.",
+      "remediation": "Change the S3 encryption mode to \"SSE-KMS\" and optionally specify a KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_350",
+      "resource": "aws_emr_security_configuration.fail",
+      "evidence": [
+        "\"AtRestEncryptionConfiguration\": {\n      \"S3EncryptionConfiguration\": {\n        \"EncryptionMode\": \"SSE-S3\"\n      }\n    }"
+      ],
+      "risk": "EBS volumes attached to EMR cluster nodes are not encrypted at rest, potentially exposing data if volumes are compromised.",
+      "remediation": "Add a \"LocalDiskEncryptionConfiguration\" block with \"EnableEbsEncryption\" set to true and specify a key provider such as \"AwsKms\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_349",
+      "resource": "aws_emr_security_configuration.fail",
+      "evidence": [
+        "\"AtRestEncryptionConfiguration\": {\n      \"S3EncryptionConfiguration\": {\n        \"EncryptionMode\": \"SSE-S3\"\n      }\n    }"
+      ],
+      "risk": "Local instance store disks on EMR cluster nodes are not encrypted at rest, potentially exposing data if disks are compromised.",
+      "remediation": "Add a \"LocalDiskEncryptionConfiguration\" block with appropriate encryption settings, such as \"EncryptionKeyProviderType\": \"AwsKms\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_351",
+      "resource": "aws_emr_security_configuration.fail2",
+      "evidence": [
+        "\"EnableInTransitEncryption\": false"
+      ],
+      "risk": "Data in transit between EMR cluster nodes and clients is not encrypted, potentially exposing sensitive information to interception.",
+      "remediation": "Set \"EnableInTransitEncryption\" to true in the EncryptionConfiguration.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_171",
+      "resource": "aws_emr_security_configuration.fail2",
+      "evidence": [
+        "\"EncryptionConfiguration\": {\n    \"EnableInTransitEncryption\": false,\n    \"EnableAtRestEncryption\": false\n  }"
+      ],
+      "risk": "S3 data at rest is not encrypted with SSE-KMS because no S3 encryption configuration is present, reducing control over key management.",
+      "remediation": "Set \"EnableAtRestEncryption\" to true and include an \"AtRestEncryptionConfiguration\" with \"S3EncryptionConfiguration\" using \"EncryptionMode\": \"SSE-KMS\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_350",
+      "resource": "aws_emr_security_configuration.fail2",
+      "evidence": [
+        "\"EncryptionConfiguration\": {\n    \"EnableInTransitEncryption\": false,\n    \"EnableAtRestEncryption\": false\n  }"
+      ],
+      "risk": "EBS volumes attached to EMR cluster nodes are not encrypted at rest, potentially exposing data if volumes are compromised.",
+      "remediation": "Add an \"AtRestEncryptionConfiguration\" with a \"LocalDiskEncryptionConfiguration\" block containing \"EnableEbsEncryption\": true and a key provider.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_349",
+      "resource": "aws_emr_security_configuration.fail2",
+      "evidence": [
+        "\"EncryptionConfiguration\": {\n    \"EnableInTransitEncryption\": false,\n    \"EnableAtRestEncryption\": false\n  }"
+      ],
+      "risk": "Local instance store disks on EMR cluster nodes are not encrypted at rest, potentially exposing data if disks are compromised.",
+      "remediation": "Add an \"AtRestEncryptionConfiguration\" with a \"LocalDiskEncryptionConfiguration\" block that specifies encryption settings, such as \"EncryptionKeyProviderType\": \"AwsKms\".",
+      "confidence": "high"
+    }
+  ]
+}

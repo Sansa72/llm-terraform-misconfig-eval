@@ -1,0 +1,39 @@
+**1. What the misconfiguration is**
+
+- In `aws_dlm_lifecycle_policy.fail`, the `cross_region_copy` action contains an empty `encryption_configuration {}` block. This means cross-Region snapshot copies are not explicitly encrypted, and no key is specified. This triggers both:
+  - CKV_AWS_253: DLM cross-Region events are not encrypted.
+  - CKV_AWS_254: DLM cross-Region events are not encrypted with a Customer Managed Key (CMK).
+
+- In `aws_dlm_lifecycle_policy.fail2`, encryption is enabled (`encryption = true`) but no `cmk_arn` is supplied. This means the copy is encrypted with the AWS-managed EBS key (`aws/ebs`), not a customer-managed KMS key. This triggers CKV_AWS_254 only.
+
+**2. Why it matters**
+
+- For `fail`: Because encryption is not explicitly enabled, DLM relies on the account’s default EBS encryption setting. If that default is disabled, the cross-Region snapshot copies will be unencrypted, potentially exposing sensitive volume data in transit and at rest. Even if default encryption is on, you have no control over the key used.
+
+- For `fail2`: Encryption is enabled, but with an AWS-managed key you cannot control key policy, rotation, revocation, or access auditing. A customer-managed KMS key allows you to enforce least privilege, audit usage via CloudTrail, and revoke access independently—important for compliance and incident response when copies cross account or Region boundaries.
+
+**3. How to fix it safely**
+
+- In both `fail` and `fail2`, specify a customer-managed KMS key ARN in the `encryption_configuration` block, and ensure encryption is enabled explicitly. For `fail`, also add `encryption = true`.
+
+  Example (as in the `pass` resource):
+  ```hcl
+  cross_region_copy {
+    encryption_configuration {
+      encryption = true
+      cmk_arn    = aws_kms_key.test.arn
+    }
+    # retain_rule as needed
+  }
+  ```
+
+- Use a KMS key that is available in the destination Region for the cross-Region copy, or use a multi-Region KMS key if you need the same key material in both Regions.
+
+- Ensure the DLM execution role (`execution_role_arn`) has the necessary KMS permissions for the key:
+  - `kms:Encrypt`
+  - `kms:Decrypt`
+  - `kms:ReEncrypt*`
+  - `kms:GenerateDataKey*`
+  - `kms:DescribeKey`
+
+- Also verify the KMS key policy allows the DLM role to use the key from the source Region for the copy operation.

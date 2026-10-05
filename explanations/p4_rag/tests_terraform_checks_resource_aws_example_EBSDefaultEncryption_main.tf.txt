@@ -1,0 +1,21 @@
+The scanner flagged the `aws_ebs_encryption_by_default` resource named `"disabled"` because it explicitly sets `enabled = false`, which disables default EBS encryption for the region. This violates the policy **CKV_AWS_106**, which requires that default EBS encryption be enabled.
+
+**Why this matters**  
+When default EBS encryption is enabled, every new EBS volume created in the region is automatically encrypted at rest using AWS KMS keys. This protects data confidentiality without requiring individual volume configuration, reducing the risk of accidental exposure of sensitive data. Disabling it means volumes can be created unencrypted, leaving data vulnerable if a developer forgets to opt in.
+
+**What’s happening in your file**  
+- The resource `"enabled"` correctly sets `enabled = true`.  
+- The resource `"default"` omits the `enabled` argument, which defaults to `true` in the AWS provider—so it’s also fine.  
+- The resource `"null"` sets `enabled = null`. While the scanner didn’t flag it, `null` can behave unpredictably across provider versions and is best avoided.  
+- The resource `"disabled"` (lines 16–18) explicitly sets `enabled = false`, which is the direct cause of the finding.
+
+**How to fix it**  
+Remove the `"disabled"` resource entirely, or change its `enabled` value to `true`. If you need a single resource that controls the setting, keep only one `aws_ebs_encryption_by_default` block with `enabled = true` (or omit the argument). For example:
+
+```hcl
+resource "aws_ebs_encryption_by_default" "enabled" {
+  enabled = true
+}
+```
+
+Delete the `"disabled"` and `"null"` blocks to avoid confusion and ensure the setting is unambiguously enabled. After applying the change, the scanner will no longer report this misconfiguration.

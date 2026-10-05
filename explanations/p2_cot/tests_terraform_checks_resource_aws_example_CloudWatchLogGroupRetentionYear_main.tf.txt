@@ -1,0 +1,67 @@
+The scanner flagged two distinct issues across your CloudWatch Log Group resources:
+
+1. **CKV_AWS_158 – Missing KMS encryption** on all four log groups (`pass_365`, `pass_0`, `fail`, `unknown`).  
+2. **CKV_AWS_338 – Insufficient log retention** on the `fail` log group.
+
+### What’s wrong
+
+- **Encryption at rest**: None of the log groups specify a `kms_key_id`. By default, CloudWatch Logs encrypts data using AWS-managed keys, but the check requires you to use a customer-managed KMS key (CMK) for greater control over key access, rotation, and auditing.  
+- **Retention**: The `fail` log group has `retention_in_days = 5`, which is below the minimum of 365 days required by the rule. Logs will be automatically deleted after 5 days, making long-term incident investigation or compliance auditing impossible.
+
+### Security impact
+
+- Without a customer-managed KMS key, you cannot enforce granular key permissions, disable the key in an emergency, or track usage via AWS CloudTrail beyond the default service-level logs.  
+- A retention period shorter than one year means critical operational and security logs may be purged before they can be reviewed during an investigation, violating common compliance frameworks and weakening your ability to detect and respond to threats.
+
+### How to fix
+
+Apply the following changes to your Terraform configuration:
+
+1. **Add a KMS key to every log group** – reference an existing KMS key ARN (or create one) and set the `kms_key_id` argument.  
+2. **Increase retention on the `fail` log group** to at least 365 days.  
+3. **For the `unknown` log group**, ensure the variable `var.retention` is set to a value of 365 or greater (or 0 for never expire) to satisfy the retention rule. The KMS key must still be added.
+
+Example fix:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass_365" {
+  name             = "pass_365"
+  retention_in_days = 365
+  kms_key_id       = aws_kms_key.logs.arn   # or an existing key ARN
+}
+
+resource "aws_cloudwatch_log_group" "pass_0" {
+  name             = "pass_0"
+  retention_in_days = 0
+  kms_key_id       = aws_kms_key.logs.arn
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  name             = "fail"
+  retention_in_days = 365                    # changed from 5
+  kms_key_id       = aws_kms_key.logs.arn
+}
+
+resource "aws_cloudwatch_log_group" "unknown" {
+  name             = "unknown"
+  retention_in_days = var.retention          # ensure var.retention >= 365 or 0
+  kms_key_id       = aws_kms_key.logs.arn
+}
+```
+
+If you don’t already have a KMS key for logs, create one:
+
+```hcl
+resource "aws_kms_key" "logs" {
+  description             = "KMS key for CloudWatch Logs encryption"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "logs" {
+  name          = "alias/cloudwatch-logs"
+  target_key_id = aws_kms_key.logs.key_id
+}
+```
+
+After applying, all log groups will be encrypted with a customer-managed key and the `fail` group will retain logs for at least one year.

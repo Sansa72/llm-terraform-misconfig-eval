@@ -1,0 +1,55 @@
+The scanner flagged several misconfigurations across three `aws_api_gateway_method_settings` resources. I'll break down each finding with the exact evidence from the file.
+
+---
+
+### 1. Resource `aws_api_gateway_method_settings.fail` (lines 1–9)
+
+**Finding CKV_AWS_276: Ensure Data Trace is not enabled in API Gateway Method Settings**
+
+- **What's wrong:** The `settings` block explicitly sets `data_trace_enabled = true` on **line 8**.
+- **Why it's flagged:** Enabling data trace causes API Gateway to log full request and response payloads to CloudWatch, which can expose sensitive data (credentials, PII, etc.). The check requires this to be `false` or omitted (default is `false`).
+
+**Finding CKV_AWS_225: Ensure API Gateway method setting caching is enabled**
+
+- **What's wrong:** The `settings` block (lines 6–9) does not include `caching_enabled`. Because it's absent, caching is disabled.
+- **Why it's flagged:** The scanner expects caching to be explicitly enabled to improve performance and potentially reduce backend load, but from a security perspective, caching may also be required to meet organizational standards.
+
+**Finding CKV_AWS_308: Ensure API Gateway method setting caching is set to encrypted**
+
+- **What's wrong:** The `settings` block does not include `cache_data_encrypted`. Without it, cached responses are stored unencrypted.
+- **Why it's flagged:** If caching is enabled, cached data must be encrypted at rest. The absence of this setting means encryption is not guaranteed.
+
+---
+
+### 2. Resource `aws_api_gateway_method_settings.pass_explicit` (lines 11–19)
+
+**Findings CKV_AWS_225 and CKV_AWS_308**
+
+- **What's wrong:** The `settings` block (lines 16–19) sets `data_trace_enabled = false` (which passes CKV_AWS_276), but **does not** include `caching_enabled` or `cache_data_encrypted`.
+- **Result:** Caching is disabled and cache encryption is not configured, triggering both checks.
+
+---
+
+### 3. Resource `aws_api_gateway_method_settings.pass_implicit` (lines 21–25)
+
+**Findings CKV_AWS_225 and CKV_AWS_308**
+
+- **What's wrong:** There is **no `settings` block at all**. The resource only specifies `rest_api_id`, `stage_name`, and `method_path`.
+- **Result:** Without a `settings` block, all settings revert to their defaults. `data_trace_enabled` defaults to `false` (so CKV_AWS_276 passes), but caching is not enabled and cache encryption is not set, triggering the same two checks.
+
+---
+
+### What needs to change
+
+For all three resources, the `settings` block must include:
+
+```hcl
+settings {
+  caching_enabled = true
+  cache_data_encrypted = true
+}
+```
+
+Additionally, for the `fail` resource, change or remove the `data_trace_enabled` line (line 8) so it is not set to `true`. The simplest fix is to delete that line, as the default is `false`.
+
+The scanner will then pass all three checks on each resource.

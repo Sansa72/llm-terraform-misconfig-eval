@@ -1,0 +1,176 @@
+The scanner has identified multiple security misconfigurations across your ECR repositories and their associated policies. Below is a breakdown of each failing check, why it matters, and how to fix it in your Terraform code.
+
+---
+
+### 1. CKV_AWS_163 – ECR image scanning on push is not enabled
+**Affected resources:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**Problem:**  
+By default, ECR does not automatically scan images for vulnerabilities when they are pushed. Without `scan_on_push = true`, you lose continuous visibility into known vulnerabilities in your container images, increasing the risk of deploying insecure software.
+
+**Fix:**  
+Add an `image_scanning_configuration` block to each repository resource with `scan_on_push = true`.
+
+```hcl
+resource "aws_ecr_repository" "public" {
+  name = "public_repo"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+```
+
+Apply this to all five repository definitions.
+
+---
+
+### 2. CKV_AWS_136 – ECR repositories are not encrypted with KMS
+**Affected resources:**  
+Same five repositories as above.
+
+**Problem:**  
+ECR encrypts images at rest by default using AES‑256 (SSE‑S3). The check requires encryption using a KMS key (either the AWS managed key or a customer managed key). Using KMS gives you control over key rotation, access auditing, and the ability to enforce encryption boundaries.
+
+**Fix:**  
+Add an `encryption_configuration` block with `encryption_type = "KMS"`. You can optionally specify a customer managed key via `kms_key`. If omitted, ECR uses the default AWS managed KMS key for ECR.
+
+```hcl
+resource "aws_ecr_repository" "public" {
+  name = "public_repo"
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    # kms_key = aws_kms_key.ecr.arn   # optional, for a custom CMK
+  }
+}
+```
+
+If you want to use a custom KMS key, create one and reference its ARN:
+
+```hcl
+resource "aws_kms_key" "ecr" {
+  description             = "KMS key for ECR repositories"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+```
+
+Then set `kms_key = aws_kms_key.ecr.arn` inside the `encryption_configuration` block.
+
+---
+
+### 3. CKV_AWS_51 – ECR image tags are mutable
+**Affected resources:**  
+Same five repositories.
+
+**Problem:**  
+Mutable tags allow overwriting an existing tag with a different image. This can lead to supply chain attacks or accidental deployment of the wrong image, because a tag no longer uniquely identifies an image digest. Immutable tags prevent this.
+
+**Fix:**  
+Set `image_tag_mutability = "IMMUTABLE"` on each repository.
+
+```hcl
+resource "aws_ecr_repository" "public" {
+  name                 = "public_repo"
+  image_tag_mutability = "IMMUTABLE"
+}
+```
+
+---
+
+### 4. CKV_AWS_32 – ECR policy is set to public
+**Affected resources:**  
+`aws_ecr_repository_policy.fail` (lines 9‑38)  
+`aws_ecr_repository_policy.fail_conditional` (lines 131‑165)
+
+**Problem:**  
+Both policies grant access to `Principal: "*"` (anyone on the internet).  
+
+- **`fail`** has no condition at all, making the repository fully public.  
+- **`fail_conditional`** attempts to restrict access with a condition on `aws:username`. This is **not a secure restriction** because the `aws:username` condition key can be set by any caller, effectively allowing anonymous access. AWS explicitly warns against using `aws:username` in `Allow` policies.
+
+A public ECR repository can be abused to host malicious images, exfiltrate data, or incur unexpected costs.
+
+**Fix:**  
+Replace the wildcard principal with specific, trusted AWS principals (IAM users, roles, or accounts) **or** add a secure condition that restricts access to your organization or specific accounts.
+
+#### Option A – Restrict to specific IAM principals (recommended for simple cases)
+```hcl
+resource "aws_ecr_repository_policy" "fail" {
+  repository = aws_ecr_repository.public.name
+  policy = jsonencode({
+    Version = "2008-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSpecificPrincipals"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:user/pull-user-1",
+            "arn:aws:iam::123456789012:root"
+          ]
+        }
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          # ... other necessary actions
+        ]
+      }
+    ]
+  })
+}
+```
+
+#### Option B – Keep `Principal: "*"` but add a secure condition (e.g., organization ID)
+This is useful when you want to allow any principal from your AWS organization.
+
+```hcl
+resource "aws_ecr_repository_policy" "fail_conditional" {
+  repository = aws_ecr_repository.conditional_bad.name
+  policy = jsonencode({
+    Version = "2008-10-17"
+    Statement = [
+      {
+        Sid    = "AllowOrgOnly"
+        Effect = "Allow"
+        Principal = "*"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          # ...
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalOrgID" = "o-12345678"   # your organization ID
+          }
+        }
+      }
+    ]
+  })
+}
+```
+
+**Important:** The condition key must be one that cannot be spoofed, such as `aws:PrincipalOrgID`, `aws:PrincipalAccount`, `aws:SourceArn`, etc. Never use `aws:username` for authorization.
+
+---
+
+### Summary of required changes
+For every repository resource (`public`, `private`, `empty`, `conditional_ok`, `conditional_bad`), add:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+
+encryption_configuration {
+  encryption_type = "KMS"
+}
+
+image_tag_mutability = "IMMUTABLE"
+```
+
+For the two failing policies, replace the public `Principal: "*"` with either specific ARNs or a secure condition as shown above.
+
+After applying these changes, all 17 scanner findings will be resolved.

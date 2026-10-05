@@ -1,0 +1,85 @@
+## Analysis of Failing Checks
+
+The scanner flagged three distinct security misconfigurations across your DynamoDB table definitions. Below I contrast the current configuration with a compliant one for each check, explaining exactly what must change and why.
+
+---
+
+### 1. CKV_AWS_28 – Point-in-time recovery (PITR) is disabled
+
+**Current state (all four tables):**  
+None of the `aws_dynamodb_table` resources include a `point_in_time_recovery` block. This means PITR is not enabled; you cannot restore the table to any point in the last 35 days.
+
+**Compliant state:**  
+A `point_in_time_recovery` block with `enabled = true` is present inside each table resource.
+
+**Precise difference:**  
+Add the following block to every `aws_dynamodb_table` resource:
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+All other attributes (name, billing mode, keys, encryption, etc.) remain unchanged.
+
+**Why this matters for security:**  
+Without point-in-time recovery, accidental data deletion or corruption (e.g., from a bug, malicious action, or operator error) cannot be rolled back to a state just before the incident. Enabling PITR provides continuous backups and is a fundamental data-protection control required by many compliance frameworks.
+
+---
+
+### 2. CKV_AWS_119 – Table not encrypted with a Customer Managed CMK
+
+**Current state:**  
+- `aws_dynamodb_table.cmk` already uses a customer managed CMK (it specifies `kms_key_arn`). **This resource passes the check.**  
+- `aws_dynamodb_table.default` – no `server_side_encryption` block, so it uses an AWS owned CMK (DEFAULT).  
+- `aws_dynamodb_table.encrypted_false` – explicitly sets `enabled = false`, which also results in an AWS owned CMK.  
+- `aws_dynamodb_table.encrypted_no_cmk` – sets `enabled = true` but omits `kms_key_arn`, so it uses an AWS managed CMK (not a customer managed one).
+
+**Compliant state:**  
+Every table must have a `server_side_encryption` block with `enabled = true` **and** a `kms_key_arn` pointing to a customer managed KMS key.
+
+**Precise difference:**  
+For the three failing tables, change the `server_side_encryption` block to:
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
+}
+```
+(Use the same ARN as in the `cmk` resource, or a different valid customer managed key ARN.)  
+The `cmk` table already satisfies this; no change needed there.
+
+**Why this matters for security:**  
+Customer managed CMKs give you full control over the key’s lifecycle, access policies, and rotation. AWS owned and AWS managed keys do not allow you to define granular key permissions, audit usage independently, or revoke access in the same way. Using a customer managed CMK is a best practice for sensitive data and is often required for compliance (e.g., PCI-DSS, HIPAA).
+
+---
+
+### 3. CKV2_AWS_16 – Auto Scaling is not enabled
+
+**Current state (all four tables):**  
+All tables use `billing_mode = "PROVISIONED"` with fixed `read_capacity` and `write_capacity` values. No auto scaling resources are attached, and the billing mode is not set to on-demand.
+
+**Compliant state:**  
+Either:
+- Change `billing_mode` to `"PAY_PER_REQUEST"` (on-demand), which eliminates the need for capacity management and auto scaling, **or**
+- Keep `billing_mode = "PROVISIONED"` and add auto scaling resources (`aws_appautoscaling_target` and `aws_appautoscaling_policy`) for both read and write capacity.
+
+**Precise difference (simplest fix):**  
+Replace `billing_mode = "PROVISIONED"` with `billing_mode = "PAY_PER_REQUEST"` and remove the static `read_capacity` and `write_capacity` arguments. This makes the table on-demand, which inherently satisfies the auto scaling requirement.  
+If you must stay provisioned, you need to add separate `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for each table’s read and write capacity, referencing the table’s ARN and using the DynamoDB scalable dimension.
+
+**Why this matters for security:**  
+Fixed provisioned capacity without auto scaling can lead to throttling under unexpected load, causing denial of service for legitimate requests. Auto scaling (or on-demand mode) ensures the table can absorb traffic spikes, maintaining availability and resilience—a core security property.
+
+---
+
+## Summary for the Engineer
+
+You need to make three changes across the DynamoDB table resources:
+
+1. **Enable point-in-time recovery** on every table by adding a `point_in_time_recovery { enabled = true }` block inside each `aws_dynamodb_table` resource. This is missing on all four tables.
+
+2. **Use a customer managed KMS key** for encryption on the three tables that currently lack it (`default`, `encrypted_false`, `encrypted_no_cmk`). In their `server_side_encryption` blocks, set `enabled = true` and provide a valid `kms_key_arn` pointing to a customer managed key. The `cmk` table already does this correctly.
+
+3. **Enable auto scaling or switch to on-demand billing** for all four tables. The quickest fix is to change `billing_mode` from `"PROVISIONED"` to `"PAY_PER_REQUEST"` and remove the static `read_capacity`/`write_capacity` lines. If you must keep provisioned mode, you’ll need to define `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for each table’s read and write capacity.
+
+Each change addresses a distinct security control: backup/recovery, encryption key ownership, and availability under load.

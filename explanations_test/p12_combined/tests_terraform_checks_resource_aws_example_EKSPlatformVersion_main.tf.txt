@@ -1,0 +1,103 @@
+Below is the remediation briefing for each failing check, in the order reported by the scanner. Every statement is grounded in the provided Terraform file and the scanner findings.
+
+---
+
+### 1. CKV_AWS_39 on `aws_eks_cluster.pass` (lines 1–15)
+**What is wrong:** The `vpc_config` block does not set `endpoint_public_access` to `false`, so the cluster’s public endpoint remains enabled (the default is `true`).  
+**Why it matters:** A publicly accessible Kubernetes API endpoint increases the attack surface and may violate security policies that require private-only access.  
+**Remediation:** Add `endpoint_public_access = false` inside the existing `vpc_config` block.
+
+### 2. CKV_AWS_58 on `aws_eks_cluster.pass` (lines 1–15)
+**What is wrong:** The resource does not contain an `encryption_config` block referencing a KMS key, so envelope encryption of Kubernetes secrets is not enabled.  
+**Why it matters:** Without secrets encryption, sensitive data stored in etcd (such as Secrets) is not encrypted at the application level, increasing the risk of exposure if the underlying storage is compromised.  
+**Remediation:** Add an `encryption_config` block that specifies a KMS key ARN and the `resources = ["secrets"]` list.
+
+### 3. CKV_AWS_38 on `aws_eks_cluster.pass` (lines 1–15)
+**What is wrong:** The `vpc_config` block does not include a `public_access_cidrs` argument, so the default `["0.0.0.0/0"]` is applied, allowing access to the public endpoint from any IP address.  
+**Why it matters:** Unrestricted CIDR access to the API server makes the cluster reachable from anywhere on the internet, significantly increasing the risk of unauthorised access.  
+**Remediation:** Add `public_access_cidrs` inside `vpc_config` and set it to a restricted list of trusted CIDR blocks (e.g., your corporate egress IPs).
+
+### 4. CKV_AWS_37 on `aws_eks_cluster.pass` (lines 1–15)
+**What is wrong:** The resource does not specify the `enabled_cluster_log_types` argument, so control plane logging is not enabled for any log type.  
+**Why it matters:** Without control plane logs (API, audit, authenticator, controller manager, scheduler), it is difficult to audit cluster activity, detect anomalies, or investigate security incidents.  
+**Remediation:** Add the `enabled_cluster_log_types` argument with all five log types: `["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+### 5. CKV_AWS_39 on `aws_eks_cluster.pass2` (lines 17–32)
+**What is wrong:** Same as #1 – the `vpc_config` block lacks `endpoint_public_access = false`, leaving the public endpoint enabled.  
+**Why it matters:** Same rationale as #1.  
+**Remediation:** Add `endpoint_public_access = false` inside the `vpc_config` block.
+
+### 6. CKV_AWS_58 on `aws_eks_cluster.pass2` (lines 17–32)
+**What is wrong:** No `encryption_config` block is present; secrets encryption is not enabled.  
+**Why it matters:** Same as #2.  
+**Remediation:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+### 7. CKV_AWS_339 on `aws_eks_cluster.pass2` (lines 17–32)
+**What is wrong:** The `version` argument is set to `"1.35"`, which is not a supported Kubernetes version for Amazon EKS.  
+**Why it matters:** Running an unsupported version means the cluster will not receive security patches, bug fixes, or technical support from AWS, leaving it vulnerable and potentially out of compliance.  
+**Remediation:** Change the `version` to a currently supported EKS Kubernetes version (e.g., `"1.31"`). Consult the AWS EKS documentation for the latest supported versions.
+
+### 8. CKV_AWS_38 on `aws_eks_cluster.pass2` (lines 17–32)
+**What is wrong:** The `vpc_config` block does not define `public_access_cidrs`, so the public endpoint (if enabled) is accessible from `0.0.0.0/0`.  
+**Why it matters:** Same as #3.  
+**Remediation:** Add `public_access_cidrs` inside `vpc_config` with a restricted set of CIDRs.
+
+### 9. CKV_AWS_37 on `aws_eks_cluster.pass2` (lines 17–32)
+**What is wrong:** The `enabled_cluster_log_types` argument is missing, so no control plane log types are enabled.  
+**Why it matters:** Same as #4.  
+**Remediation:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+### 10. CKV_AWS_39 on `aws_eks_cluster.fail` (lines 34–50)
+**What is wrong:** The `vpc_config` block does not set `endpoint_public_access = false`; the public endpoint remains enabled.  
+**Why it matters:** Same as #1.  
+**Remediation:** Add `endpoint_public_access = false` inside `vpc_config`.
+
+### 11. CKV_AWS_58 on `aws_eks_cluster.fail` (lines 34–50)
+**What is wrong:** No `encryption_config` block is present; secrets encryption is not enabled.  
+**Why it matters:** Same as #2.  
+**Remediation:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+### 12. CKV_AWS_339 on `aws_eks_cluster.fail` (lines 34–50)
+**What is wrong:** The `version` is set to `"1.21"`, which is an unsupported Kubernetes version for EKS.  
+**Why it matters:** Same as #7.  
+**Remediation:** Update `version` to a currently supported EKS Kubernetes version.
+
+### 13. CKV_AWS_38 on `aws_eks_cluster.fail` (lines 34–50)
+**What is wrong:** The `vpc_config` block does not include `public_access_cidrs`, so the public endpoint defaults to `0.0.0.0/0`.  
+**Why it matters:** Same as #3.  
+**Remediation:** Add `public_access_cidrs` with a restricted CIDR list inside `vpc_config`.
+
+### 14. CKV_AWS_37 on `aws_eks_cluster.fail` (lines 34–50)
+**What is wrong:** The `enabled_cluster_log_types` argument is missing; no control plane logging is configured.  
+**Why it matters:** Same as #4.  
+**Remediation:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+### 15. CKV_AWS_39 on `aws_eks_cluster.fail2` (lines 52–68)
+**What is wrong:** The `vpc_config` block does not set `endpoint_public_access = false`; the public endpoint is enabled.  
+**Why it matters:** Same as #1.  
+**Remediation:** Add `endpoint_public_access = false` inside `vpc_config`.
+
+### 16. CKV_AWS_58 on `aws_eks_cluster.fail2` (lines 52–68)
+**What is wrong:** No `encryption_config` block is present; secrets encryption is not enabled.  
+**Why it matters:** Same as #2.  
+**Remediation:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+### 17. CKV_AWS_38 on `aws_eks_cluster.fail2` (lines 52–68)
+**What is wrong:** The `vpc_config` block does not define `public_access_cidrs`, so the public endpoint is accessible from `0.0.0.0/0`.  
+**Why it matters:** Same as #3.  
+**Remediation:** Add `public_access_cidrs` with a restricted set of CIDRs inside `vpc_config`.
+
+### 18. CKV_AWS_37 on `aws_eks_cluster.fail2` (lines 52–68)
+**What is wrong:** The `enabled_cluster_log_types` argument is missing; no control plane logging is configured.  
+**Why it matters:** Same as #4.  
+**Remediation:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+All findings have been addressed. No additional resources or attack scenarios beyond what the file and scanner findings support have been assumed.

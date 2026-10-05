@@ -1,0 +1,114 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_28",
+      "resource": "aws_dynamodb_table.cmk",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"cmk\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled     = true\n    kms_key_arn = \"arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab\"\n  }\n}"
+      ],
+      "risk": "Without point-in-time recovery enabled, accidental deletion or corruption of table data cannot be recovered to a point in time within the last 35 days, leading to permanent data loss.",
+      "remediation": "Add a `point_in_time_recovery` block with `enabled = true` inside the `aws_dynamodb_table` resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_28",
+      "resource": "aws_dynamodb_table.default",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"default\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n}"
+      ],
+      "risk": "Without point-in-time recovery enabled, accidental deletion or corruption of table data cannot be recovered to a point in time within the last 35 days, leading to permanent data loss.",
+      "remediation": "Add a `point_in_time_recovery` block with `enabled = true` inside the `aws_dynamodb_table` resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_119",
+      "resource": "aws_dynamodb_table.default",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"default\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n}"
+      ],
+      "risk": "The table is encrypted with an AWS owned key by default, which does not allow customer control over key rotation, access policies, or audit logging, potentially violating compliance requirements.",
+      "remediation": "Add a `server_side_encryption` block with `enabled = true` and `kms_key_arn` set to a customer managed KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_28",
+      "resource": "aws_dynamodb_table.encrypted_false",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_false\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = false\n  }\n}"
+      ],
+      "risk": "Without point-in-time recovery enabled, accidental deletion or corruption of table data cannot be recovered to a point in time within the last 35 days, leading to permanent data loss.",
+      "remediation": "Add a `point_in_time_recovery` block with `enabled = true` inside the `aws_dynamodb_table` resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_119",
+      "resource": "aws_dynamodb_table.encrypted_false",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_false\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = false\n  }\n}"
+      ],
+      "risk": "The table has server-side encryption explicitly disabled, meaning data is stored unencrypted, which could lead to unauthorized access to data at rest.",
+      "remediation": "Set `server_side_encryption` to `enabled = true` and provide a customer managed KMS key ARN.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_28",
+      "resource": "aws_dynamodb_table.encrypted_no_cmk",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_no_cmk\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = true\n  }\n}"
+      ],
+      "risk": "Without point-in-time recovery enabled, accidental deletion or corruption of table data cannot be recovered to a point in time within the last 35 days, leading to permanent data loss.",
+      "remediation": "Add a `point_in_time_recovery` block with `enabled = true` inside the `aws_dynamodb_table` resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_119",
+      "resource": "aws_dynamodb_table.encrypted_no_cmk",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_no_cmk\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = true\n  }\n}"
+      ],
+      "risk": "The table is encrypted with an AWS owned key, not a customer managed CMK, limiting control over key management and auditability.",
+      "remediation": "Add a `kms_key_arn` attribute referencing a customer managed KMS key to the `server_side_encryption` block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_16",
+      "resource": "aws_dynamodb_table.cmk",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"cmk\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled     = true\n    kms_key_arn = \"arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab\"\n  }\n}"
+      ],
+      "risk": "The table uses provisioned capacity without Auto Scaling, which may lead to throttling under unexpected load or over-provisioning costs.",
+      "remediation": "Enable Auto Scaling by creating `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for the table's read and write capacity, or switch `billing_mode` to `PAY_PER_REQUEST`.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_16",
+      "resource": "aws_dynamodb_table.default",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"default\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n}"
+      ],
+      "risk": "The table uses provisioned capacity without Auto Scaling, which may lead to throttling under unexpected load or over-provisioning costs.",
+      "remediation": "Enable Auto Scaling by creating `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for the table's read and write capacity, or switch `billing_mode` to `PAY_PER_REQUEST`.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_16",
+      "resource": "aws_dynamodb_table.encrypted_false",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_false\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = false\n  }\n}"
+      ],
+      "risk": "The table uses provisioned capacity without Auto Scaling, which may lead to throttling under unexpected load or over-provisioning costs.",
+      "remediation": "Enable Auto Scaling by creating `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for the table's read and write capacity, or switch `billing_mode` to `PAY_PER_REQUEST`.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_16",
+      "resource": "aws_dynamodb_table.encrypted_no_cmk",
+      "evidence": [
+        "resource \"aws_dynamodb_table\" \"encrypted_no_cmk\" {\n  name           = \"GameScores\"\n  billing_mode   = \"PROVISIONED\"\n  read_capacity  = 20\n  write_capacity = 20\n  hash_key       = \"UserId\"\n  range_key      = \"UserId\"\n\n  attribute {\n    name = \"UserId\"\n    type = \"S\"\n  }\n\n  server_side_encryption {\n    enabled = true\n  }\n}"
+      ],
+      "risk": "The table uses provisioned capacity without Auto Scaling, which may lead to throttling under unexpected load or over-provisioning costs.",
+      "remediation": "Enable Auto Scaling by creating `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for the table's read and write capacity, or switch `billing_mode` to `PAY_PER_REQUEST`.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+The scanner flagged a security misconfiguration in your Terraform file. Here's what's wrong and how to fix it.
+
+---
+
+### Finding: CKV_AWS_184 – "Ensure resource is encrypted by KMS using a customer managed Key (CMK)"
+
+**Resource:** `aws_efs_file_system.fail` (lines 6–8)
+
+**Current code:**
+```hcl
+resource "aws_efs_file_system" "fail" {
+  encrypted = true
+}
+```
+
+**Why it's failing:**
+- The `encrypted` attribute is set to `true`, so the file system *is* encrypted at rest.
+- However, you haven't specified a `kms_key_id`. When no key is provided, EFS automatically uses an **AWS managed key** (`aws/elasticfilesystem`) for encryption.
+- The check `CKV_AWS_184` requires that you use a **customer managed key** (CMK) – a KMS key that you own and control – instead of the default AWS managed key.
+
+**Security implication:**
+- AWS managed keys are convenient, but they don't give you fine-grained control over key policies, rotation, auditing, or the ability to revoke access. A customer managed key (CMK) lets you define your own key policies, enable automatic rotation, and integrate with CloudTrail for detailed usage logs. This is often required for compliance or security best practices.
+
+**How to fix it:**
+Create a KMS key (or reference an existing one) and pass its ARN to the `kms_key_id` argument, exactly as you already did in the `pass` resource.
+
+**Example fix:**
+```hcl
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.efs_cmk.arn   # <-- add this
+}
+
+resource "aws_kms_key" "efs_cmk" {
+  description             = "CMK for EFS encryption"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+```
+
+If you already have a KMS key defined elsewhere (like the one used in the `pass` resource), you can reference that same key ARN. The important point is that the `kms_key_id` must point to a **customer managed key**, not an AWS managed key.
+
+After making this change, the scanner should no longer flag the resource.

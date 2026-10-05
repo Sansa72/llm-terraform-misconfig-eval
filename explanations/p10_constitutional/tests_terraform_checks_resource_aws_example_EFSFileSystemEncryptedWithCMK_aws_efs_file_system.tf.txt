@@ -1,0 +1,7 @@
+The resource `aws_efs_file_system.fail` (lines 6–8) is flagged by rule **CKV_AWS_184**, which requires that EFS file systems be encrypted using a customer managed key (CMK). The configuration sets `encrypted = true` but does not include a `kms_key_id`. When `kms_key_id` is omitted, the file system is encrypted with the default AWS-managed key, which does not satisfy the CMK requirement.
+
+To remediate, add a `kms_key_id` argument that references a customer managed key. In the existing file, the `pass` resource already uses `aws_kms_key.test.arn`. You can apply the same key to the `fail` resource by inserting the following line inside the `aws_efs_file_system "fail"` block (after `encrypted = true`):
+
+```hcl
+kms_key_id = aws_kms_key.test.arn
+```

@@ -1,0 +1,27 @@
+The scanner flagged a security misconfiguration in the `aws_ebs_volume` resource named `fail` (lines 12–20). The check **CKV_AWS_189** requires that an EBS volume be encrypted using a **customer-managed KMS key** (CMK), not the default AWS-managed key.
+
+**What the file shows:**
+- The `fail` resource (lines 12–20) sets `encrypted = true` (line 15), which enables encryption.
+- However, it does **not** specify a `kms_key_id` argument.  
+- In contrast, the `pass` resource (lines 1–10) includes both `encrypted = true` and `kms_key_id = aws_kms_key.test.arn`, explicitly using a customer-managed key.
+
+**Why this is a finding:**
+When `encrypted` is `true` but no `kms_key_id` is provided, AWS automatically uses the **AWS-managed EBS key** (`aws/ebs`). The check `CKV_AWS_189` specifically requires a **customer-managed key** (CMK) for encryption. Because the `fail` resource lacks a `kms_key_id`, it does not meet that requirement.
+
+**What to fix:**
+Add a `kms_key_id` argument pointing to a customer-managed KMS key (like the one used in the `pass` resource) to the `aws_ebs_volume.fail` block. For example:
+
+```hcl
+resource "aws_ebs_volume" "fail" {
+  availability_zone = data.aws_availability_zones.available.names[0]
+  size              = 1
+  encrypted         = true
+  kms_key_id        = aws_kms_key.test.arn   # <-- add this line
+
+  tags = {
+    Name = "taggy"
+  }
+}
+```
+
+No other issues are evidenced in the provided file.

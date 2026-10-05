@@ -1,0 +1,30 @@
+**1. What the misconfiguration is**
+The `aws_api_gateway_rest_api` resources `fail` and `fail2` lack the `create_before_destroy = true` setting in their lifecycle blocks. For the `fail` resource, the lifecycle block is commented out; for `fail2`, it is explicitly set to `false`. 
+
+**2. Why it matters**
+When Terraform must replace an API Gateway resource (e.g., due to an immutable property change), it defaults to destroying the old API before creating the new one. This creates a window of downtime where the API endpoint is entirely unavailable, breaking dependent resources (like deployments and stages) and interrupting traffic for API consumers until the replacement is fully provisioned.
+
+**3. How to fix it safely**
+Add or uncomment the `lifecycle` block for both resources and explicitly set `create_before_destroy = true`. This directs Terraform to provision the replacement API Gateway and update dependencies before tearing down the old one, preventing service disruption.
+
+**Example fix for `fail`:**
+```hcl
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example"
+  tags = { test = "Fail" }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+**Example fix for `fail2`:**
+```hcl
+resource "aws_api_gateway_rest_api" "fail2" {
+  name = "example"
+  tags = { test = "Fail" }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```

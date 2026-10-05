@@ -1,0 +1,31 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported by the scanner. For each, I explain the issue, why it matters, and the exact change required. No complete Terraform blocks are provided; only the specific modifications are described.
+
+### 1. CKV_AWS_239 on `aws_dax_cluster.fail` (lines 1–11)
+**What is wrong:** The `cluster_endpoint_encryption_type` is explicitly set to `"NONE"`, disabling TLS for the DAX cluster endpoint.  
+**Why it matters:** Without TLS, all data exchanged between your application and the DAX cluster travels in plaintext. This exposes sensitive cache data to network interception and man-in-the-middle attacks.  
+**Change needed:** In the `aws_dax_cluster.fail` resource, change the value of `cluster_endpoint_encryption_type` from `"NONE"` to `"TLS"`. The attribute already exists; only the value must be updated.
+
+### 2. CKV_AWS_47 on `aws_dax_cluster.fail` (lines 1–11)
+**What is wrong:** The `server_side_encryption` block has `enabled = false`, meaning the DAX cluster’s data at rest is not encrypted.  
+**Why it matters:** Unencrypted data at rest is vulnerable if the underlying storage media is ever physically compromised or accessed without authorization. Encryption at rest is a fundamental data protection requirement.  
+**Change needed:** Inside the existing `server_side_encryption` block of `aws_dax_cluster.fail`, change `enabled` from `false` to `true`. No new block is required.
+
+### 3. CKV_AWS_239 on `aws_dax_cluster.fail2` (lines 13–19)
+**What is wrong:** The `cluster_endpoint_encryption_type` attribute is completely absent. The default value is `"NONE"`, so the endpoint does not use TLS.  
+**Why it matters:** Same as check #1 – data in transit is exposed to interception and tampering.  
+**Change needed:** Add the attribute `cluster_endpoint_encryption_type = "TLS"` to the `aws_dax_cluster.fail2` resource block. Place it alongside the existing attributes (e.g., after `subnet_group_name`).
+
+### 4. CKV_AWS_47 on `aws_dax_cluster.fail2` (lines 13–19)
+**What is wrong:** The `server_side_encryption` block is missing entirely. The default is `enabled = false`, so encryption at rest is disabled.  
+**Why it matters:** Same as check #2 – unencrypted data at rest is a security risk.  
+**Change needed:** Add a `server_side_encryption` block inside the `aws_dax_cluster.fail2` resource, with `enabled = true`. The block should be placed at the same level as other arguments (e.g., before `tags`).
+
+### 5. CKV_AWS_47 on `aws_dax_cluster.pass` (lines 21–31)
+**What is wrong:** The `server_side_encryption` block has `enabled = false`, so encryption at rest is disabled, even though TLS is correctly configured.  
+**Why it matters:** Same as check #2 – data at rest remains unprotected.  
+**Change needed:** In the `aws_dax_cluster.pass` resource, change `enabled` inside the existing `server_side_encryption` block from `false` to `true`. No other changes are required for this resource.
+
+### Interactions Between Fixes
+All fixes are independent and can be applied in any order. There are no cross-resource dependencies. The `pass` resource already satisfies the TLS check, so only its encryption-at-rest setting needs correction. For `fail` and `fail2`, both TLS and encryption-at-rest must be addressed, but the changes do not interfere with each other.

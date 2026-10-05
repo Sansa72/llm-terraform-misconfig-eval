@@ -1,0 +1,95 @@
+## Remediation Briefing
+
+Below are the failing checks, in the order they appear in the scanner output. Each section identifies the check, the resource, the exact lines that trigger it, what is wrong, why it matters, and how to fix it.
+
+---
+
+### 1. CKV_AWS_127 on `aws_elb.fail` (lines 2–34)
+
+**Triggering lines:** 15–20  
+The second `listener` block (lines 15–20) sets `lb_protocol = "https"` and `ssl_certificate_id = "foo"`.
+
+**What is wrong:**  
+The HTTPS listener is using a certificate identifier (`"foo"`) that is not an AWS Certificate Manager (ACM) ARN. The check requires that any SSL/TLS certificate used by the ELB be managed by ACM.
+
+**Why it matters:**  
+Using a non-ACM certificate means the certificate lifecycle (provisioning, renewal, revocation) is not automatically managed by AWS, increasing the risk of expired or misconfigured certificates and the associated security and availability issues.
+
+**Remediation:**  
+Replace the `ssl_certificate_id` value with the ARN of a certificate stored in AWS Certificate Manager. The ARN will have the format `arn:aws:acm:region:account:certificate/certificate-id`.
+
+---
+
+### 2. CKV_AWS_92 on `aws_elb.fail` (lines 2–34)
+
+**Triggering lines:** The entire resource block (lines 2–34) lacks an `access_logs` configuration.
+
+**What is wrong:**  
+The ELB does not have access logging enabled. No `access_logs` block is present.
+
+**Why it matters:**  
+Without access logs, you lose detailed records of requests sent to the load balancer. This hinders security analysis, troubleshooting, and compliance auditing.
+
+**Remediation:**  
+Add an `access_logs` block inside the `aws_elb` resource, specifying at least the `bucket` parameter (the S3 bucket where logs will be delivered). Optionally include `bucket_prefix` and `interval`.
+
+---
+
+### 3. CKV_AWS_92 on `aws_elb.fail2` (lines 37–70)
+
+**Triggering lines:** The entire resource block (lines 37–70) has no `access_logs` block.
+
+**What is wrong:**  
+Access logging is not enabled for this ELB.
+
+**Why it matters:**  
+Same as above – missing access logs means no request-level visibility, which is critical for security monitoring and incident response.
+
+**Remediation:**  
+Add an `access_logs` block to the resource, providing a valid S3 bucket name and, if desired, a prefix.
+
+---
+
+### 4. CKV_AWS_127 on `aws_elb.fail3` (lines 73–105)
+
+**Triggering lines:** 93–97  
+The second `listener` block (lines 93–97) sets `lb_protocol = "https"` but does not include an `ssl_certificate_id` attribute.
+
+**What is wrong:**  
+An HTTPS listener is defined without any SSL certificate. This will cause the listener to fail to negotiate TLS connections.
+
+**Why it matters:**  
+Without a certificate, the listener cannot serve HTTPS traffic securely, leading to connection errors and potential service disruption.
+
+**Remediation:**  
+Add `ssl_certificate_id` to the listener block, set to the ARN of an ACM certificate. Ensure the certificate covers the domain name used by the load balancer.
+
+---
+
+### 5. CKV_AWS_92 on `aws_elb.fail3` (lines 73–105)
+
+**Triggering lines:** The entire resource block (lines 73–105) contains no `access_logs` block.
+
+**What is wrong:**  
+Access logging is not enabled for this ELB.
+
+**Why it matters:**  
+Without access logs, you lose the ability to audit requests, detect anomalies, and investigate security events.
+
+**Remediation:**  
+Add an `access_logs` block with an S3 bucket name (and optionally a prefix) to enable logging.
+
+---
+
+### 6. CKV_AWS_92 on `aws_elb.pass` (lines 108–133)
+
+**Triggering lines:** The entire resource block (lines 108–133) lacks an `access_logs` block.
+
+**What is wrong:**  
+Access logging is not enabled for this ELB.
+
+**Why it matters:**  
+Even though this resource is named “pass”, it still fails the access logging check. The absence of logs means you cannot capture request data for security or operational purposes.
+
+**Remediation:**  
+Add an `access_logs` block with an appropriate S3 bucket and prefix to enable logging.

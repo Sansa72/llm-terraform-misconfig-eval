@@ -1,0 +1,193 @@
+The scanner flagged several missing security controls across two resources: the IAM account password policy and the S3 bucket. Below are the required changes, why they matter, and how to implement them while preserving the existing functionality.
+
+---
+
+### 1. IAM Account Password Policy (`aws_iam_account_password_policy.password-policy`)
+
+**Findings:**
+- **CKV_AWS_9**: Password expiration is not set.
+- **CKV_AWS_13**: Password reuse prevention is not configured.
+
+**Security impact:**  
+Without a maximum password age, compromised or weak passwords can remain valid indefinitely, increasing the window for attackers. Without password reuse prevention, users can cycle through the same few passwords, undermining the strength of the password policy.
+
+**Fix:**  
+Add `max_password_age` (≤ 90 days) and `password_reuse_prevention` (≥ 1, typically 24) to the existing policy. The other settings (minimum length, character requirements) are already well-configured.
+
+```hcl
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+
+  # New settings
+  max_password_age               = 90
+  password_reuse_prevention      = 24
+}
+```
+
+---
+
+### 2. S3 Bucket (`aws_s3_bucket.template_bucket`)
+
+**Findings:**
+- **CKV2_AWS_6**: No public access block configured.
+- **CKV_AWS_18**: Access logging not enabled.
+- **CKV_AWS_21**: Versioning not enabled.
+- **CKV_AWS_145**: Default encryption not using KMS.
+- **CKV2_AWS_61**: No lifecycle configuration.
+- **CKV2_AWS_62**: Event notifications not enabled.
+- **CKV_AWS_144**: Cross-region replication not enabled.
+
+**Security impact:**
+- **Public access block**: Without explicit block settings, the bucket could accidentally be made public via ACLs or policies, exposing data.
+- **Access logging**: Without logging, you lose visibility into who accessed the bucket and what actions they performed, hindering incident investigation.
+- **Versioning**: Without versioning, accidental deletions or overwrites are permanent, risking data loss.
+- **KMS encryption**: Default SSE-S3 encryption uses Amazon-managed keys; KMS provides customer-managed keys with finer access control, audit trails, and the ability to enforce encryption policies.
+- **Lifecycle configuration**: Without lifecycle rules, objects accumulate indefinitely, increasing storage costs and making it harder to manage data retention.
+- **Event notifications**: Without notifications, you cannot automatically trigger workflows or alerts on bucket events (e.g., new object uploads).
+- **Cross-region replication**: Without replication, data is not automatically backed up to another region, increasing the risk of data loss from a regional outage.
+
+**Fix:**  
+Add the missing configurations to the bucket resource. Some settings require additional resources (logging bucket, KMS key, replication destination, SNS topic). Below is a minimal example that satisfies all checks. Adjust names and destinations to match your environment.
+
+```hcl
+# Existing bucket (modified)
+resource "aws_s3_bucket" "template_bucket" {
+  region        = var.region
+  bucket        = local.bucket_name
+  acl           = var.acl
+  force_destroy = true
+}
+
+# 1. Public access block
+resource "aws_s3_bucket_public_access_block" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  block_public_acls       = true
+  block_public_policy    = true
+  ignore_public_acls     = true
+  restrict_public_buckets = true
+}
+
+# 2. Access logging (requires a target bucket; create one or use an existing logging bucket)
+resource "aws_s3_bucket_logging" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  target_bucket = aws_s3_bucket.logging_bucket.id
+  target_prefix = "log/"
+}
+
+resource "aws_s3_bucket" "logging_bucket" {
+  bucket = "my-logging-bucket-${random_id.suffix.hex}"
+  acl    = "log-delivery-write"
+  # Prevent accidental deletion; set force_destroy = false or use lifecycle
+}
+
+# 3. Versioning
+resource "aws_s3_bucket_versioning" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# 4. Default encryption with KMS
+resource "aws_s3_bucket_server_side_encryption_configuration" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3_key.arn
+    }
+  }
+}
+
+resource "aws_kms_key" "s3_key" {
+  description             = "KMS key for S3 bucket encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+# 5. Lifecycle configuration (example: expire old versions after 90 days)
+resource "aws_s3_bucket_lifecycle_configuration" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+}
+
+# 6. Event notifications (example: notify an SNS topic on object creation)
+resource "aws_s3_bucket_notification" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.bucket_events.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+
+resource "aws_sns_topic" "bucket_events" {
+  name = "s3-template-bucket-events"
+}
+
+# 7. Cross-region replication (requires versioning and a destination bucket in another region)
+resource "aws_s3_bucket_replication_configuration" "template_bucket" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    id     = "replicate-to-dr"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.dr_bucket.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+
+resource "aws_s3_bucket" "dr_bucket" {
+  provider = aws.dr_region
+  bucket   = "my-dr-bucket-${random_id.suffix.hex}"
+  region   = "us-west-2"  # example DR region
+}
+
+# IAM role for replication (simplified; needs trust policy for S3)
+resource "aws_iam_role" "replication" {
+  name = "s3-replication-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "s3.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+```
+
+**Important notes for implementation:**
+- The logging bucket must allow the source bucket to write logs (ACL `log-delivery-write`).
+- Cross-region replication requires versioning to be enabled on both source and destination buckets, and the IAM role must have appropriate permissions.
+- The KMS key policy must grant the S3 service and relevant IAM principals permission to use the key.
+- Event notifications can be sent to SNS, SQS, or Lambda; choose the target that fits your monitoring pipeline.
+
+Apply these changes incrementally, verifying that each new resource (logging bucket, KMS key, replication destination, SNS topic) is created and configured correctly before enabling the feature on the main bucket.

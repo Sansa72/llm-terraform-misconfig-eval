@@ -1,0 +1,46 @@
+**Check CKV_AWS_237 – Ensure Create before destroy for API Gateway**
+
+This check requires that the `aws_api_gateway_rest_api` resource uses the lifecycle policy `create_before_destroy = true`. Without it, Terraform’s default behaviour (destroy-then-create) can cause an unnecessary outage when the API must be replaced.
+
+---
+
+### Resource `aws_api_gateway_rest_api.fail` (lines 1‑7)
+
+**What the file currently does**  
+The `lifecycle` block is commented out entirely. Because no `create_before_destroy` is set, Terraform uses the implicit default of `false`. This means that if the API needs to be recreated (for example, due to a name change or other force-new attribute), Terraform will **destroy the existing API first, then create the new one**. During the gap between destruction and creation, the API endpoint is unavailable.
+
+**What a passing configuration would do**  
+A passing configuration would include an uncommented `lifecycle` block with `create_before_destroy = true`. This instructs Terraform to **create the replacement API first**, and only after it is successfully provisioned, destroy the old API. The API remains available throughout the change.
+
+**Precise difference**  
+The only change needed is to **uncomment the `lifecycle` block and set `create_before_destroy = true`**. The rest of the resource definition stays identical. The difference is the presence and value of the `create_before_destroy` attribute: from absent (default `false`) to explicitly `true`.
+
+**Why this matters for security**  
+Availability is a core security property. A destroy-before-create replacement causes a denial-of-service window where clients cannot reach the API. By creating the new API first, you eliminate that window and maintain continuous service.
+
+---
+
+### Resource `aws_api_gateway_rest_api.fail2` (lines 9‑15)
+
+**What the file currently does**  
+The `lifecycle` block is present but explicitly sets `create_before_destroy = false`. This is functionally identical to the default, forcing a destroy-then-create order and the same outage risk.
+
+**What a passing configuration would do**  
+A passing configuration would change the value to `create_before_destroy = true`, so the new API is created before the old one is removed.
+
+**Precise difference**  
+Change `create_before_destroy` from `false` to `true` inside the existing `lifecycle` block. No other properties are altered.
+
+**Why this matters for security**  
+Same as above – the explicit `false` guarantees a downtime window; `true` prevents it.
+
+---
+
+### Summary for the engineer
+
+Both failing resources need the same fix: ensure the `lifecycle` block contains `create_before_destroy = true`.
+
+- For `aws_api_gateway_rest_api.fail`: **uncomment the `lifecycle` block** and set `create_before_destroy = true`.
+- For `aws_api_gateway_rest_api.fail2`: **change `create_before_destroy` from `false` to `true`**.
+
+The only configuration property that differs is the value of `create_before_destroy`. Setting it to `true` guarantees that a replacement API is created and ready before the old one is destroyed, avoiding an availability gap that could be exploited or cause service disruption.

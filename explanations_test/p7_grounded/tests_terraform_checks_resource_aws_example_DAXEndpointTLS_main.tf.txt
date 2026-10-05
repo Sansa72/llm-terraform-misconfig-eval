@@ -1,0 +1,58 @@
+The scanner flagged two distinct issues across three `aws_dax_cluster` resources. Here is what each finding means, based strictly on the provided Terraform and the check descriptions.
+
+---
+
+### Finding 1: CKV_AWS_239 – DAX cluster endpoint is not using TLS
+
+**Check requirement:** The DAX cluster endpoint must be configured to use TLS encryption in transit.  
+**Trigger:** The `cluster_endpoint_encryption_type` argument is either explicitly set to `"NONE"` or omitted (which defaults to `"NONE"`).
+
+**Resource `aws_dax_cluster.fail` (lines 1–11)**  
+- **Line 6:** `cluster_endpoint_encryption_type = "NONE"`  
+  This explicitly disables TLS for the endpoint, directly violating the check.
+
+**Resource `aws_dax_cluster.fail2` (lines 13–19)**  
+- The `cluster_endpoint_encryption_type` argument is **not present** anywhere in the resource block.  
+  Because the Terraform AWS provider defaults this to `"NONE"` when not specified, the endpoint will not use TLS. The scanner correctly identifies this as a violation.
+
+**Resource `aws_dax_cluster.pass` (lines 21–31)**  
+- **Line 27:** `cluster_endpoint_encryption_type = "TLS"`  
+  This resource satisfies the check for endpoint encryption. No CKV_AWS_239 finding was raised against it.
+
+---
+
+### Finding 2: CKV_AWS_47 – DAX is not encrypted at rest
+
+**Check requirement:** DAX clusters must have encryption at rest enabled.  
+**Trigger:** The `server_side_encryption` block is either missing or explicitly set to `enabled = false`.
+
+**Resource `aws_dax_cluster.fail` (lines 1–11)**  
+- **Lines 7–9:**  
+  ```hcl
+  server_side_encryption {
+    enabled = false #default is false
+  }
+  ```  
+  The block is present but explicitly disables encryption, triggering the check.
+
+**Resource `aws_dax_cluster.fail2` (lines 13–19)**  
+- The `server_side_encryption` block is **completely absent**.  
+  The provider default for `enabled` is `false`, so the cluster will be unencrypted at rest. The scanner flags this as a violation.
+
+**Resource `aws_dax_cluster.pass` (lines 21–31)**  
+- **Line 29:** `server_side_encryption { enabled = false }`  
+  Despite the resource name `pass`, encryption at rest is explicitly disabled. This is why CKV_AWS_47 is still raised against this resource. The name is misleading; the resource does **not** pass the encryption‑at‑rest check.
+
+---
+
+### Summary of what needs to change
+
+| Resource | Check | Problem | Fix |
+|----------|-------|---------|-----|
+| `aws_dax_cluster.fail` | CKV_AWS_239 | `cluster_endpoint_encryption_type = "NONE"` (line 6) | Set to `"TLS"` |
+| `aws_dax_cluster.fail` | CKV_AWS_47 | `server_side_encryption { enabled = false }` (line 8) | Set `enabled = true` |
+| `aws_dax_cluster.fail2` | CKV_AWS_239 | `cluster_endpoint_encryption_type` is missing (defaults to `"NONE"`) | Add `cluster_endpoint_encryption_type = "TLS"` |
+| `aws_dax_cluster.fail2` | CKV_AWS_47 | `server_side_encryption` block is missing (defaults to disabled) | Add `server_side_encryption { enabled = true }` |
+| `aws_dax_cluster.pass` | CKV_AWS_47 | `server_side_encryption { enabled = false }` (line 29) | Change to `enabled = true` |
+
+The resource named `pass` only passes the TLS endpoint check; it still fails the encryption‑at‑rest check. Both checks must be satisfied for a fully compliant configuration.

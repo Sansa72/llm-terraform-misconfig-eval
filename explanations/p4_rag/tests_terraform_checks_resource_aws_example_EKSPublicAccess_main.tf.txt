@@ -1,0 +1,87 @@
+The scanner flagged three EKS clusters in your Terraform file for missing security controls. Two of the clusters (`default` and `enabled`) have all four issues; the `disabled` cluster already has its public endpoint turned off, so it only needs the remaining two fixes. Below I’ll explain each finding, why it matters, and exactly what to change in your code.
+
+---
+
+### 1. CKV_AWS_58 – Secrets Encryption Disabled (all three clusters)
+
+**What it means**  
+Kubernetes Secrets are stored in etcd, the cluster’s backing store. By default they are only base64-encoded, not encrypted at rest. Enabling envelope encryption with a KMS key ensures that even if someone gains access to the underlying etcd volumes, the Secrets remain protected.
+
+**What to fix**  
+Add an `encryption_config` block to every `aws_eks_cluster` resource, referencing a KMS key. For example:
+
+```hcl
+encryption_config {
+  resources = ["secrets"]
+  provider {
+    key_arn = aws_kms_key.eks.arn
+  }
+}
+```
+
+You’ll need to create a KMS key (or use an existing one) and grant the EKS service role permission to use it. The Prisma Cloud policy reference for CKV_AWS_58 provides full details.
+
+---
+
+### 2. CKV_AWS_37 – Control Plane Logging Not Fully Enabled (all three clusters)
+
+**What it means**  
+EKS can send control plane logs (API server, audit, authenticator, controller manager, scheduler) to CloudWatch Logs. Without all log types enabled, you lose visibility into cluster operations, making it harder to detect malicious activity, troubleshoot issues, or meet compliance requirements.
+
+**What to fix**  
+Set `enabled_cluster_log_types` to the complete list of log types on every cluster:
+
+```hcl
+enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+```
+
+Add this argument at the top level of each `aws_eks_cluster` resource. The policy reference for CKV_AWS_37 explains the importance of each log type.
+
+---
+
+### 3. CKV_AWS_39 – Public Endpoint Enabled (`default` and `enabled` clusters)
+
+**What it means**  
+When the EKS public endpoint is enabled, the Kubernetes API server is reachable from the internet. This significantly expands the attack surface. Disabling it forces all API access to go through private VPC endpoints, reducing exposure.
+
+**What to fix**  
+Set `endpoint_public_access = false` inside the `vpc_config` block. The `disabled` cluster already does this correctly. For the other two:
+
+- **`default` cluster (lines 16–23):** The `vpc_config` block currently has no `endpoint_public_access` argument, so it defaults to `true`. Add `endpoint_public_access = false`.
+- **`enabled` cluster (lines 25–34):** It explicitly sets `endpoint_public_access = True`. Change this to `false`.
+
+If you absolutely must keep the public endpoint open (e.g., for external CI/CD tools), you will need to accept a violation of CKV_AWS_39 and instead focus on CKV_AWS_38 (see below). However, the strongest security posture is to disable it entirely.
+
+---
+
+### 4. CKV_AWS_38 – Public Endpoint CIDR Open to 0.0.0.0/0 (`default` and `enabled` clusters)
+
+**What it means**  
+When the public endpoint is enabled, the `public_access_cidrs` list controls which source IP ranges can connect. The default value is `["0.0.0.0/0"]`, meaning the entire internet can reach your API server. This is a critical exposure.
+
+**What to fix**  
+If you follow the recommendation for CKV_AWS_39 and set `endpoint_public_access = false`, this issue disappears because the public endpoint is no longer active. No further change is needed.
+
+If you must keep the public endpoint enabled, you must restrict `public_access_cidrs` to a specific set of trusted IPs (e.g., your corporate VPN CIDR). For example:
+
+```hcl
+vpc_config {
+  subnet_ids              = ["subnet-12345"]
+  endpoint_public_access  = true
+  public_access_cidrs     = ["203.0.113.0/24"]   # replace with your actual CIDR
+}
+```
+
+This would resolve CKV_AWS_38 but not CKV_AWS_39. The policy reference for CKV_AWS_38 details the risk of leaving the endpoint open to the world.
+
+---
+
+### Summary of required changes
+
+| Cluster resource | Add `encryption_config` | Add full `enabled_cluster_log_types` | Set `endpoint_public_access = false` | Restrict `public_access_cidrs` (if public kept) |
+|-----------------|------------------------|-------------------------------------|------------------------------------|------------------------------------------------|
+| `disabled`      | ✅ Yes                 | ✅ Yes                              | Already done                       | Not needed (endpoint disabled)                 |
+| `default`       | ✅ Yes                 | ✅ Yes                              | ✅ Yes (currently missing)          | Not needed if disabled                         |
+| `enabled`       | ✅ Yes                 | ✅ Yes                              | ✅ Yes (change from `true`)         | Not needed if disabled                         |
+
+After applying these changes, all four checks will pass. The documentation links provided in the scanner output give deeper dives into each policy’s rationale and remediation steps if you need more context.

@@ -1,0 +1,61 @@
+The scanner flagged three resources in your Terraform file. Here’s what each finding means, based strictly on the provided evidence.
+
+---
+
+### 1. `aws_ami_copy.fail` (lines 2–12)
+
+**Findings:**
+- **CKV_AWS_235**: Ensure that copied AMIs are encrypted
+- **CKV_AWS_236**: Ensure AMI copying uses a CMK
+
+**Why they fire:**
+- Line 7 explicitly sets `encrypted = false`. The comment on the same line even notes that `false` is the default.  
+  → This directly violates CKV_AWS_235, which requires the copied AMI to be encrypted.
+- Because the AMI is not encrypted at all, the question of which key is used (CKV_AWS_236) is moot, but the check still fires because no customer-managed key (CMK) is configured. The resource has no `kms_key_id` argument.
+
+**What to fix:**  
+Set `encrypted = true` and provide a valid CMK ARN via `kms_key_id`.
+
+---
+
+### 2. `aws_ami_copy.fail2` (lines 15–24)
+
+**Findings:**
+- **CKV_AWS_235**: Ensure that copied AMIs are encrypted
+- **CKV_AWS_236**: Ensure AMI copying uses a CMK
+
+**Why they fire:**
+- The `encrypted` argument is absent. As the comment in the first resource confirms, the default is `false`.  
+  → The AMI will be unencrypted, failing CKV_AWS_235.
+- No `kms_key_id` is specified, so even if encryption were enabled, it would not use a CMK. This fails CKV_AWS_236.
+
+**What to fix:**  
+Add `encrypted = true` and a `kms_key_id` pointing to a CMK.
+
+---
+
+### 3. `aws_ami_copy.pass` (lines 27–37)
+
+**Finding:**
+- **CKV_AWS_236**: Ensure AMI copying uses a CMK
+
+**Why it fires:**
+- Line 34 sets `encrypted = true`, so CKV_AWS_235 is satisfied (no finding for that check on this resource).
+- However, no `kms_key_id` is provided. Without it, the copy operation uses the default AWS-managed key for the service, not a customer-managed key. CKV_AWS_236 explicitly requires a CMK.
+
+**What to fix:**  
+Add a `kms_key_id` argument with the ARN of a customer-managed KMS key.
+
+---
+
+### Summary of required changes
+
+| Resource | Add/Change | Reason |
+|----------|------------|--------|
+| `aws_ami_copy.fail` | `encrypted = true` | Satisfy CKV_AWS_235 |
+| | `kms_key_id = <cmk-arn>` | Satisfy CKV_AWS_236 |
+| `aws_ami_copy.fail2` | `encrypted = true` | Satisfy CKV_AWS_235 |
+| | `kms_key_id = <cmk-arn>` | Satisfy CKV_AWS_236 |
+| `aws_ami_copy.pass` | `kms_key_id = <cmk-arn>` | Satisfy CKV_AWS_236 |
+
+All three resources need a `kms_key_id` to pass CKV_AWS_236. The two `fail` resources additionally need `encrypted` set to `true` to pass CKV_AWS_235.

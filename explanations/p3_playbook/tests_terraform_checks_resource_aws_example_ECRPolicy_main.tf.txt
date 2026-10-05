@@ -1,0 +1,126 @@
+**Remediation Briefing: ECR Security Misconfigurations**
+
+Below is a step‑by‑step guide to resolve every failing check, in the order reported by the scanner. Each item names the check and resource, explains the problem, why it matters, and describes the required change without providing a full Terraform block.
+
+---
+
+### 1. CKV_AWS_163 on `aws_ecr_repository.public` (lines 5‑7)
+**What is wrong:** Image scanning on push is not enabled.  
+**Why it matters:** Without scan‑on‑push, newly pushed images are not automatically inspected for vulnerabilities. A vulnerable image could be deployed before anyone notices.  
+**Change needed:** Add an `image_scanning_configuration` block inside the resource, setting `scan_on_push = true`.
+
+---
+
+### 2. CKV_AWS_136 on `aws_ecr_repository.public` (lines 5‑7)
+**What is wrong:** The repository uses the default AWS‑managed encryption (AES‑256) instead of a KMS key.  
+**Why it matters:** Customer‑managed KMS keys give you control over key rotation, access policies, and audit trails. Default encryption does not provide the same level of governance.  
+**Change needed:** Add an `encryption_configuration` block with `encryption_type = "KMS"`. You may optionally specify a `kms_key` ARN; if omitted, the default ECR KMS key will be used, but a dedicated customer‑managed key is preferred.
+
+---
+
+### 3. CKV_AWS_51 on `aws_ecr_repository.public` (lines 5‑7)
+**What is wrong:** Image tags are mutable (the default).  
+**Why it matters:** Mutable tags allow an attacker who gains push access to overwrite a trusted tag with a malicious image, enabling supply‑chain attacks.  
+**Change needed:** Set `image_tag_mutability = "IMMUTABLE"` in the resource.
+
+---
+
+### 4. CKV_AWS_32 on `aws_ecr_repository_policy.fail` (lines 9‑38)
+**What is wrong:** The policy grants access to `"Principal": "*"` without any condition that restricts the caller to your organisation or specific accounts.  
+**Why it matters:** This makes the repository publicly accessible – anyone on the internet can pull and push images, potentially leaking proprietary code or allowing unauthorised modifications.  
+**Change needed:** Replace the wildcard principal with a restricted principal. For example, change `"Principal": "*"` to `"Principal": {"AWS": "arn:aws:iam::123456789012:root"}` (or a list of trusted account ARNs). Alternatively, keep `"Principal": "*"` but add a condition that limits access to your AWS Organization, such as `"StringEquals": {"aws:PrincipalOrgID": "o-xxxxxxxxxxx"}`. The condition must use a global context key that cannot be spoofed (e.g., `aws:PrincipalOrgID`, `aws:PrincipalAccount`, `aws:SourceArn`). Do **not** rely on `aws:username` or similar user‑controlled attributes.
+
+---
+
+### 5. CKV_AWS_163 on `aws_ecr_repository.private` (lines 40‑42)
+**What is wrong:** Image scanning on push is not enabled.  
+**Why it matters:** Same risk as item 1 – vulnerabilities go undetected until a manual scan is triggered.  
+**Change needed:** Add `image_scanning_configuration { scan_on_push = true }` to this resource.
+
+---
+
+### 6. CKV_AWS_136 on `aws_ecr_repository.private` (lines 40‑42)
+**What is wrong:** The repository is not encrypted with a KMS key.  
+**Why it matters:** Same as item 2 – lack of control over encryption keys.  
+**Change needed:** Add `encryption_configuration { encryption_type = "KMS" }` (with an optional `kms_key` ARN).
+
+---
+
+### 7. CKV_AWS_51 on `aws_ecr_repository.private` (lines 40‑42)
+**What is wrong:** Image tags are mutable.  
+**Why it matters:** Same as item 3 – mutable tags enable tag overwrite attacks.  
+**Change needed:** Set `image_tag_mutability = "IMMUTABLE"`.
+
+---
+
+### 8. CKV_AWS_163 on `aws_ecr_repository.empty` (lines 78‑80)
+**What is wrong:** Image scanning on push is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add `image_scanning_configuration { scan_on_push = true }`.
+
+---
+
+### 9. CKV_AWS_136 on `aws_ecr_repository.empty` (lines 78‑80)
+**What is wrong:** No KMS encryption configured.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `encryption_configuration { encryption_type = "KMS" }`.
+
+---
+
+### 10. CKV_AWS_51 on `aws_ecr_repository.empty` (lines 78‑80)
+**What is wrong:** Image tags are mutable.  
+**Why it matters:** Same as item 3.  
+**Change needed:** Set `image_tag_mutability = "IMMUTABLE"`.
+
+---
+
+### 11. CKV_AWS_163 on `aws_ecr_repository.conditional_ok` (lines 87‑89)
+**What is wrong:** Image scanning on push is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add `image_scanning_configuration { scan_on_push = true }`.
+
+---
+
+### 12. CKV_AWS_136 on `aws_ecr_repository.conditional_ok` (lines 87‑89)
+**What is wrong:** No KMS encryption configured.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `encryption_configuration { encryption_type = "KMS" }`.
+
+---
+
+### 13. CKV_AWS_51 on `aws_ecr_repository.conditional_ok` (lines 87‑89)
+**What is wrong:** Image tags are mutable.  
+**Why it matters:** Same as item 3.  
+**Change needed:** Set `image_tag_mutability = "IMMUTABLE"`.
+
+---
+
+### 14. CKV_AWS_163 on `aws_ecr_repository.conditional_bad` (lines 127‑129)
+**What is wrong:** Image scanning on push is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add `image_scanning_configuration { scan_on_push = true }`.
+
+---
+
+### 15. CKV_AWS_136 on `aws_ecr_repository.conditional_bad` (lines 127‑129)
+**What is wrong:** No KMS encryption configured.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `encryption_configuration { encryption_type = "KMS" }`.
+
+---
+
+### 16. CKV_AWS_51 on `aws_ecr_repository.conditional_bad` (lines 127‑129)
+**What is wrong:** Image tags are mutable.  
+**Why it matters:** Same as item 3.  
+**Change needed:** Set `image_tag_mutability = "IMMUTABLE"`.
+
+---
+
+### 17. CKV_AWS_32 on `aws_ecr_repository_policy.fail_conditional` (lines 131‑165)
+**What is wrong:** The policy uses `"Principal": "*"` with a condition on `"aws:username"`. This condition does **not** effectively restrict access to your organisation – any AWS account can create an IAM user named `pull-user-1` and satisfy the condition.  
+**Why it matters:** The repository remains effectively public, exposing images to unauthorised access.  
+**Change needed:** Replace the condition with a proper identity‑based restriction. Use `"StringEquals": {"aws:PrincipalOrgID": "o-xxxxxxxxxxx"}` (or `aws:PrincipalAccount`, `aws:SourceArn`, etc.) to limit access to your AWS Organization. Alternatively, change the `Principal` to specific ARNs instead of `"*"`. The condition key must be a global AWS context key that cannot be controlled by the caller. The existing `pass_conditional` policy (for `conditional_ok`) already demonstrates the correct pattern with `aws:PrincipalOrgID`.
+
+---
+
+**Interaction note:** The repository‑level fixes (scanning, encryption, immutability) are independent of the policy fixes. Each repository can be updated in isolation. The policy fixes for `fail` and `fail_conditional` only affect their respective repositories; no cross‑resource dependencies exist that would require a specific order.

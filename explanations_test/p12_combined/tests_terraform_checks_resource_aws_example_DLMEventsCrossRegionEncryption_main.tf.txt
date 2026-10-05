@@ -1,0 +1,67 @@
+**Remediation Briefing: DLM Cross-Region Encryption Findings**
+
+Below are the failing checks, the exact evidence in the file, and the required changes. Address them in the order presented.
+
+---
+
+### 1. CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+
+**Trigger location**  
+Line 23: `encryption_configuration {}` inside the `cross_region_copy` block.
+
+**What is wrong**  
+The `encryption_configuration` block is empty – no customer managed key (CMK) is specified. The check requires that cross-region snapshot copies be encrypted with a customer managed key, but the current configuration does not provide one.
+
+**Why it matters**  
+Without a CMK, any encryption that does occur would rely on an AWS-managed key, which gives you less control over key lifecycle, access policies, and auditing.
+
+**Remediation**  
+Populate the `encryption_configuration` block with `encryption = true` and a `cmk_arn` that points to a valid KMS key you manage. This ensures cross-region copies are encrypted and the key is under your control.
+
+---
+
+### 2. CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail` (lines 2–37)
+
+**Trigger location**  
+Line 23: `encryption_configuration {}` inside the `cross_region_copy` block.
+
+**What is wrong**  
+The `encryption_configuration` block is empty, meaning encryption is not explicitly enabled. The check requires that cross-region snapshot copies be encrypted, but the current configuration does not activate encryption.
+
+**Why it matters**  
+If encryption is not enabled, snapshot data copied to another region is stored unencrypted, potentially exposing sensitive volume data.
+
+**Remediation**  
+Set `encryption = true` inside the `encryption_configuration` block. You must also supply a `cmk_arn` (which will also resolve CKV_AWS_254). The same change addresses both findings for this resource.
+
+---
+
+### 3. CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail2` (lines 76–110)
+
+**Trigger location**  
+Line 91: `encryption = false` inside the `encryption_configuration` block (lines 89–92).
+
+**What is wrong**  
+Encryption is explicitly disabled (`encryption = false`), even though a `cmk_arn` is provided. The check requires cross-region events to be encrypted with a customer managed key, but with encryption turned off the CMK is not used.
+
+**Why it matters**  
+Disabling encryption means cross-region copies are stored in plaintext, defeating the purpose of specifying a CMK and violating the requirement for customer-managed encryption.
+
+**Remediation**  
+Change `encryption = false` to `encryption = true`. The `cmk_arn` is already correctly set; no other changes are needed in this block.
+
+---
+
+### 4. CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail2` (lines 76–110)
+
+**Trigger location**  
+Line 91: `encryption = false` inside the `encryption_configuration` block.
+
+**What is wrong**  
+Encryption is explicitly set to `false`, so cross-region snapshot copies are not encrypted. The check mandates that these copies be encrypted.
+
+**Why it matters**  
+Unencrypted cross-region snapshots expose data at rest in the destination region, which is a direct violation of the encryption requirement.
+
+**Remediation**  
+Set `encryption = true` in the same block. This single change will satisfy both CKV_AWS_253 and CKV_AWS_254 for this resource.

@@ -1,0 +1,76 @@
+The scanner flagged two distinct misconfigurations across four ElastiCache resources. Here’s what each finding means, backed by the exact lines in your file.
+
+---
+
+### 1. CKV_AWS_323 – Default subnet group in use
+
+**What it checks**  
+ElastiCache clusters should not rely on the default subnet group. Using a custom subnet group allows you to control which subnets (and therefore which Availability Zones and network paths) the cluster uses, improving network isolation and resilience.
+
+**Where it’s triggered**  
+The check fires on every resource because **none of them include a `subnet_group_name` argument**. When that argument is omitted, Terraform/AWS assigns the cluster to the default subnet group of the VPC.
+
+- `aws_elasticache_cluster.enabled` (lines 3‑11)  
+- `aws_elasticache_cluster.default` (lines 15‑21)  
+- `aws_elasticache_cluster.disabled` (lines 23‑31)  
+- `aws_elasticache_cluster.memcached` (lines 35‑41)
+
+**How to fix**  
+Add a `subnet_group_name` attribute pointing to a pre‑created `aws_elasticache_subnet_group` resource. For example:
+
+```hcl
+resource "aws_elasticache_cluster" "enabled" {
+  cluster_id        = "cluster"
+  engine            = "redis"
+  node_type         = "cache.m5.large"
+  num_cache_nodes   = 1
+  parameter_group_name = "default.redis6.x"
+  subnet_group_name = aws_elasticache_subnet_group.my_subnet_group.name
+  # ...
+}
+```
+
+---
+
+### 2. CKV_AWS_134 – Automatic backups not enabled (Redis only)
+
+**What it checks**  
+For Redis clusters, `snapshot_retention_limit` must be set to a value greater than `0`. This enables automatic daily snapshots, which are essential for point‑in‑time recovery and disaster recovery.
+
+**Where it’s triggered**  
+The finding is raised on two resources:
+
+- **`aws_elasticache_cluster.default` (lines 15‑21)**  
+  `snapshot_retention_limit` is completely absent. The default is `0` (no backups).
+
+- **`aws_elasticache_cluster.disabled` (lines 23‑31)**  
+  `snapshot_retention_limit` is explicitly set to `0` (line 30), which disables backups.
+
+The resource `aws_elasticache_cluster.enabled` (lines 3‑11) is **not** flagged because it sets `snapshot_retention_limit = 5` (line 10), satisfying the check. The Memcached resource is not flagged because CKV_AWS_134 applies only to Redis engines.
+
+**How to fix**  
+For the `default` resource, add `snapshot_retention_limit` with a value ≥ 1 (e.g., `5`). For the `disabled` resource, change the value from `0` to a positive integer, or remove the line if you want to accept the default (which is `0` – so you must explicitly set a positive number). Example:
+
+```hcl
+resource "aws_elasticache_cluster" "default" {
+  cluster_id           = "cluster"
+  engine               = "redis"
+  node_type            = "cache.m5.large"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  snapshot_retention_limit = 5   # add this
+}
+```
+
+---
+
+### Summary of required changes
+
+| Resource          | Add `subnet_group_name` | Set `snapshot_retention_limit` > 0 |
+|-------------------|------------------------|-----------------------------------|
+| `enabled`         | Yes (CKV_AWS_323)      | Already done (5)                  |
+| `default`         | Yes (CKV_AWS_323)      | Yes (CKV_AWS_134)                 |
+| `disabled`        | Yes (CKV_AWS_323)      | Yes (CKV_AWS_134)                 |
+| `memcached`       | Yes (CKV_AWS_323)      | Not applicable (Memcached)         |
+
+No other misconfigurations are evidenced by the scanner output.

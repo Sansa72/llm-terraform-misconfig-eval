@@ -1,0 +1,55 @@
+## 1. What the misconfiguration is
+
+Both flagged API Gateway REST API resources do **not** have `create_before_destroy` enabled:
+
+- `aws_api_gateway_rest_api.fail` has its `lifecycle` block commented out, so Terraform uses the default `create_before_destroy = false`.
+- `aws_api_gateway_rest_api.fail2` explicitly sets `create_before_destroy = false`.
+
+Checkov rule `CKV_AWS_237` requires `create_before_destroy = true` for API Gateway REST APIs.
+
+## 2. Why it matters
+
+With the current configuration, if Terraform must replace the API (for example, because of a forced replacement or an immutable attribute change), it will **destroy the existing API before creating the new one**.
+
+Concrete risk:
+
+- **Availability gap**: The API endpoint can be unreachable during the replacement, causing failed requests and downtime for clients that depend on it.
+- **Blast radius**: Any downstream resources, applications, or users calling the API during the replacement may experience errors until the new API is fully created and associated resources are updated.
+
+This is an availability control, not a data confidentiality issue.
+
+## 3. How to fix it safely
+
+Set `create_before_destroy = true` on both flagged resources.
+
+For `aws_api_gateway_rest_api.fail`, replace the commented lifecycle block with an active one:
+
+```hcl
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+For `aws_api_gateway_rest_api.fail2`, change `false` to `true`:
+
+```hcl
+resource "aws_api_gateway_rest_api" "fail2" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+Before applying, run `terraform plan` and verify:
+
+- The replacement behavior is as expected.
+- Any references to the API resource (e.g., deployments, stages, custom domain mappings, IAM policies) will be updated to the new API ID after replacement.
+- There are no naming conflicts that would prevent creation of the new API before the old one is destroyed.

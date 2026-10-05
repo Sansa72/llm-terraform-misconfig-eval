@@ -1,0 +1,86 @@
+We have reviewed the scanner output against the provided Terraform file. Below is a per-finding remediation briefing. Each finding is addressed in the order it appears, with evidence from the file and a clear description of the required change.
+
+---
+
+### Finding 1
+- **Check ID:** CKV_AWS_39  
+- **Resource:** `aws_eks_cluster.fully_enabled` (lines 3–14)  
+- **Exact trigger lines:** The entire resource block (lines 3–14) lacks a `vpc_config` block.  
+- **What is wrong and why it matters:** The EKS cluster does not explicitly disable the public endpoint. By default, the Kubernetes API endpoint is publicly accessible, which increases the attack surface.  
+- **Remediation:** Add a `vpc_config` block inside the resource and set `endpoint_public_access = false`. If private access is needed, also set `endpoint_private_access = true` and provide appropriate subnet IDs.
+
+---
+
+### Finding 2
+- **Check ID:** CKV_AWS_58  
+- **Resource:** `aws_eks_cluster.fully_enabled` (lines 3–14)  
+- **Exact trigger lines:** The resource block (lines 3–14) contains no `encryption_config` block.  
+- **What is wrong and why it matters:** The cluster does not have envelope encryption enabled for Kubernetes secrets. Without this, secrets stored in etcd are not encrypted at rest using a KMS key, which is a security best practice.  
+- **Remediation:** Add an `encryption_config` block that references a KMS key ARN and specifies `resources = ["secrets"]`.
+
+---
+
+### Finding 3
+- **Check ID:** CKV_AWS_39  
+- **Resource:** `aws_eks_cluster.fully_enabled_with_dynamic_block` (lines 16–38)  
+- **Exact trigger lines:** The resource block (lines 16–38) contains no `vpc_config` block.  
+- **What is wrong and why it matters:** The cluster does not disable its public endpoint. Even though secrets encryption is configured, the API endpoint remains publicly accessible by default, increasing exposure.  
+- **Remediation:** Add a `vpc_config` block and set `endpoint_public_access = false`. If private access is required, also set `endpoint_private_access = true` and provide the necessary subnet IDs.
+
+---
+
+### Finding 4
+- **Check ID:** CKV_AWS_39  
+- **Resource:** `aws_eks_cluster.partially_enabled` (lines 42–50)  
+- **Exact trigger lines:** The resource block (lines 42–50) has no `vpc_config` block.  
+- **What is wrong and why it matters:** The public endpoint is not disabled, leaving the Kubernetes API exposed to the internet.  
+- **Remediation:** Add a `vpc_config` block with `endpoint_public_access = false`.
+
+---
+
+### Finding 5
+- **Check ID:** CKV_AWS_58  
+- **Resource:** `aws_eks_cluster.partially_enabled` (lines 42–50)  
+- **Exact trigger lines:** The resource block (lines 42–50) does not contain an `encryption_config` block.  
+- **What is wrong and why it matters:** Secrets encryption is not enabled. Kubernetes secrets stored in etcd are not encrypted at rest, which could expose sensitive data if the underlying storage is compromised.  
+- **Remediation:** Add an `encryption_config` block that references a KMS key ARN and sets `resources = ["secrets"]`.
+
+---
+
+### Finding 6
+- **Check ID:** CKV_AWS_37  
+- **Resource:** `aws_eks_cluster.partially_enabled` (lines 42–50)  
+- **Exact trigger lines:** Lines 46–49, where `enabled_cluster_log_types` is set to `["api", "audit"]` only.  
+- **What is wrong and why it matters:** The cluster does not have all control plane log types enabled. The missing types (`authenticator`, `controllerManager`, `scheduler`) reduce visibility into cluster operations, making it harder to detect and investigate security incidents.  
+- **Remediation:** Extend the `enabled_cluster_log_types` list to include all five log types: `"api"`, `"audit"`, `"authenticator"`, `"controllerManager"`, and `"scheduler"`.
+
+---
+
+### Finding 7
+- **Check ID:** CKV_AWS_39  
+- **Resource:** `aws_eks_cluster.not_configured` (lines 52–55)  
+- **Exact trigger lines:** The resource block (lines 52–55) contains no `vpc_config` block.  
+- **What is wrong and why it matters:** The public endpoint is not disabled, so the Kubernetes API is reachable from the internet.  
+- **Remediation:** Add a `vpc_config` block and set `endpoint_public_access = false`.
+
+---
+
+### Finding 8
+- **Check ID:** CKV_AWS_58  
+- **Resource:** `aws_eks_cluster.not_configured` (lines 52–55)  
+- **Exact trigger lines:** The resource block (lines 52–55) has no `encryption_config` block.  
+- **What is wrong and why it matters:** Secrets encryption is not enabled, leaving Kubernetes secrets unencrypted at rest.  
+- **Remediation:** Add an `encryption_config` block that specifies a KMS key and `resources = ["secrets"]`.
+
+---
+
+### Finding 9
+- **Check ID:** CKV_AWS_37  
+- **Resource:** `aws_eks_cluster.not_configured` (lines 52–55)  
+- **Exact trigger lines:** The resource block (lines 52–55) does not contain an `enabled_cluster_log_types` argument.  
+- **What is wrong and why it matters:** No control plane log types are enabled. Without logging, there is no audit trail for API calls, authentication, or scheduler/controller-manager activity, hindering security monitoring and incident response.  
+- **Remediation:** Add an `enabled_cluster_log_types` argument containing all five log types: `["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+All findings are addressed. No additional resources or attack scenarios beyond what the checks and file show have been assumed.

@@ -1,0 +1,24 @@
+The file has three distinct issues across the two `aws_dms_replication_instance` resources.
+
+### 1. Publicly accessible DMS instance (`CKV_AWS_89`)
+- **Affected:** both `aws_dms_replication_instance.pass` and `aws_dms_replication_instance.fail`
+- **Issue:** `publicly_accessible = true` is set on both instances.
+- **Risk:** The DMS replication instance is reachable from the internet, outside the VPC. This broadens the network attack surface and increases the chance of unauthorized access to the replication instance and the database endpoints it connects to.
+- **Fix:** Set `publicly_accessible = false` (the default) unless there is a specific, temporary need for public connectivity. Prefer deploying the instance in a private subnet and use VPC endpoints or NAT for external source/target endpoints.
+
+### 2. Automatic minor version upgrades not enabled (`CKV_AWS_222`)
+- **Affected:** both instances
+- **Issue:** `auto_minor_version_upgrade` is not set (it is commented out as `false`), so minor engine upgrades are not applied automatically.
+- **Risk:** The instance may remain on an outdated DMS engine version that misses security patches and bug fixes, exposing it to known vulnerabilities.
+- **Fix:** Add `auto_minor_version_upgrade = true` to both resources.
+
+### 3. EBS volume not encrypted with a customer-managed KMS key (`CKV_AWS_212`)
+- **Affected:** only `aws_dms_replication_instance.fail`
+- **Issue:** The `fail` resource does not set `kms_key_arn`, so its underlying EBS storage is not encrypted with a customer-managed KMS key.
+- **Risk:** Without a customer-managed key, you lose control over key rotation, access policies, and audit logging for the storage encryption. This may violate security or compliance requirements that mandate CMK encryption for data at rest.
+- **Fix:** Set `kms_key_arn` to a valid CMK ARN, for example:
+  ```hcl
+  kms_key_arn = aws_kms_key.example.arn
+  ```
+
+The `pass` resource already has a `kms_key_arn`, so it only needs the first two fixes.

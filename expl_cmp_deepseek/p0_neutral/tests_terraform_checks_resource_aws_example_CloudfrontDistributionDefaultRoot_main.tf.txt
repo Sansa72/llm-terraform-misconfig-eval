@@ -1,0 +1,167 @@
+Both `aws_cloudfront_distribution.pass` and `aws_cloudfront_distribution.fail` are affected by most findings. The resource named `pass` is not compliant for these checks; `fail` additionally lacks `default_root_object`.
+
+### 1. `ViewerProtocolPolicy` allows HTTP (`CKV_AWS_34`)
+
+**What’s wrong**  
+In both distributions, the `default_cache_behavior` has:
+
+```hcl
+viewer_protocol_policy = "allow-all"
+```
+
+The `ordered_cache_behavior` blocks already use `redirect-to-https`, but the default behavior still permits plaintext HTTP.
+
+**Why it matters**  
+Requests that do not match an ordered path pattern can be sent or received over HTTP. This allows network interception or modification of traffic for those paths.
+
+**Fix**  
+Change the default cache behavior to:
+
+```hcl
+viewer_protocol_policy = "redirect-to-https"
+```
+
+Or use `https-only` if you want to reject HTTP instead of redirecting.
+
+---
+
+### 2. TLS version is not explicitly set to TLS 1.2 (`CKV_AWS_174`)
+
+**What’s wrong**  
+Both `viewer_certificate` blocks contain only:
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+}
+```
+
+There is no `minimum_protocol_version` setting.
+
+**Why it matters**  
+Without an explicit minimum protocol version, CloudFront may negotiate older TLS versions that are deprecated or less secure.
+
+**Fix**  
+Set a TLS 1.2 minimum in the `viewer_certificate` block:
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+Choose `TLSv1.2_2019` or `TLSv1.2_2021` based on your compatibility requirements.
+
+---
+
+### 3. CloudFront distribution has no WAF enabled (`CKV_AWS_68`)
+
+**What’s wrong**  
+Neither distribution has a `web_acl_id` argument, and there is no WAFv2 association in the file.
+
+**Why it matters**  
+Traffic reaching CloudFront is not inspected by AWS WAF. Common web attack patterns are not filtered at the edge.
+
+**Fix**  
+Attach a WAF WebACL:
+
+- For WAF Classic, set `web_acl_id` on the `aws_cloudfront_distribution`.
+- For WAFv2, create an `aws_wafv2_web_acl_association` for the CloudFront distribution.
+
+---
+
+### 4. No origin failover configured (`CKV_AWS_310`)
+
+**What’s wrong**  
+Each distribution defines only one `origin` block. There is no origin group with primary and secondary origins.
+
+**Why it matters**  
+If the single S3 origin becomes unavailable, CloudFront has no backup origin to serve from, reducing availability.
+
+**Fix**  
+Create an origin group with at least two origins and failover criteria, then point the cache behavior `target_origin_id` to that origin group.
+
+---
+
+### 5. Missing default root object on `aws_cloudfront_distribution.fail` (`CKV_AWS_305`)
+
+**What’s wrong**  
+The `fail` resource does not set:
+
+```hcl
+default_root_object = "index.html"
+```
+
+The `pass` resource already has this.
+
+**Why it matters**  
+Requests to the distribution root `/` may not return the intended default document, causing an error or unexpected behavior from the S3 origin.
+
+**Fix**  
+Add the missing line to `aws_cloudfront_distribution.fail`:
+
+```hcl
+default_root_object = "index.html"
+```
+
+---
+
+### 6. CloudFront uses the default SSL certificate instead of a custom certificate (`CKV2_AWS_42`)
+
+**What’s wrong**  
+Both distributions use:
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+}
+```
+
+They have `aliases = ["mysite.example.com", "yoursite.example.com"]`, but no `acm_certificate_arn` or `iam_certificate_id` is set.
+
+**Why it matters**  
+The CloudFront default certificate is for `*.cloudfront.net` and will not match the custom aliases. Clients using HTTPS with the custom domain may see certificate name mismatch errors or fail to connect.
+
+**Fix**  
+Use an ACM certificate in `us-east-1` that covers the aliases, and update `viewer_certificate`:
+
+```hcl
+viewer_certificate {
+  acm_certificate_arn      = aws_acm_certificate.example.arn
+  ssl_support_method       = "sni-only"
+  minimum_protocol_version = "TLSv1.2_2021"
+}
+```
+
+Remove `cloudfront_default_certificate = true`.
+
+---
+
+### 7. No response headers policy attached (`CKV2_AWS_32`)
+
+**What’s wrong**  
+Neither the default nor ordered cache behaviors set `response_headers_policy_id`.
+
+**Why it matters**  
+CloudFront will not add security-related HTTP response headers configured in a response headers policy, such as HSTS or `X-Content-Type-Options`. Browser protections may not be enforced.
+
+**Fix**  
+Create or reference an `aws_cloudfront_response_headers_policy` and attach it to the relevant cache behaviors:
+
+```hcl
+response_headers_policy_id = aws_cloudfront_response_headers_policy.example.id
+```
+
+---
+
+### 8. No WAFv2 WebACL with Log4j managed rule (`CKV2_AWS_47`)
+
+**What’s wrong**  
+There is no WAFv2 WebACL associated with either distribution, so the AWS Managed Rules for Log4j cannot be applied.
+
+**Why it matters**  
+If any origin behind CloudFront is vulnerable to Log4j, the edge will not block requests attempting to exploit it.
+
+**Fix**  
+Associate a WAFv2 WebACL in `us-east-1` that includes the Log4j-related AWS Managed Rules, then attach it to the CloudFront distribution using `aws_wafv2_web_acl_association`.

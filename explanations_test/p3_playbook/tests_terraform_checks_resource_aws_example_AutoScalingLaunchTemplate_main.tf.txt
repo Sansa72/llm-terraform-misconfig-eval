@@ -1,0 +1,51 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported, with a one-line summary, the reason it matters, and a prose description of the change needed to pass the check. Where fixes interact, that is noted.
+
+---
+
+### 1. CKV_AWS_153 on `aws_autoscaling_group.fail` (lines 27–33)
+**What’s wrong:** The ASG has no `tag` block, so no tags are propagated to EC2 instances.  
+**Why it matters:** Without tags, instances launched by this ASG cannot be easily identified, grouped, or managed for cost allocation, automation, or access control.  
+**Change needed:** Add one or more `tag` blocks inside the ASG resource, each with a `key`, `value`, and `propagate_at_launch = true`. At minimum, include a tag that identifies the purpose or owner of the instances. This is independent of the launch configuration/template change below, but both will be needed.
+
+---
+
+### 2. CKV_AWS_315 on `aws_autoscaling_group.fail` (lines 27–33)
+**What’s wrong:** The ASG uses a `launch_configuration` instead of a `launch_template`.  
+**Why it matters:** Launch configurations are a legacy feature; AWS recommends launch templates for all new Auto Scaling groups because they support versioning, multiple instance types, and advanced features.  
+**Change needed:** Replace the `launch_configuration` argument with a `launch_template` block that references an existing launch template (e.g., `aws_launch_template.example.id`) and its version. Remove the `launch_configuration` line entirely. This change must be made before or alongside the tag fix (CKV_AWS_153) because the tag block is compatible with both, but the scanner expects a launch template.
+
+---
+
+### 3. CKV_AWS_153 on `aws_autoscaling_group.pass_mixed` (lines 35–59)
+**What’s wrong:** The ASG has no `tag` block, so no tags are propagated to instances.  
+**Why it matters:** Same as above—instances launched via the mixed instances policy will lack identifying tags, hindering management and governance.  
+**Change needed:** Add a `tag` block (or multiple) with `propagate_at_launch = true` inside the ASG resource. This is independent of the launch template check below.
+
+---
+
+### 4. CKV_AWS_315 on `aws_autoscaling_group.pass_mixed` (lines 35–59)
+**What’s wrong:** The ASG does not have a top-level `launch_template` block; it only references launch templates inside the `mixed_instances_policy`.  
+**Why it matters:** The scanner expects an explicit top-level `launch_template` block to confirm that launch templates are used. While the mixed instances policy does use launch templates, the check may not recognise them unless a top-level block is present.  
+**Change needed:** Add a top-level `launch_template` block referencing the same launch template used in the mixed instances policy (e.g., `id = aws_launch_template.example.id`). This block can coexist with the `mixed_instances_policy`; the top-level template serves as the default, and the policy overrides it for the specified instance types. This change will also satisfy the check without altering the group’s behaviour.
+
+---
+
+### 5. CKV_AWS_153 on `aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)
+**What’s wrong:** The ASG has no `tag` block, so no tags are propagated to instances.  
+**Why it matters:** Same as above—instances will lack necessary tags for identification, cost tracking, and automation.  
+**Change needed:** Add a `tag` block (or multiple) with `propagate_at_launch = true` inside the ASG resource. This is independent of the launch template check.
+
+---
+
+### 6. CKV_AWS_315 on `aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)
+**What’s wrong:** The ASG does not have a top-level `launch_template` block; it only uses launch templates inside the `mixed_instances_policy`.  
+**Why it matters:** The scanner requires a top-level `launch_template` block to confirm that launch templates are used. The existing mixed instances policy references launch templates, but the check may not consider them sufficient.  
+**Change needed:** Add a top-level `launch_template` block that points to the default launch template (e.g., `aws_launch_template.x86_64.id`). This will coexist with the mixed instances policy and satisfy the check without changing the intended instance distribution.
+
+---
+
+### Interaction notes
+- For `aws_autoscaling_group.fail`, the two fixes are independent but both required. The switch from launch configuration to launch template (CKV_AWS_315) does not automatically add tags; you must also add the `tag` block (CKV_AWS_153).
+- For `pass_mixed` and `pass_mixed_multiple`, adding a top-level `launch_template` block (CKV_AWS_315) does not affect the tag requirement; you still need to add `tag` blocks separately. The top-level template and the mixed instances policy can reference the same or different launch templates without conflict.

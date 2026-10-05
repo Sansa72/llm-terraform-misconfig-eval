@@ -1,0 +1,131 @@
+The scanner found multiple security misconfigurations across your ECR repositories and their policies. I’ll walk through each failing check, explain why it matters, and show exactly what needs to change in this specific Terraform file.
+
+---
+
+## 1. Missing image scanning on push (CKV_AWS_163)
+
+**Affected resources:**  
+`aws_ecr_repository.public`, `aws_ecr_repository.private`, `aws_ecr_repository.empty`, `aws_ecr_repository.conditional_ok`, `aws_ecr_repository.conditional_bad`
+
+**What the rule requires:**  
+ECR can automatically scan container images for known vulnerabilities every time an image is pushed. The scanner expects `scan_on_push = true` inside an `image_scanning_configuration` block. Without it, scanning is disabled, leaving you blind to newly introduced CVEs.
+
+**What’s missing in the file:**  
+None of the repository resources define `image_scanning_configuration`. The default is `scan_on_push = false`.
+
+**Fix:**  
+Add the following block to each of the five repositories:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+
+---
+
+## 2. Missing KMS encryption (CKV_AWS_136)
+
+**Affected resources:**  
+Same five repositories as above.
+
+**What the rule requires:**  
+ECR always encrypts images at rest, but by default it uses an AWS-managed AES‑256 key. The scanner requires you to use a customer-managed KMS key (encryption type `KMS`) for stronger control over key rotation, access, and auditing.
+
+**What’s missing in the file:**  
+No `encryption_configuration` block is present, so each repository falls back to the default AES‑256 encryption.
+
+**Fix:**  
+Add an `encryption_configuration` block to each repository. At minimum, specify the encryption type; you can also point to a specific KMS key ARN if you have one.
+
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  # kms_key = "arn:aws:kms:eu-west-2:123456789012:key/your-key-id"  # optional
+}
+```
+
+---
+
+## 3. Mutable image tags (CKV_AWS_51)
+
+**Affected resources:**  
+Again, all five repositories.
+
+**What the rule requires:**  
+Image tags should be immutable (`image_tag_mutability = "IMMUTABLE"`). Mutable tags allow an attacker who gains push access to overwrite a trusted tag (like `latest`) with a malicious image, potentially compromising any system that pulls that tag.
+
+**What’s missing in the file:**  
+The `image_tag_mutability` attribute is not set, so it defaults to `MUTABLE`.
+
+**Fix:**  
+Add the following line to each repository resource:
+
+```hcl
+image_tag_mutability = "IMMUTABLE"
+```
+
+---
+
+## 4. Public ECR repository policy (CKV_AWS_32)
+
+**Affected resources:**  
+`aws_ecr_repository_policy.fail` (attached to `public_repo`)  
+`aws_ecr_repository_policy.fail_conditional` (attached to `conditional_bad_repo`)
+
+**What the rule requires:**  
+An ECR repository policy must not grant access to the public. A policy is considered public if it has `"Principal": "*"` **without** a condition that restricts access to specific AWS accounts, organisations, or known IAM principals. The condition must use a key that ties the caller to a trusted identity (e.g., `aws:PrincipalOrgID`, `aws:PrincipalAccount`, `aws:PrincipalArn`).
+
+**What’s wrong in the file:**
+
+- **`fail` policy (lines 9‑38):**  
+  `Principal` is `"*"` and there is no `Condition` block at all. This allows anyone on the internet to perform the listed actions (including `PutImage`, `DeleteRepository`, etc.). This is a direct public exposure.
+
+- **`fail_conditional` policy (lines 131‑165):**  
+  `Principal` is `"*"` and the condition uses `"aws:username": "pull-user-1"`. The `aws:username` key checks the IAM user name, but it does **not** scope the request to a specific AWS account. Any account that creates a user named `pull-user-1` would satisfy the condition, so the policy is effectively public. The scanner correctly flags this as public because the condition does not restrict access to your organisation or account.
+
+**Why the other policies pass:**  
+- `pass` uses an explicit list of IAM user ARNs – not a wildcard principal.  
+- `pass_conditional` uses `"aws:PrincipalOrgID"` – this ties access to your AWS organisation.  
+- `cond_any_pass` and `cond_equals_pass` also use `aws:PrincipalOrgID` with `ForAnyValue:StringEquals` or `StringEquals`, which are valid restrictions.  
+- `pass_without_principal` omits the `Principal` field entirely, which defaults to the account’s root user and is not public.  
+- `empty` has an empty policy string, which is not a valid public policy.
+
+**Fix:**
+
+For `fail` (the `public_repo` policy), you must either:
+- Replace `"Principal": "*"` with specific IAM principals (like in the `pass` policy), or
+- Add a condition that restricts access to your organisation/account, e.g.:
+  ```json
+  "Condition": {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-xxxxxxxxxxx"
+    }
+  }
+  ```
+
+For `fail_conditional`, change the condition key from `aws:username` to one that scopes to your AWS environment, such as `aws:PrincipalOrgID`, `aws:PrincipalAccount`, or `aws:PrincipalArn`. For example:
+```json
+"Condition": {
+  "StringEquals": {
+    "aws:PrincipalOrgID": "o-12345678"
+  }
+}
+```
+This ensures only principals from your organisation can assume the wildcard principal.
+
+---
+
+## Summary of required changes
+
+| Resource | Add `image_scanning_configuration` | Add `encryption_configuration` (KMS) | Set `image_tag_mutability = "IMMUTABLE"` | Fix public policy |
+|----------|-----------------------------------|--------------------------------------|----------------------------------------|-------------------|
+| `aws_ecr_repository.public` | ✅ | ✅ | ✅ | – |
+| `aws_ecr_repository.private` | ✅ | ✅ | ✅ | – |
+| `aws_ecr_repository.empty` | ✅ | ✅ | ✅ | – |
+| `aws_ecr_repository.conditional_ok` | ✅ | ✅ | ✅ | – |
+| `aws_ecr_repository.conditional_bad` | ✅ | ✅ | ✅ | – |
+| `aws_ecr_repository_policy.fail` | – | – | – | ✅ (remove public principal or add valid condition) |
+| `aws_ecr_repository_policy.fail_conditional` | – | – | – | ✅ (replace `aws:username` with org/account condition) |
+
+Apply these changes to all flagged resources, and the scanner findings will be resolved.

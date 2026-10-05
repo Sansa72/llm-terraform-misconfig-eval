@@ -1,0 +1,13 @@
+The `aws_dms_replication_instance.pass` resource triggers two checks:
+
+- **CKV_AWS_89 (public accessibility):** The instance has `publicly_accessible = true`. This exposes the DMS replication instance to the internet, increasing the attack surface and the risk of unauthorized access. To fix, set `publicly_accessible = false` (or remove the attribute, as the default is `false`). If public access is genuinely required for a specific migration, ensure it is tightly scoped with security groups and only enabled temporarily.
+
+- **CKV_AWS_222 (minor version auto-upgrade):** The `auto_minor_version_upgrade` argument is commented out, so it defaults to `false`. Without automatic minor upgrades, the instance may miss important security patches and bug fixes. To fix, uncomment the line and set `auto_minor_version_upgrade = true`.
+
+The `aws_dms_replication_instance.fail` resource triggers the same two checks plus an additional one:
+
+- **CKV_AWS_89 (public accessibility):** Same issue as above—`publicly_accessible = true`. Set it to `false` to restrict access to the VPC.
+
+- **CKV_AWS_222 (minor version auto-upgrade):** Same issue as above—`auto_minor_version_upgrade` is commented out and defaults to `false`. Uncomment and set to `true`.
+
+- **CKV_AWS_212 (EBS volume encryption with CMK):** The `kms_key_arn` argument is commented out, meaning the replication instance’s underlying EBS volumes will be encrypted with the default AWS-managed key (if encryption is enabled at the account level) or not encrypted at all. The check requires a customer-managed KMS key (CMK) to be explicitly provided, giving you control over key rotation, access policies, and auditing. To fix, uncomment `kms_key_arn` and assign a valid CMK ARN (e.g., `aws_kms_key.example.arn`). Ensure the key exists and the DMS service has permissions to use it.

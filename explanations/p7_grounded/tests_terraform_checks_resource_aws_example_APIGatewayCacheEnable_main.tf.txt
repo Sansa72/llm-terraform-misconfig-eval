@@ -1,0 +1,57 @@
+The provided Terraform file defines two `aws_api_gateway_stage` resources. The scanner raised multiple checks against both, indicating that required security-related settings are absent from the configuration. Below is a breakdown of each finding, tied to the exact resource and lines in the file.
+
+### Resource: `aws_api_gateway_stage.pass` (lines 1–4)
+```terraform
+1 | resource "aws_api_gateway_stage" "pass" {
+2 |   name                  = "example"
+3 |   cache_cluster_enabled = true
+4 | }
+```
+
+The following checks were raised against this resource:
+
+- **CKV_AWS_73 – Ensure API Gateway has X-Ray Tracing enabled**  
+  The resource block does not set `xray_tracing_enabled = true`. X-Ray tracing is not enabled.
+
+- **CKV_AWS_76 – Ensure API Gateway has Access Logging enabled**  
+  The resource block does not include an `access_log_settings` block. Access logging is not configured.
+
+- **CKV2_AWS_51 – Ensure AWS API Gateway endpoints uses client certificate authentication**  
+  The resource block does not set a `client_certificate_id`. No client certificate is associated with the stage.
+
+- **CKV2_AWS_4 – Ensure API Gateway stage have logging level defined as appropriate**  
+  The resource block does not set the `logging_level` argument (e.g., to `ERROR` or `INFO`). Execution logging level is not defined.
+
+- **CKV2_AWS_29 – Ensure public API Gateway are protected by WAF**  
+  The file contains no resource (such as `aws_wafregional_web_acl_association` or `aws_wafv2_web_acl_association`) that associates a WAF Web ACL with this API Gateway stage. The stage is not linked to any WAF protection in the given code.
+
+Note: `cache_cluster_enabled = true` is present, so the caching check (CKV_AWS_120) was **not** raised for this resource.
+
+### Resource: `aws_api_gateway_stage.fail` (lines 6–8)
+```terraform
+6 | resource "aws_api_gateway_stage" "fail" {
+7 |   name = "example"
+8 | }
+```
+
+The following checks were raised against this resource:
+
+- **CKV_AWS_120 – Ensure API Gateway caching is enabled**  
+  The resource block does not set `cache_cluster_enabled = true`. Caching is not enabled.
+
+- **CKV_AWS_73 – Ensure API Gateway has X-Ray Tracing enabled**  
+  `xray_tracing_enabled` is not set.
+
+- **CKV_AWS_76 – Ensure API Gateway has Access Logging enabled**  
+  No `access_log_settings` block is present.
+
+- **CKV2_AWS_51 – Ensure AWS API Gateway endpoints uses client certificate authentication**  
+  `client_certificate_id` is not set.
+
+- **CKV2_AWS_4 – Ensure API Gateway stage have logging level defined as appropriate**  
+  `logging_level` is not set.
+
+- **CKV2_AWS_29 – Ensure public API Gateway are protected by WAF**  
+  No WAF association resource exists in the file for this stage.
+
+In summary, the `pass` resource is missing five security controls (X-Ray, access logging, client certificate, logging level, WAF), while the `fail` resource is missing those same five plus caching. The file provides no evidence that any of these settings are configured elsewhere; the only attributes defined are `name` (both) and `cache_cluster_enabled` (pass only).

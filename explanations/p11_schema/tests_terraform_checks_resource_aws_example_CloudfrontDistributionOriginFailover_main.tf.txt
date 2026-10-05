@@ -1,0 +1,334 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_216",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "The distribution is disabled and will not serve any content.",
+      "remediation": "Set enabled = true to activate the distribution.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_86",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without access logging, you cannot audit or monitor requests to the distribution.",
+      "remediation": "Add a logging_config block with a valid S3 bucket and prefix to enable access logging.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "The viewer certificate uses the default minimum protocol version TLSv1, which is insecure and vulnerable to downgrade attacks.",
+      "remediation": "Set minimum_protocol_version = \"TLSv1.2_2021\" inside the viewer_certificate block to enforce TLS 1.2.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "No WAF is attached, leaving the distribution exposed to common web exploits like SQL injection and cross-site scripting.",
+      "remediation": "Attach a WAF Web ACL by setting the web_acl_id argument to the ARN of a WAFv2 Web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_305",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without a default root object, requests to the root path (/) may return an error instead of the intended index page.",
+      "remediation": "Set default_root_object to a file name such as \"index.html\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "Using the default CloudFront certificate prevents the use of a custom domain with HTTPS, limiting branding and security.",
+      "remediation": "Provide an ACM certificate ARN via acm_certificate_arn and set cloudfront_default_certificate = false in the viewer_certificate block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers like HSTS, Content-Security-Policy, or X-Content-Type-Options may be missing.",
+      "remediation": "Attach a response headers policy by setting response_headers_policy_id in the default_cache_behavior block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without a WAFv2 Web ACL that includes AWS Managed Rules for Log4j, the distribution is vulnerable to Log4j attacks.",
+      "remediation": "Attach a WAFv2 Web ACL that contains the AWSManagedRulesKnownBadInputsRuleSet or a custom rule mitigating Log4j.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_86",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"myS3Origin\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  # AWS Managed Caching Polify (CachingDisabled)\n  default_cache_behavior {\n    # Using the CachingDisabled managed policy ID:\n    cache_policy_id  = \"4135ea2d-6df8-44a3-9df3-4b5a84be39a\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    path_pattern     = \"/content/*\"\n    target_origin_id = local.s3_origin_id\n    cached_methods   = []\n    viewer_protocol_policy = \"\"\n  }\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "Access logging is not enabled, preventing audit and monitoring of requests.",
+      "remediation": "Add a logging_config block with a valid S3 bucket and prefix.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "The viewer certificate does not specify a minimum protocol version, defaulting to TLSv1 which is insecure.",
+      "remediation": "Add minimum_protocol_version = \"TLSv1.2_2021\" inside the viewer_certificate block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"myS3Origin\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  # AWS Managed Caching Polify (CachingDisabled)\n  default_cache_behavior {\n    # Using the CachingDisabled managed policy ID:\n    cache_policy_id  = \"4135ea2d-6df8-44a3-9df3-4b5a84be39a\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    path_pattern     = \"/content/*\"\n    target_origin_id = local.s3_origin_id\n    cached_methods   = []\n    viewer_protocol_policy = \"\"\n  }\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "No WAF is attached, exposing the distribution to common web attacks.",
+      "remediation": "Set web_acl_id to the ARN of a WAFv2 Web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_310",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"myS3Origin\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  # AWS Managed Caching Polify (CachingDisabled)\n  default_cache_behavior {\n    # Using the CachingDisabled managed policy ID:\n    cache_policy_id  = \"4135ea2d-6df8-44a3-9df3-4b5a84be39a\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    path_pattern     = \"/content/*\"\n    target_origin_id = local.s3_origin_id\n    cached_methods   = []\n    viewer_protocol_policy = \"\"\n  }\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "Only one origin is defined without an origin group, so a failure of that origin will cause downtime.",
+      "remediation": "Add an origin_group with failover_criteria and at least two member origins, then point the default cache behavior to the group.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "Using the default CloudFront certificate prevents using a custom domain with HTTPS.",
+      "remediation": "Provide an ACM certificate ARN and set cloudfront_default_certificate = false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "default_cache_behavior {\n    # Using the CachingDisabled managed policy ID:\n    cache_policy_id  = \"4135ea2d-6df8-44a3-9df3-4b5a84be39a\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    path_pattern     = \"/content/*\"\n    target_origin_id = local.s3_origin_id\n    cached_methods   = []\n    viewer_protocol_policy = \"\"\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers may be missing.",
+      "remediation": "Set response_headers_policy_id in the default_cache_behavior block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"myS3Origin\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  # AWS Managed Caching Polify (CachingDisabled)\n  default_cache_behavior {\n    # Using the CachingDisabled managed policy ID:\n    cache_policy_id  = \"4135ea2d-6df8-44a3-9df3-4b5a84be39a\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    path_pattern     = \"/content/*\"\n    target_origin_id = local.s3_origin_id\n    cached_methods   = []\n    viewer_protocol_policy = \"\"\n  }\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "No WAFv2 Web ACL with Log4j protections is attached, leaving the distribution vulnerable to Log4j attacks.",
+      "remediation": "Attach a WAFv2 Web ACL that includes AWS Managed Rules for Log4j.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_216",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "enabled = false"
+      ],
+      "risk": "The distribution is disabled and will not serve content.",
+      "remediation": "Set enabled = true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_86",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail2\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Access logging is not enabled, preventing audit and monitoring.",
+      "remediation": "Add a logging_config block with a valid S3 bucket and prefix.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "The viewer certificate uses the default minimum protocol version TLSv1, which is insecure.",
+      "remediation": "Set minimum_protocol_version = \"TLSv1.2_2021\" inside viewer_certificate.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail2\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "No WAF is attached, exposing the distribution to common web attacks.",
+      "remediation": "Set web_acl_id to the ARN of a WAFv2 Web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_310",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail2\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without origin failover, a single origin failure could cause downtime.",
+      "remediation": "Configure an origin group with failover criteria and multiple origins, and point the default cache behavior to the group.",
+      "confidence": "low"
+    },
+    {
+      "check_id": "CKV_AWS_305",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail2\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without a default root object, requests to the root path may return an error.",
+      "remediation": "Set default_root_object to a file name such as \"index.html\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "Using the default CloudFront certificate prevents using a custom domain with HTTPS.",
+      "remediation": "Provide an ACM certificate ARN and set cloudfront_default_certificate = false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers may be missing.",
+      "remediation": "Set response_headers_policy_id in the default_cache_behavior block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.fail2",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail2\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n    member {\n      origin_id = \"primaryS3\"\n    }\n\n    member {\n      origin_id = \"failoverS3\"\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "No WAFv2 Web ACL with Log4j protections is attached, leaving the distribution vulnerable to Log4j attacks.",
+      "remediation": "Attach a WAFv2 Web ACL that includes AWS Managed Rules for Log4j.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_216",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "enabled = false"
+      ],
+      "risk": "The distribution is disabled and will not serve content.",
+      "remediation": "Set enabled = true.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_86",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail3\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Access logging is not enabled, preventing audit and monitoring.",
+      "remediation": "Add a logging_config block with a valid S3 bucket and prefix.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "The viewer certificate uses the default minimum protocol version TLSv1, which is insecure.",
+      "remediation": "Set minimum_protocol_version = \"TLSv1.2_2021\" inside viewer_certificate.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail3\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "No WAF is attached, exposing the distribution to common web attacks.",
+      "remediation": "Set web_acl_id to the ARN of a WAFv2 Web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_310",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail3\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without origin failover, a single origin failure could cause downtime.",
+      "remediation": "Configure an origin group with failover criteria and multiple origins, and point the default cache behavior to the group.",
+      "confidence": "low"
+    },
+    {
+      "check_id": "CKV_AWS_305",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail3\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "Without a default root object, requests to the root path may return an error.",
+      "remediation": "Set default_root_object to a file name such as \"index.html\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "viewer_certificate {}"
+      ],
+      "risk": "Using the default CloudFront certificate prevents using a custom domain with HTTPS.",
+      "remediation": "Provide an ACM certificate ARN and set cloudfront_default_certificate = false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers may be missing.",
+      "remediation": "Set response_headers_policy_id in the default_cache_behavior block.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.fail3",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail3\" {\n  origin_group {\n    origin_id = \"groupS3\"\n\n    failover_criteria {\n      status_codes = [403, 404, 500, 502]\n    }\n\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.primary.bucket_regional_domain_name\n    origin_id   = \"primaryS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  origin {\n    domain_name = aws_s3_bucket.failover.bucket_regional_domain_name\n    origin_id   = \"failoverS3\"\n\n    s3_origin_config {\n      origin_access_identity = aws_cloudfront_origin_access_identity.default.cloudfront_access_identity_path\n    }\n  }\n\n  default_cache_behavior {\n    # ... other configuration ...\n    target_origin_id = \"groupS3\"\n  }\n\n  enabled = false\n  restrictions {}\n  viewer_certificate {}\n}"
+      ],
+      "risk": "No WAFv2 Web ACL with Log4j protections is attached, leaving the distribution vulnerable to Log4j attacks.",
+      "remediation": "Attach a WAFv2 Web ACL that includes AWS Managed Rules for Log4j.",
+      "confidence": "high"
+    }
+  ]
+}

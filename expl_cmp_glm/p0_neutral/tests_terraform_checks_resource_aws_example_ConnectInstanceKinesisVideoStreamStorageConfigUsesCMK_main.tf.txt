@@ -1,0 +1,16 @@
+### 1. What the misconfiguration is
+In the `aws_connect_instance_storage_config.fail` resource (lines 20-35), the `encryption_config` block sets `encryption_type = "KMS"` but omits the `key_id` attribute. Without a specified key, AWS defaults to an AWS-managed KMS key rather than a Customer Managed Key (CMK). 
+
+### 2. Why it matters
+Using an AWS-managed key limits your control over the encryption for the `MEDIA_STREAMS` data stored via Kinesis Video Streams for this Connect instance. You cannot view, modify, or restrict the key's access policy. This prevents you from enforcing custom key rotation schedules or revoking cryptographic access to the media streams if an unauthorized actor gains access to the AWS account or specific IAM roles. 
+
+### 3. How to fix it safely
+Add the `key_id` attribute to the `encryption_config` block, referencing the ARN of an existing or newly provisioned Customer Managed Key (CMK). Ensure the referenced KMS key's policy grants Amazon Connect and Kinesis Video Streams the necessary permissions (e.g., `kms:GenerateDataKey`, `kms:Decrypt`) to use the key.
+
+The `aws_connect_instance_storage_config.pass` resource (lines 12-15) demonstrates the correct configuration:
+```hcl
+      encryption_config {
+        encryption_type = "KMS"
+        key_id          = aws_kms_key.test.arn
+      }
+```

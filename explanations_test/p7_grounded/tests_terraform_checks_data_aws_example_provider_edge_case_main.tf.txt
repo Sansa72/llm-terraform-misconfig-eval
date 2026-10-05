@@ -1,0 +1,31 @@
+The scanner flagged a missing encryption configuration on the S3 object resource.
+
+**Check ID:** `CKV_AWS_186`  
+**Resource:** `aws_s3_bucket_object.this_file_2` (lines 21–24)  
+**Finding:** The object is not configured to use KMS encryption with a customer managed key (CMK).
+
+**Evidence in the file:**  
+The resource block at lines 21–24 contains only `bucket` and `key`:
+
+```terraform
+resource "aws_s3_bucket_object" "this_file_2" {
+  bucket   = "your_bucket_name"
+  key = "some_key"
+}
+```
+
+There is no `kms_key_id` argument, no `server_side_encryption` argument, and no other encryption-related setting. The check requires that the object be encrypted using a KMS CMK, which is not present here.
+
+**What this means for the fix:**  
+To satisfy the check, you must add server-side encryption with a customer managed KMS key. For example, you could add:
+
+```terraform
+resource "aws_s3_bucket_object" "this_file_2" {
+  bucket                 = "your_bucket_name"
+  key                    = "some_key"
+  server_side_encryption = "aws:kms"
+  kms_key_id             = "arn:aws:kms:us-west-1:123456789012:key/your-cmk-id"
+}
+```
+
+The exact key ARN or ID must reference a valid KMS CMK in your account. The check does not prescribe a specific key, only that a CMK is used.

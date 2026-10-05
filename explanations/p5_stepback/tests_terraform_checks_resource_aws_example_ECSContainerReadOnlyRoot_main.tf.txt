@@ -1,0 +1,23 @@
+**Findings for `aws_ecs_task_definition.fail` (lines 45–87)**
+
+- **CKV_AWS_336 – Read-only root filesystem**  
+  *Principle*: Containers should run with a read-only root filesystem to prevent an attacker who compromises the container from writing malicious executables, modifying system files, or persisting data on the container’s filesystem.  
+  *Violation*: The second container definition (`"name": "second"`) does not set `readonlyRootFilesystem`. The first container correctly sets it to `true`, but the second container omits the attribute entirely, defaulting to a writable root filesystem.  
+  *Fix*: Add `"readonlyRootFilesystem": true` to the second container definition in the `fail` task definition.
+
+**Findings for `aws_ecs_task_definition.fail2` (lines 89–133)**
+
+- **CKV_AWS_336 – Read-only root filesystem**  
+  *Principle*: Same as above.  
+  *Violation*: Both container definitions in `fail2` explicitly set `"readonlyRootFilesystem": false`, granting writable root filesystems to each container.  
+  *Fix*: Change `"readonlyRootFilesystem": false` to `true` in both container definitions.
+
+- **CKV_AWS_334 – Non-privileged containers**  
+  *Principle*: Running a container in privileged mode gives it all Linux capabilities and effectively removes the isolation between the container and the host. A compromised privileged container can easily escape to the host, leading to full host takeover.  
+  *Violation*: The second container definition (`"name": "second"`) includes `"privilege": true`, which runs the container with elevated privileges.  
+  *Fix*: Remove the `"privilege": true` line (or set it to `false`). The container will then run with the default unprivileged mode.
+
+- **CKV_AWS_335 – Do not share the host’s process namespace**  
+  *Principle*: Sharing the host’s PID namespace (`pidMode: host`) allows a container to see and interact with all processes on the host, including those of other containers. This breaks process isolation and can be exploited for information disclosure or privilege escalation.  
+  *Violation*: The second container definition in `fail2` includes `"pidMode": "host"`, which would cause the task to use the host’s process namespace.  
+  *Fix*: Remove the `"pidMode": "host"` line from the container definition. If you need to set the task’s PID mode, use the task-level `pid_mode` argument in the `aws_ecs_task_definition` resource (not inside the container definition), and only set it to `"task"` (the default) to maintain process isolation.

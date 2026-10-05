@@ -1,0 +1,127 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported by the scanner. For each, the exact resource, triggering lines, a one‑line explanation of the problem, and the required change are given. Only evidence present in the file and the finding is used.
+
+---
+
+### 1. CKV_AWS_150 on `aws_lb.pass` (lines 3‑10)
+**What is wrong:** The load balancer does not have deletion protection enabled.  
+**Why it matters:** Without deletion protection, the load balancer can be accidentally deleted, causing an outage.  
+**Change needed:** Add the attribute `enable_deletion_protection = true` inside the `aws_lb` resource block.
+
+---
+
+### 2. CKV_AWS_91 on `aws_lb.pass` (lines 3‑10)
+**What is wrong:** Access logging is not configured for this Application Load Balancer.  
+**Why it matters:** Missing access logs removes visibility into traffic patterns and potential security events.  
+**Change needed:** Add an `access_logs` block to the resource, specifying at minimum a valid S3 bucket name (e.g., `bucket = "my-log-bucket"`). The block itself enables logging.
+
+---
+
+### 3. CKV_AWS_150 on `aws_alb.pass` (lines 12‑18)
+**What is wrong:** The load balancer does not have deletion protection enabled.  
+**Why it matters:** Accidental deletion could disrupt services.  
+**Change needed:** Add `enable_deletion_protection = true` to the `aws_alb` resource block.
+
+---
+
+### 4. CKV_AWS_91 on `aws_alb.pass` (lines 12‑18)
+**What is wrong:** Access logging is not configured for this Application Load Balancer.  
+**Why it matters:** Without logs, you lose auditability and incident investigation capability.  
+**Change needed:** Add an `access_logs` block with a valid S3 bucket.
+
+---
+
+### 5. CKV_AWS_127 on `aws_elb.pass` (lines 19‑61)
+**What is wrong:** The HTTPS listener (line 43) uses an IAM server certificate (`arn:aws:iam::...`) instead of an AWS Certificate Manager (ACM) certificate.  
+**Why it matters:** IAM certificates are legacy; ACM provides automatic renewal and better integration.  
+**Change needed:** Replace the `ssl_certificate_id` value with the ARN of an ACM certificate in the same region (e.g., `arn:aws:acm:us-west-2:123456789012:certificate/...`).
+
+---
+
+### 6. CKV_AWS_127 on `aws_elb.fail` (lines 64‑106)
+**What is wrong:** The HTTPS listener (line 85) uses an IAM server certificate instead of an ACM certificate.  
+**Why it matters:** Same as above – IAM certificates are not recommended.  
+**Change needed:** Replace the `ssl_certificate_id` with an ACM certificate ARN.
+
+---
+
+### 7. CKV_AWS_328 on `aws_elb.fail` (lines 64‑106)
+**What is wrong:** The `desync_mitigation_mode` is set to `"monitor"` (line 97), which is not the required defensive or strictest mode.  
+**Why it matters:** The check requires a stronger mitigation mode to protect against HTTP desync attacks.  
+**Change needed:** Change the value of `desync_mitigation_mode` to `"defensive"` or `"strictest"`.  
+*Note:* The `aws_elb` resource type (Classic Load Balancer) does not natively support this attribute. If this is truly a Classic ELB, the attribute should be removed and the resource migrated to an Application Load Balancer (`aws_lb` with `load_balancer_type = "application"`) to properly satisfy the check.
+
+---
+
+### 8. CKV_AWS_150 on `aws_lb.fail` (lines 108‑115)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** The load balancer could be deleted unintentionally.  
+**Change needed:** Add `enable_deletion_protection = true` to the resource block.
+
+---
+
+### 9. CKV_AWS_328 on `aws_lb.fail` (lines 108‑115)
+**What is wrong:** `desync_mitigation_mode` is `"monitor"` (line 113), not `"defensive"` or `"strictest"`.  
+**Why it matters:** A weaker mode leaves the ALB more exposed to desync attacks.  
+**Change needed:** Change the value to `"defensive"` or `"strictest"`.
+
+---
+
+### 10. CKV_AWS_91 on `aws_lb.fail` (lines 108‑115)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** No logs means no visibility into traffic or security events.  
+**Change needed:** Add an `access_logs` block with a valid S3 bucket.
+
+---
+
+### 11. CKV_AWS_150 on `aws_alb.fail` (lines 117‑124)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Accidental deletion risk.  
+**Change needed:** Add `enable_deletion_protection = true`.
+
+---
+
+### 12. CKV_AWS_328 on `aws_alb.fail` (lines 117‑124)
+**What is wrong:** `desync_mitigation_mode` is `"monitor"` (line 123), not `"defensive"` or `"strictest"`.  
+**Why it matters:** Insufficient desync protection.  
+**Change needed:** Change the value to `"defensive"` or `"strictest"`.
+
+---
+
+### 13. CKV_AWS_91 on `aws_alb.fail` (lines 117‑124)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** Missing logs hinder monitoring and forensics.  
+**Change needed:** Add an `access_logs` block with a valid S3 bucket.
+
+---
+
+### 14. CKV2_AWS_28 on `aws_lb.pass` (lines 3‑10)
+**What is wrong:** The internet‑facing ALB is not associated with an AWS WAF Web ACL.  
+**Why it matters:** Public‑facing ALBs without WAF are unprotected against common web exploits.  
+**Change needed:** Create an `aws_wafv2_web_acl` resource and an `aws_wafv2_web_acl_association` that links it to this ALB’s ARN.
+
+---
+
+### 15. CKV2_AWS_28 on `aws_alb.pass` (lines 12‑18)
+**What is wrong:** The internet‑facing ALB lacks a WAF association.  
+**Why it matters:** Same exposure as above.  
+**Change needed:** Associate a WAF Web ACL with this ALB using a `aws_wafv2_web_acl_association`.
+
+---
+
+### 16. CKV2_AWS_28 on `aws_lb.fail` (lines 108‑115)
+**What is wrong:** The internet‑facing ALB is not protected by WAF.  
+**Why it matters:** Public endpoint without WAF increases attack surface.  
+**Change needed:** Associate a WAF Web ACL with this ALB.
+
+---
+
+### 17. CKV2_AWS_28 on `aws_alb.fail` (lines 117‑124)
+**What is wrong:** The internet‑facing ALB is not protected by WAF.  
+**Why it matters:** Same risk as above.  
+**Change needed:** Associate a WAF Web ACL with this ALB.
+
+---
+
+All changes should be applied to the respective resource blocks or by adding new association resources as described. No ready‑to‑paste code is provided; implement the described modifications in your Terraform configuration.

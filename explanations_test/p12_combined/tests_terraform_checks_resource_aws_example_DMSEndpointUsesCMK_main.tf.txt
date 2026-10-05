@@ -1,0 +1,73 @@
+**Remediation briefing for DMS endpoint security findings**
+
+Below is a per‑finding breakdown of what is wrong, why it matters, and the change required. Every statement is grounded in the provided Terraform file and scanner output.
+
+---
+
+### 1. CKV_AWS_296 on `aws_dms_endpoint.fail` (lines 42–60)
+**Trigger:** Line 50 – `kms_key_arn = ""`  
+**What is wrong:** The endpoint is not using a customer‑managed KMS key; the `kms_key_arn` is set to an empty string.  
+**Why it matters:** Without a customer‑managed key, encryption of the endpoint’s underlying storage is handled by an AWS‑managed key, removing the organisation’s ability to control key rotation, access policies, and audit trails.  
+**Change needed:** Replace the empty string with a valid ARN of a customer‑managed KMS key (e.g., `aws_kms_key.pike.arn` or a static ARN). Do not leave the argument empty.
+
+---
+
+### 2. CKV_AWS_296 on `aws_dms_endpoint.fail2` (lines 62–79)
+**Trigger:** The `kms_key_arn` argument is completely absent from the resource block.  
+**What is wrong:** No customer‑managed KMS key is specified for the endpoint.  
+**Why it matters:** Same as above – the endpoint will fall back to an AWS‑managed key, losing customer control over encryption key management.  
+**Change needed:** Add a `kms_key_arn` argument and set it to a valid customer‑managed KMS key ARN.
+
+---
+
+### 3. CKV_AWS_296 on `aws_dms_endpoint.fail3` (lines 83–100)
+**Trigger:** The `kms_key_arn` argument is absent (the resource has no `kms_key_arn` line).  
+**What is wrong:** The S3‑engine endpoint is not configured with a customer‑managed KMS key.  
+**Why it matters:** As with the other endpoints, the absence of a CMK means encryption key control rests with AWS, not the customer.  
+**Change needed:** Add a `kms_key_arn` argument with a valid customer‑managed KMS key ARN. (Note: for S3 endpoints, encryption can also be set inside `s3_settings`, but this check specifically requires the top‑level `kms_key_arn`.)
+
+---
+
+### 4. CKV2_AWS_49 on `aws_dms_endpoint.pass` (lines 2–20)
+**Trigger:** Line 14 – `ssl_mode = "none"`  
+**What is wrong:** SSL is explicitly disabled for the endpoint connection.  
+**Why it matters:** Data in transit between DMS and the endpoint is not encrypted, exposing credentials and replicated data to potential interception.  
+**Change needed:** Change `ssl_mode` from `"none"` to a value that enforces SSL, such as `"require"` or `"verify-ca"`, depending on the engine and certificate configuration.
+
+---
+
+### 5. CKV2_AWS_49 on `aws_dms_endpoint.pass2` (lines 22–40)
+**Trigger:** Line 34 – `ssl_mode = "none"`  
+**What is wrong:** SSL is disabled.  
+**Why it matters:** Unencrypted data in transit.  
+**Change needed:** Set `ssl_mode` to a non‑`"none"` value that enables SSL encryption.
+
+---
+
+### 6. CKV2_AWS_49 on `aws_dms_endpoint.fail` (lines 42–60)
+**Trigger:** Line 54 – `ssl_mode = "none"`  
+**What is wrong:** SSL is disabled.  
+**Why it matters:** Unencrypted data in transit.  
+**Change needed:** Replace `"none"` with an SSL‑enforcing mode (e.g., `"require"`).
+
+---
+
+### 7. CKV2_AWS_49 on `aws_dms_endpoint.fail2` (lines 62–79)
+**Trigger:** Line 74 – `ssl_mode = "none"`  
+**What is wrong:** SSL is disabled.  
+**Why it matters:** Unencrypted data in transit.  
+**Change needed:** Change `ssl_mode` to a value that enables SSL.
+
+---
+
+### 8. CKV2_AWS_49 on `aws_dms_endpoint.pass4` (lines 124–142)
+**Trigger:** Line 134 – `ssl_mode = "none"`  
+**What is wrong:** SSL is disabled for the MongoDB endpoint.  
+**Why it matters:** Unencrypted data in transit.  
+**Change needed:** Set `ssl_mode` to a value that enables SSL (e.g., `"require"` or `"verify-full"` as appropriate for MongoDB).
+
+---
+
+**Summary of required actions:**
+- For `fail`, `fail2`, and `fail3`: provide a valid customer‑managed KMS key ARN in `kms_key_arn`.
+- For all five endpoints flagged by CKV2_AWS_49: change `ssl_mode` from `"none"` to a mode that enforces SSL encryption.

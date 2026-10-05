@@ -1,0 +1,9 @@
+**Check ID:** CKV_AWS_205  
+**Resource:** `aws_ami_launch_permission.fail`  
+**Triggering lines:** 1–4 (the entire resource block)
+
+**What is wrong and why it matters**  
+The resource explicitly grants AMI launch permission to the AWS account `987654321`. This directly contradicts the check’s requirement to limit AMI launch permissions, because it opens the AMI to an external account without any evidence of a legitimate, controlled sharing need. Unrestricted or unnecessary sharing can expose the AMI’s contents (operating system, application code, configuration, embedded credentials) to an untrusted party.
+
+**Change needed to make the check pass**  
+Remove the `aws_ami_launch_permission` resource entirely. If the AMI does not need to be shared with that account, deletion is the correct remediation. If sharing is genuinely required, the check will still fail; in that case, after verifying the account is trusted and the sharing is intentional, the check can be suppressed with a `# checkov:skip=CKV_AWS_205:Reason` comment on the resource, but the baseline fix to satisfy the policy is to eliminate the permission.

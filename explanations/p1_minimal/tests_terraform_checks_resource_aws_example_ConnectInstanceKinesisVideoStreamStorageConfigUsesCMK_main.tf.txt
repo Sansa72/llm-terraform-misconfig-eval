@@ -1,0 +1,52 @@
+The scanner flagged two checks on your `aws_connect_instance_storage_config` resources:
+
+- **CKV_AWS_270** on both `pass` and `fail` resources: “Ensure Connect Instance S3 Storage Config uses CMK”
+- **CKV_AWS_269** on the `fail` resource: “Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK”
+
+Let’s break down what’s actually happening and what you need to fix.
+
+---
+
+## 1. CKV_AWS_269 – Kinesis Video Stream encryption (valid finding)
+
+**Problem**  
+In the `fail` resource, you have defined an `encryption_config` block for the Kinesis Video Stream, but you only set `encryption_type = "KMS"` without providing a `key_id`. This means the stream will be encrypted with an AWS-managed KMS key, not a Customer Managed Key (CMK). The check requires a CMK for stronger control over key lifecycle, permissions, and auditing.
+
+**Fix**  
+Add the `key_id` attribute pointing to a CMK (e.g., `aws_kms_key.test.arn`), exactly as you did in the `pass` resource.
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+  key_id          = aws_kms_key.test.arn   # <-- add this
+}
+```
+
+---
+
+## 2. CKV_AWS_270 – S3 Storage Config CMK (false positive)
+
+**Problem**  
+CKV_AWS_270 checks whether an **S3** storage configuration uses a CMK. However, both of your resources are of `resource_type = "MEDIA_STREAMS"` and use a `kinesis_video_stream_config` block. They do **not** contain an S3 configuration. The scanner is incorrectly applying the S3‑specific check to these resources.
+
+**Why it’s a false positive**  
+- The `aws_connect_instance_storage_config` resource can represent different storage types (S3, Kinesis Video Stream, etc.).  
+- CKV_AWS_270 should only fire when the resource contains an `s3_config` block.  
+- Your resources have no S3 configuration, so the check is irrelevant.
+
+**What to do**  
+- If your policy engine allows it, you can suppress this check for these specific resources with a skip comment, e.g.,  
+  `# checkov:skip=CKV_AWS_270:Not an S3 storage config`  
+- Alternatively, if you ever add an S3 storage configuration (e.g., for call recordings or chat transcripts), make sure to set `encryption_type = "KMS"` and provide a `key_id` to satisfy CKV_AWS_270.
+
+---
+
+## Summary of required changes
+
+| Resource | Check | Action |
+|----------|-------|--------|
+| `aws_connect_instance_storage_config.fail` | CKV_AWS_269 | Add `key_id` to the `encryption_config` block. |
+| `aws_connect_instance_storage_config.pass` | CKV_AWS_270 | False positive – suppress or ignore. |
+| `aws_connect_instance_storage_config.fail` | CKV_AWS_270 | False positive – suppress or ignore. |
+
+After adding the missing `key_id`, the `fail` resource will be as secure as the `pass` one.

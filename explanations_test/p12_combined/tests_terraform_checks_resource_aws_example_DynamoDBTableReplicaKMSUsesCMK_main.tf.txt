@@ -1,0 +1,8 @@
+**Remediation briefing: CKV_AWS_271 on `aws_dynamodb_table_replica.fail`**
+
+- **Check ID:** CKV_AWS_271  
+- **Resource:** `aws_dynamodb_table_replica.fail` (lines 12–19)  
+- **Trigger:** The resource block does not include a `kms_key_arn` argument.  
+- **What is wrong:** The replica is not configured to use a customer-managed KMS key (CMK) for encryption. Without an explicit `kms_key_arn`, DynamoDB encrypts the replica with an AWS-owned key, which does not meet the requirement for a CMK.  
+- **Why it matters:** The check requires that DynamoDB table replicas use a customer-managed key so that the organisation retains control over key management, rotation, and access policies.  
+- **Remediation:** Add a `kms_key_arn` argument to the `aws_dynamodb_table_replica.fail` resource, referencing the ARN of a valid customer-managed KMS key (e.g., an `aws_kms_key` resource or an existing key ARN). The `pass` resource on lines 1–10 shows the correct pattern: `kms_key_arn = aws_kms_key.test.arn`. Apply the same approach to the `fail` resource.

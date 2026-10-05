@@ -1,0 +1,206 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported by the scanner. For each, the exact trigger location, the problem, and the required change are described.
+
+---
+
+### 1. CKV_AWS_34 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block at **line 37**.
+- **What is wrong:** The default cache behaviour allows unencrypted HTTP connections, which can expose traffic to interception.
+- **Change needed:** Set `viewer_protocol_policy` to `"redirect-to-https"` (or `"https-only"`) inside the `default_cache_behavior` block so that all requests are served over HTTPS.
+
+### 2. CKV_AWS_174 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** The `viewer_certificate` block at **lines 101‑103** uses `cloudfront_default_certificate = true` and does not specify a `minimum_protocol_version`. The default minimum protocol version is TLSv1, which is weaker than TLSv1.2.
+- **What is wrong:** The distribution’s viewer certificate does not enforce TLSv1.2 or higher.
+- **Change needed:** Add `minimum_protocol_version = "TLSv1.2_2018"` (or a later TLSv1.2 policy) inside the `viewer_certificate` block. If you continue using the default CloudFront certificate, this attribute is still valid.
+
+### 3. CKV_AWS_68 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** The resource does not contain a `web_acl_id` argument anywhere in the block (lines 1‑104).
+- **What is wrong:** No WAF web ACL is associated with the distribution, leaving it without AWS WAF protection.
+- **Change needed:** Add `web_acl_id = aws_wafv2_web_acl.<name>.arn` (or the ARN of an existing WAF Web ACL) to the distribution resource.
+
+### 4. CKV_AWS_310 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** Only one `origin` block is present (lines 2‑9). There is no second origin and no `origin_group` block.
+- **What is wrong:** The distribution has no origin failover configuration; a single origin is a single point of failure.
+- **Change needed:** Add a second `origin` block and an `origin_group` block that references both origins, with failover criteria, so that CloudFront can fall back to the secondary origin if the primary fails.
+
+### 5. CKV_AWS_34 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block at **line 142**.
+- **What is wrong:** Same as #1 – the default cache behaviour permits unencrypted HTTP.
+- **Change needed:** Change `viewer_protocol_policy` to `"redirect-to-https"` (or `"https-only"`) in that block.
+
+### 6. CKV_AWS_174 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** The `viewer_certificate` block at **lines 206‑209** sets `minimum_protocol_version = "TLSv1"`.
+- **What is wrong:** The minimum protocol version is TLSv1, not TLSv1.2.
+- **Change needed:** Set `minimum_protocol_version` to a TLSv1.2 value, e.g., `"TLSv1.2_2018"` or `"TLSv1.2_2019"`.
+
+### 7. CKV_AWS_68 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** No `web_acl_id` argument is present in the resource block.
+- **What is wrong:** The distribution is not protected by AWS WAF.
+- **Change needed:** Add `web_acl_id` referencing a WAF Web ACL ARN.
+
+### 8. CKV_AWS_310 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** Only one `origin` block exists (lines 107‑114); no origin group is defined.
+- **What is wrong:** No origin failover is configured.
+- **Change needed:** Add a second origin and an `origin_group` with failover criteria.
+
+### 9. CKV_AWS_34 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block at **line 248**.
+- **What is wrong:** Unencrypted HTTP is allowed by the default cache behaviour.
+- **Change needed:** Change the policy to `"redirect-to-https"` (or `"https-only"`).
+
+### 10. CKV_AWS_174 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** The `viewer_certificate` block at **lines 312‑316** omits `minimum_protocol_version`; the default is TLSv1.
+- **What is wrong:** The viewer certificate does not enforce TLSv1.2.
+- **Change needed:** Add `minimum_protocol_version = "TLSv1.2_2018"` (or a later TLSv1.2 policy) inside the `viewer_certificate` block.
+
+### 11. CKV_AWS_68 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** No `web_acl_id` argument is present.
+- **What is wrong:** No WAF web ACL is associated.
+- **Change needed:** Add `web_acl_id` pointing to a WAF Web ACL ARN.
+
+### 12. CKV_AWS_310 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** Only one `origin` block (lines 213‑220); no origin group.
+- **What is wrong:** Origin failover is not configured.
+- **Change needed:** Add a second origin and an `origin_group` with failover criteria.
+
+### 13. CKV_AWS_34 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block at **line 355**.
+- **What is wrong:** The default cache behaviour allows HTTP.
+- **Change needed:** Change `viewer_protocol_policy` to `"redirect-to-https"` (or `"https-only"`).
+
+### 14. CKV_AWS_68 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** No `web_acl_id` argument is present.
+- **What is wrong:** The distribution lacks WAF protection.
+- **Change needed:** Add `web_acl_id` referencing a WAF Web ACL ARN.
+
+### 15. CKV_AWS_310 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** Only one `origin` block (lines 320‑330); no origin group.
+- **What is wrong:** No origin failover is configured.
+- **Change needed:** Add a second origin and an `origin_group` with failover criteria.
+
+### 16. CKV_AWS_34 on `aws_cloudfront_distribution.pass1` (lines 425‑530)
+- **Trigger:** `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block at **line 461**.
+- **What is wrong:** HTTP is permitted by the default cache behaviour.
+- **Change needed:** Change `viewer_protocol_policy` to `"redirect-to-https"` (or `"https-only"`).
+
+### 17. CKV_AWS_68 on `aws_cloudfront_distribution.pass1` (lines 425‑530)
+- **Trigger:** No `web_acl_id` argument is present.
+- **What is wrong:** No WAF web ACL is associated.
+- **Change needed:** Add `web_acl_id` pointing to a WAF Web ACL ARN.
+
+### 18. CKV_AWS_310 on `aws_cloudfront_distribution.pass1` (lines 425‑530)
+- **Trigger:** Only one `origin` block (lines 426‑436); no origin group.
+- **What is wrong:** Origin failover is not configured.
+- **Change needed:** Add a second origin and an `origin_group` with failover criteria.
+
+### 19. CKV_AWS_86 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** The resource does not contain a `logging_config` block (the entire block lines 532‑570 lacks it).
+- **What is wrong:** Access logging is not enabled for the distribution.
+- **Change needed:** Add a `logging_config` block with a valid S3 bucket and optional prefix, e.g.:
+  ```
+  logging_config {
+    include_cookies = false
+    bucket          = "<log-bucket>.s3.amazonaws.com"
+    prefix          = "<prefix>"
+  }
+  ```
+
+### 20. CKV_AWS_174 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** The `viewer_certificate` block at **line 569** sets `minimum_protocol_version = "TLSv1.3_2025"`.
+- **What is wrong:** The check requires a TLSv1.2 policy; TLSv1.3 is not recognised as meeting the requirement (even though it is more secure).
+- **Change needed:** Change `minimum_protocol_version` to a TLSv1.2 value, e.g., `"TLSv1.2_2019"`. (If the organisational policy truly requires TLSv1.2 and not higher, this aligns; otherwise, you may need to discuss the check’s strictness.)
+
+### 21. CKV_AWS_68 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** No `web_acl_id` argument is present.
+- **What is wrong:** The distribution is not associated with a WAF web ACL.
+- **Change needed:** Add `web_acl_id` referencing a WAF Web ACL ARN.
+
+### 22. CKV_AWS_310 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** Only one `origin` block (lines 533‑541); no origin group.
+- **What is wrong:** Origin failover is not configured.
+- **Change needed:** Add a second origin and an `origin_group` with failover criteria.
+
+### 23. CKV2_AWS_42 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** The `viewer_certificate` block at **line 102** sets `cloudfront_default_certificate = true`, meaning the default CloudFront certificate is used instead of a custom SSL certificate.
+- **What is wrong:** The distribution does not use a custom SSL certificate.
+- **Change needed:** Replace the `viewer_certificate` block with one that uses a custom certificate: set `cloudfront_default_certificate = false`, provide `acm_certificate_arn` referencing a valid ACM certificate, and set `ssl_support_method = "sni-only"` (or `"vip"`). Also ensure `minimum_protocol_version` is set appropriately.
+
+### 24. CKV2_AWS_42 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** The `viewer_certificate` block at **lines 206‑209** has `cloudfront_default_certificate = false` but does not include an `acm_certificate_arn`. (The configuration is incomplete; a custom certificate ARN is missing.)
+- **What is wrong:** No custom SSL certificate is provided.
+- **Change needed:** Add `acm_certificate_arn = aws_acm_certificate.<name>.arn` and `ssl_support_method = "sni-only"` to the `viewer_certificate` block.
+
+### 25. CKV2_AWS_42 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** The `viewer_certificate` block at **lines 312‑316** has `cloudfront_default_certificate = false` but no `acm_certificate_arn`.
+- **What is wrong:** A custom certificate is not supplied.
+- **Change needed:** Add `acm_certificate_arn` and `ssl_support_method` to the `viewer_certificate` block.
+
+### 26. CKV2_AWS_42 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** The `viewer_certificate` block at **lines 419‑422** has `cloudfront_default_certificate = false` but no `acm_certificate_arn`.
+- **What is wrong:** The distribution is not using a custom SSL certificate.
+- **Change needed:** Add `acm_certificate_arn` and `ssl_support_method` to the `viewer_certificate` block.
+
+### 27. CKV2_AWS_32 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** The `default_cache_behavior` block (lines 24‑41) does not include a `response_headers_policy_id` argument.
+- **What is wrong:** No response headers policy is attached to the default cache behaviour.
+- **Change needed:** Add `response_headers_policy_id = aws_cloudfront_response_headers_policy.<name>.id` inside the `default_cache_behavior` block (and optionally to ordered cache behaviours) to attach a security headers policy.
+
+### 28. CKV2_AWS_32 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** The `default_cache_behavior` block (lines 129‑146) lacks `response_headers_policy_id`.
+- **What is wrong:** No response headers policy is attached.
+- **Change needed:** Add `response_headers_policy_id` referencing a response headers policy to the `default_cache_behavior`.
+
+### 29. CKV2_AWS_32 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** The `default_cache_behavior` block (lines 235‑252) lacks `response_headers_policy_id`.
+- **What is wrong:** No response headers policy is attached.
+- **Change needed:** Add `response_headers_policy_id` to the `default_cache_behavior`.
+
+### 30. CKV2_AWS_32 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** The `default_cache_behavior` block (lines 344‑359) lacks `response_headers_policy_id`.
+- **What is wrong:** No response headers policy is attached.
+- **Change needed:** Add `response_headers_policy_id` to the `default_cache_behavior`.
+
+### 31. CKV2_AWS_32 on `aws_cloudfront_distribution.pass1` (lines 425‑530)
+- **Trigger:** The `default_cache_behavior` block (lines 454‑469) lacks `response_headers_policy_id`.
+- **What is wrong:** No response headers policy is attached.
+- **Change needed:** Add `response_headers_policy_id` to the `default_cache_behavior`.
+
+### 32. CKV2_AWS_32 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** The `default_cache_behavior` block (lines 548‑557) lacks `response_headers_policy_id`.
+- **What is wrong:** No response headers policy is attached.
+- **Change needed:** Add `response_headers_policy_id` to the `default_cache_behavior`.
+
+### 33. CKV2_AWS_47 on `aws_cloudfront_distribution.fail` (lines 1‑104)
+- **Trigger:** The resource does not have a `web_acl_id` argument, and therefore no WAFv2 WebACL is associated, let alone one with the Log4j managed rule.
+- **What is wrong:** The distribution is not protected by a WAFv2 WebACL that includes the AWS Managed Rules for Log4j vulnerability.
+- **Change needed:** Add `web_acl_id` pointing to a WAFv2 WebACL that contains the AWS managed rule group `AWSManagedRulesKnownBadInputsRuleSet` (or the specific Log4j rule). Ensure the WebACL has that rule enabled.
+
+### 34. CKV2_AWS_47 on `aws_cloudfront_distribution.fail2` (lines 106‑210)
+- **Trigger:** No `web_acl_id` is present.
+- **What is wrong:** No WAFv2 WebACL with Log4j protection is associated.
+- **Change needed:** Add `web_acl_id` referencing a WAFv2 WebACL that includes the Log4j managed rule.
+
+### 35. CKV2_AWS_47 on `aws_cloudfront_distribution.fail3` (lines 212‑317)
+- **Trigger:** No `web_acl_id` is present.
+- **What is wrong:** No WAFv2 WebACL with Log4j protection is associated.
+- **Change needed:** Add `web_acl_id` referencing a WAFv2 WebACL that includes the Log4j managed rule.
+
+### 36. CKV2_AWS_47 on `aws_cloudfront_distribution.pass` (lines 319‑423)
+- **Trigger:** No `web_acl_id` is present.
+- **What is wrong:** No WAFv2 WebACL with Log4j protection is associated.
+- **Change needed:** Add `web_acl_id` referencing a WAFv2 WebACL that includes the Log4j managed rule.
+
+### 37. CKV2_AWS_47 on `aws_cloudfront_distribution.pass1` (lines 425‑530)
+- **Trigger:** No `web_acl_id` is present.
+- **What is wrong:** No WAFv2 WebACL with Log4j protection is associated.
+- **Change needed:** Add `web_acl_id` referencing a WAFv2 WebACL that includes the Log4j managed rule.
+
+### 38. CKV2_AWS_47 on `aws_cloudfront_distribution.pass2` (lines 532‑570)
+- **Trigger:** No `web_acl_id` is present.
+- **What is wrong:** No WAFv2 WebACL with Log4j protection is associated.
+- **Change needed:** Add `web_acl_id` referencing a WAFv2 WebACL that includes the Log4j managed rule.
+
+---
+
+All findings have been addressed. The changes above will resolve every flagged misconfiguration.

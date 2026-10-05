@@ -1,0 +1,29 @@
+**Remediation Briefing: CloudTrail Event Data Store Encryption**
+
+Below are the two failing checks, in the order they appear in the scanner output. Both relate to the same control and the same resource type, so the reasoning is similar, but the specific misconfiguration differs slightly.
+
+---
+
+### 1. CKV_AWS_294 on `aws_cloudtrail_event_data_store.fail` (lines 6–8)
+
+**What’s wrong:** The `kms_key_id` argument is completely absent, so the event data store will use the default AWS-owned key for encryption.
+
+**Why it matters:** Without a customer-managed key (CMK), you cannot control key rotation, apply granular access policies, or audit usage independently. This limits your ability to meet compliance requirements that mandate customer-controlled encryption at rest.
+
+**Change needed:** Add a `kms_key_id` argument to this resource and set it to the ARN of a valid KMS key. The key must exist in the same region and the key policy must grant CloudTrail permission to use it for encryption. In the same Terraform configuration, you could reference the key already used by the “pass” resource (e.g., `kms_key_id = aws_kms_key.pike.arn`), or define a new key and reference that.
+
+---
+
+### 2. CKV_AWS_294 on `aws_cloudtrail_event_data_store.fail2` (lines 9–12)
+
+**What’s wrong:** The `kms_key_id` argument is present but set to an empty string (`""`). This is functionally equivalent to omitting the argument—CloudTrail will fall back to the AWS-owned key.
+
+**Why it matters:** Same as above: you lose the security and compliance benefits of a CMK. An empty string is not a valid key identifier and will not enable customer-managed encryption.
+
+**Change needed:** Replace the empty string with the ARN of a valid KMS key. As with the first resource, you can reference an existing key (e.g., `kms_key_id = aws_kms_key.pike.arn`) or a new one. Ensure the key policy allows CloudTrail to call `kms:GenerateDataKey` and `kms:Decrypt`.
+
+---
+
+### Interaction note
+
+Both resources can safely share the same KMS key (the one already defined as `aws_kms_key.pike`), provided that key’s policy permits CloudTrail to use it. There is no conflict in pointing multiple event data stores at the same CMK. If you prefer separate keys for isolation, define additional KMS key resources and reference them accordingly.

@@ -1,0 +1,60 @@
+The scanner flagged two security misconfigurations in the `aws_elasticache_cluster.fail` resource. Both relate to best practices for resilience and network isolation in Amazon ElastiCache for Redis.
+
+### 1. CKV_AWS_134: Automatic backups not enabled
+
+**What’s wrong**  
+The `snapshot_retention_limit` is set to `0`, which disables automatic daily snapshots. Without snapshots, you have no point‑in‑time recovery and cannot restore the cluster’s data if it’s accidentally deleted, corrupted, or fails.
+
+**Why it matters**  
+Redis is often used as a primary data store or cache with important state. Losing the data can cause extended downtime and data loss. Automatic backups are a fundamental part of a disaster recovery strategy.
+
+**How to fix it**  
+Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5` days) and optionally define a `snapshot_window` to control when backups occur. The “pass” resource in the same file already shows the correct pattern:
+
+```hcl
+resource "aws_elasticache_cluster" "fail" {
+  cluster_id           = "cluster"
+  engine               = "redis"
+  node_type            = "cache.m5.large"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  # Fix 1: Enable automatic backups
+  snapshot_retention_limit = 5   # or any value > 0
+  # snapshot_window         = "05:00-06:00"  # optional, defaults to a random window
+}
+```
+
+---
+
+### 2. CKV_AWS_323: Default subnet group in use
+
+**What’s wrong**  
+The `fail` resource does not specify a `subnet_group_name`, so it falls back to the **default subnet group** of the VPC. Default subnet groups often include subnets in all Availability Zones, including public ones, and are not tailored for security or high‑availability requirements.
+
+**Why it matters**  
+- **Security**: The default group may place your ElastiCache nodes in public subnets, exposing them to the internet.  
+- **Resilience**: You lose control over which subnets/AZs are used, which can lead to unintended placement and reduced fault tolerance.  
+- **Compliance**: Many security standards require explicit network segmentation for data stores.
+
+**How to fix it**  
+Create a dedicated **ElastiCache subnet group** containing only private subnets in the desired Availability Zones, then reference it in the `aws_elasticache_cluster` resource:
+
+```hcl
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "redis-subnet-group"
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+}
+
+resource "aws_elasticache_cluster" "fail" {
+  cluster_id           = "cluster"
+  engine               = "redis"
+  node_type            = "cache.m5.large"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis6.x"
+  snapshot_retention_limit = 5
+  # Fix 2: Use a custom subnet group
+  subnet_group_name    = aws_elasticache_subnet_group.redis.name
+}
+```
+
+After applying both changes, the resource will comply with the two failing checks.

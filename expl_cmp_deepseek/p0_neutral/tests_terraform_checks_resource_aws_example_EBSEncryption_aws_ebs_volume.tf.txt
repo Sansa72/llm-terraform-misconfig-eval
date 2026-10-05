@@ -1,0 +1,53 @@
+### 1. What the misconfiguration is
+
+The file defines three `aws_ebs_volume` resources:
+
+- `aws_ebs_volume.enabled` sets `encrypted = True` but does not provide `kms_key_id`.  
+  → Fails **CKV_AWS_189** because the volume is encrypted, but not with a customer-managed KMS key (CMK). It uses the AWS-managed default key.
+
+- `aws_ebs_volume.default` does not set `encrypted`.  
+  → Terraform’s default for `encrypted` is `false`, so this volume is unencrypted.  
+  → Fails **CKV_AWS_3** (no encryption at rest) and **CKV_AWS_189** (not encrypted with a CMK).
+
+- `aws_ebs_volume.disabled` explicitly sets `encrypted = False`.  
+  → Fails **CKV_AWS_3** and **CKV_AWS_189** for the same reason as `default`.
+
+### 2. Why it matters
+
+**For unencrypted volumes (`default`, `disabled`):**
+
+- All data written to the EBS volume is stored in plaintext at rest.
+- If the volume or a snapshot is exposed—e.g., accidentally shared, leaked, or accessed from compromised infrastructure—the data is immediately readable.
+- Snapshots of unencrypted volumes are also unencrypted, expanding the blast radius to any copied or shared snapshot.
+
+**For the volume without a CMK (`enabled`):**
+
+- The volume is encrypted, but the key is AWS-managed.
+- You cannot control key policy, rotation, revocation, or deletion.
+- You cannot disable the key to cryptographically block access to the volume data.
+- You have less granular audit and permission control than with a customer-managed KMS key.
+
+### 3. How to fix it safely
+
+Set both `encrypted = true` and `kms_key_id` to a customer-managed KMS key ARN on every `aws_ebs_volume`.
+
+Example:
+
+```hcl
+resource "aws_ebs_volume" "example" {
+  availability_zone = "us-west-2a"
+  size              = 20
+
+  encrypted  = true
+  kms_key_id = aws_kms_key.ebs.arn
+}
+```
+
+Important deployment note:
+
+- In Terraform, changing `encrypted` or `kms_key_id` on an existing `aws_ebs_volume` forces the resource to be replaced.
+- For existing volumes with data, do not simply apply the change. Instead:
+  1. Snapshot the existing volume.
+  2. Create a new encrypted volume from that snapshot using the CMK.
+  3. Detach the old volume and attach the new one, or migrate data using your normal process.
+- For new, empty volumes, the change can be applied directly.

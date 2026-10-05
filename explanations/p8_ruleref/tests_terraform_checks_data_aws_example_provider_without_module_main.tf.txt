@@ -1,0 +1,161 @@
+The scanner flagged seven distinct security misconfigurations across both S3 buckets defined in your Terraform file. Each finding points to a missing control that helps protect data confidentiality, integrity, and availability. Below I explain each issue, why it matters, and what you need to add to the configuration to resolve it.
+
+---
+
+### 1. CKV_AWS_21 – S3 bucket versioning is not enabled
+**What it means:** Versioning keeps multiple variants of an object in the same bucket. Without it, accidental overwrites or deletions are permanent.  
+**In your file:** Neither `aws_s3_bucket.bucket` nor `aws_s3_bucket.bucket_2` has a `versioning` block.  
+**Fix:** Add a `versioning` block with `enabled = true` to each bucket resource.  
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "bucket"
+  provider = aws.usw1
+
+  versioning {
+    enabled = true
+  }
+}
+```
+Do the same for `bucket_2`.
+
+---
+
+### 2. CKV2_AWS_61 – No lifecycle configuration
+**What it means:** A lifecycle policy automates moving objects to cheaper storage tiers or expiring them after a defined period. This reduces cost and helps with compliance by ensuring data isn’t kept longer than necessary.  
+**In your file:** Both buckets lack a `lifecycle_rule`.  
+**Fix:** Add a `lifecycle_rule` block. The exact rule depends on your data retention needs, but a common starting point is to transition old versions to a lower-cost tier and eventually expire them. For example:
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  # ... existing config
+
+  lifecycle_rule {
+    id      = "cleanup"
+    enabled = true
+
+    noncurrent_version_transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+
+    noncurrent_version_expiration {
+      days = 90
+    }
+  }
+}
+```
+Apply a similar rule to `bucket_2`. If the bucket holds only current versions, you can use `transition` and `expiration` blocks instead.
+
+---
+
+### 3. CKV_AWS_18 – Access logging is not enabled
+**What it means:** Server access logging provides detailed records of requests made to the bucket. This is essential for security audits, anomaly detection, and forensic investigations.  
+**In your file:** Neither bucket has a `logging` block or a separate `aws_s3_bucket_logging` resource.  
+**Fix:** You need a target bucket to store the logs (often a dedicated logging bucket). Then attach a logging configuration to each source bucket. For example, assuming you create a logging bucket `bucket-logs`:
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  # ... existing config
+
+  logging {
+    target_bucket = aws_s3_bucket.logs.id
+    target_prefix = "bucket-access-logs/"
+  }
+}
+```
+If you don’t have a logging bucket yet, create one first. The same logging target can be used for both buckets.
+
+---
+
+### 4. CKV2_AWS_62 – Event notifications are not enabled
+**What it means:** S3 event notifications can trigger alerts or automated workflows (e.g., via SNS, SQS, Lambda) when specific actions occur, such as object creation or deletion. This is critical for real-time security monitoring and incident response.  
+**In your file:** No `aws_s3_bucket_notification` resource or inline `event_notification` block is present.  
+**Fix:** Define an `aws_s3_bucket_notification` resource that sends events to a destination (e.g., an SNS topic or Lambda function). For example, to notify on all object creation events:
+```hcl
+resource "aws_s3_bucket_notification" "bucket_notify" {
+  bucket = aws_s3_bucket.bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.my_topic.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+```
+You’ll need to create the SNS topic (or other destination) and its access policy. Apply a similar notification to `bucket_2`.
+
+---
+
+### 5. CKV2_AWS_6 – Public Access Block is not attached
+**What it means:** The S3 Public Access Block settings override any bucket policies or ACLs that would allow public access. Without it, a misconfigured policy could accidentally expose data to the internet.  
+**In your file:** Neither bucket has an `aws_s3_bucket_public_access_block` resource.  
+**Fix:** Attach a public access block that blocks all public access (the most secure default). For each bucket:
+```hcl
+resource "aws_s3_bucket_public_access_block" "bucket_pab" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+Do the same for `bucket_2`.
+
+---
+
+### 6. CKV_AWS_145 – Default encryption is not KMS
+**What it means:** S3 can automatically encrypt objects at rest using SSE-S3 (AES‑256) or SSE-KMS. KMS provides more control (customer-managed keys, key rotation, audit trails) and is often required for compliance.  
+**In your file:** No `server_side_encryption_configuration` block is present, so the bucket uses no default encryption (or SSE-S3 if the account has a default bucket encryption setting, but the scanner requires explicit KMS).  
+**Fix:** Add a server-side encryption configuration that uses `aws:kms` and specify a KMS key ARN (or use the `aws/s3` managed key). For example:
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  # ... existing config
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm     = "aws:kms"
+        kms_master_key_id = aws_kms_key.my_key.arn  # or "aws/s3" for the managed key
+      }
+    }
+  }
+}
+```
+Apply the same to `bucket_2`. If you use a customer-managed KMS key, you’ll need to create that key and its alias.
+
+---
+
+### 7. CKV_AWS_144 – Cross-region replication is not enabled
+**What it means:** Cross-region replication (CRR) automatically copies objects to a bucket in another AWS region. This protects against region-level disasters and can help meet data residency requirements.  
+**In your file:** No replication configuration is defined.  
+**Fix:** You need a destination bucket in a different region, versioning enabled on both source and destination, and a replication rule. For `bucket` (in `usw1`), you could replicate to a bucket in `usw2` (or vice versa). Example for `bucket`:
+```hcl
+resource "aws_s3_bucket" "bucket_dest" {
+  provider = aws.usw2   # different region
+  bucket  = "bucket-replica"
+  versioning { enabled = true }
+}
+
+resource "aws_s3_bucket_replication_configuration" "bucket_repl" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "replicate-to-usw2"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.bucket_dest.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+You’ll also need an IAM role that grants S3 permission to replicate objects. Apply a similar setup for `bucket_2`, replicating to a different region.
+
+---
+
+### Additional notes on the current file
+- The aliased provider `usw1` has an empty `region = ""`. This will likely cause an error. Set it to `"us-west-1"` (or the correct region identifier) to match the intended region.
+- Both buckets have the same name `"bucket"` and `"bucket-2"`. S3 bucket names must be globally unique; you’ll need to use unique names (e.g., include account ID or a random suffix) in practice.
+- Many of these features (versioning, replication, encryption, logging) work together. For example, replication requires versioning to be enabled on both source and destination. Lifecycle rules often target noncurrent versions. Ensure you enable versioning first.
+
+By implementing these changes, you’ll bring both buckets into compliance with the flagged policies and significantly improve their security, durability, and auditability.

@@ -1,0 +1,64 @@
+## Remediation Briefing
+
+### Finding 1: CKV_AWS_184 on `aws_efs_file_system.enabled` (lines 3–7)
+
+**What is wrong**  
+The resource `aws_efs_file_system.enabled` has `encrypted = true` but does not specify a `kms_key_id`. This means it uses the AWS-managed KMS key for encryption, not a customer-managed key (CMK). The check requires a CMK.
+
+**Why it matters**  
+CKV_AWS_184 mandates that EFS file systems be encrypted with a customer-managed KMS key. Without a CMK, you cannot control key rotation, access policies, or auditing to the same degree.
+
+**Remediation**  
+Add a `kms_key_id` argument referencing the ARN of a customer-managed KMS key. The `encrypted` argument is already `true`, so only the key reference is missing.
+
+---
+
+### Finding 2: CKV_AWS_184 on `aws_efs_file_system.default` (lines 11–13)
+
+**What is wrong**  
+The resource `aws_efs_file_system.default` does not set `encrypted` at all (defaults to `false`), and no `kms_key_id` is provided. It therefore fails the requirement for encryption with a CMK.
+
+**Why it matters**  
+CKV_AWS_184 requires the file system to be encrypted using a customer-managed KMS key. Without encryption, data at rest is unprotected; without a CMK, key management is limited.
+
+**Remediation**  
+Set `encrypted = true` and provide a `kms_key_id` pointing to a customer-managed KMS key.
+
+---
+
+### Finding 3: CKV_AWS_42 on `aws_efs_file_system.default` (lines 11–13)
+
+**What is wrong**  
+The resource `aws_efs_file_system.default` has no `encrypted` argument, so encryption is not enabled. The check requires EFS to be securely encrypted.
+
+**Why it matters**  
+CKV_AWS_42 ensures that EFS file systems are encrypted at rest. An unencrypted file system exposes data if the underlying storage is compromised.
+
+**Remediation**  
+Set `encrypted = true`. (Note: this check does not require a CMK, but enabling encryption with a CMK will also satisfy CKV_AWS_184.)
+
+---
+
+### Finding 4: CKV_AWS_184 on `aws_efs_file_system.disabled` (lines 15–19)
+
+**What is wrong**  
+The resource `aws_efs_file_system.disabled` explicitly sets `encrypted = false` and has no `kms_key_id`. It is not encrypted, let alone with a CMK.
+
+**Why it matters**  
+CKV_AWS_184 requires encryption with a customer-managed KMS key. The current configuration disables encryption entirely.
+
+**Remediation**  
+Change `encrypted` to `true` and add a `kms_key_id` argument referencing a CMK.
+
+---
+
+### Finding 5: CKV_AWS_42 on `aws_efs_file_system.disabled` (lines 15–19)
+
+**What is wrong**  
+The same resource explicitly disables encryption (`encrypted = false`), violating the requirement for secure encryption.
+
+**Why it matters**  
+CKV_AWS_42 requires EFS to be encrypted. An unencrypted file system leaves data unprotected at rest.
+
+**Remediation**  
+Set `encrypted = true`. (Combined with a CMK, this also resolves the CKV_AWS_184 finding for this resource.)

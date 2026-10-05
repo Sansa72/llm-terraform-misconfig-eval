@@ -1,0 +1,30 @@
+The finding **CKV_AWS_221** flags the `aws_codeartifact_domain.fail` resource because it does not specify a customer managed KMS key for encryption.
+
+**Evidence in the file**
+
+- The resource is defined on **lines 1–7**.
+- On **line 3**, the `encryption_key` argument is commented out:
+  ```hcl
+  # encryption_key =
+  ```
+  This means no encryption key is provided at all. When `encryption_key` is omitted, CodeArtifact uses an AWS-owned KMS key by default, not a customer managed key (CMK).
+
+**Why this is a problem**
+
+The check **CKV_AWS_221** requires that the CodeArtifact domain be encrypted using a **customer managed key** (CMK). Without explicitly setting `encryption_key` to the ARN of a CMK, the domain falls back to an AWS-managed key, which does not satisfy the policy.
+
+**Contrast with the passing resource**
+
+The second resource, `aws_codeartifact_domain "pass"`, correctly sets:
+```hcl
+encryption_key = aws_kms_key.example.arn
+```
+This demonstrates the expected configuration.
+
+**What to fix**
+
+Uncomment the `encryption_key` line and assign it the ARN of a valid KMS CMK, similar to the `pass` resource. For example:
+```hcl
+encryption_key = aws_kms_key.example.arn
+```
+(You will need to ensure the KMS key resource exists and is referenced appropriately.)

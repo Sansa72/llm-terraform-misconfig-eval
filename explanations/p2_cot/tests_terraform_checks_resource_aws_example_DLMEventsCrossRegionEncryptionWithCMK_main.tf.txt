@@ -1,0 +1,23 @@
+The two DLM lifecycle policies `fail` and `fail2` are both flagged because their cross‑region copy actions do not use a customer‑managed KMS key to encrypt the snapshots.  
+
+- **`fail`** has an empty `encryption_configuration {}` block, which means cross‑region copies are not encrypted at all.  
+- **`fail2`** has `encryption = true` but no `cmk_arn`, so it falls back to the default AWS‑managed key.  
+
+When snapshots are copied across regions, they are re‑encrypted in the destination region. If you rely on the default AWS‑managed key, you have no control over key rotation, access policies, or audit logging, and you cannot revoke access to the key if needed. Using a customer‑managed KMS key gives you full control over the encryption lifecycle and access management, which is required by many compliance frameworks.
+
+To fix both policies, update the `cross_region_copy` block to reference a customer‑managed KMS key, exactly as shown in the `pass` resource:
+
+```hcl
+cross_region_copy {
+  encryption_configuration {
+    cmk_arn    = aws_kms_key.your_key.arn   # replace with your key ARN
+    encryption = true
+  }
+  retain_rule {
+    interval      = 15
+    interval_unit = "MONTHS"
+  }
+}
+```
+
+Make sure the KMS key exists (or create one) and that the DLM execution role has the necessary `kms:Encrypt` and `kms:Decrypt` permissions on that key. This will satisfy both CKV_AWS_253 and CKV_AWS_254.

@@ -1,0 +1,329 @@
+**Remediation briefing for Terraform EC2 security findings**
+
+Below each scanner finding is addressed in the order it appears. The file under review is the Terraform configuration provided. All line references are to that file.
+
+---
+
+### 1. CKV_AWS_79 on `aws_instance.default` (lines 5‑8)
+- **Trigger**: The resource block at lines 5‑8 does not include a `metadata_options` block.
+- **What is wrong**: The instance will allow IMDSv1 (Instance Metadata Service version 1), which is less resistant to certain types of credential theft than IMDSv2.
+- **Change needed**: Add a `metadata_options` block inside the `aws_instance "default"` resource, setting `http_tokens = "required"`. This disables IMDSv1 and enforces IMDSv2.
+
+### 2. CKV_AWS_126 on `aws_instance.default` (lines 5‑8)
+- **Trigger**: The resource block at lines 5‑8 does not set `monitoring`.
+- **What is wrong**: Detailed (1‑minute) CloudWatch monitoring is not enabled; the instance will only report basic 5‑minute metrics.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "default"` resource.
+
+### 3. CKV_AWS_135 on `aws_instance.default` (lines 5‑8)
+- **Trigger**: The resource block at lines 5‑8 does not set `ebs_optimized`.
+- **What is wrong**: The instance is not explicitly flagged as EBS‑optimised, which may lead to suboptimal storage performance.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "default"` resource.
+
+### 4. CKV_AWS_8 on `aws_instance.default` (lines 5‑8)
+- **Trigger**: The resource block at lines 5‑8 contains no `root_block_device` or `ebs_block_device` with encryption enabled.
+- **What is wrong**: The root EBS volume (and any additional volumes) will be created without encryption, leaving data at rest unprotected.
+- **Change needed**: Add a `root_block_device` block inside the resource, setting `encrypted = true`. If other EBS volumes are attached, add corresponding `ebs_block_device` blocks with `encrypted = true`.
+
+### 5. CKV_AWS_79 on `aws_instance.private` (lines 10‑15)
+- **Trigger**: The resource block at lines 10‑15 does not include a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed (same risk as #1).
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "private"` resource.
+
+### 6. CKV_AWS_126 on `aws_instance.private` (lines 10‑15)
+- **Trigger**: The resource block at lines 10‑15 does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled (same as #2).
+- **Change needed**: Add `monitoring = true` to the `aws_instance "private"` resource.
+
+### 7. CKV_AWS_135 on `aws_instance.private` (lines 10‑15)
+- **Trigger**: The resource block at lines 10‑15 does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled (same as #3).
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "private"` resource.
+
+### 8. CKV_AWS_8 on `aws_instance.private` (lines 10‑15)
+- **Trigger**: The resource block at lines 10‑15 contains no encrypted root or additional EBS volume configuration.
+- **What is wrong**: EBS volumes will be unencrypted (same as #4).
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "private"` resource.
+
+### 9. CKV_AWS_79 on `aws_launch_template.default` (lines 19‑22)
+- **Trigger**: The launch template at lines 19‑22 does not include a `metadata_options` block.
+- **What is wrong**: Instances launched from this template will allow IMDSv1.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` inside the `aws_launch_template "default"` resource.
+
+### 10. CKV_AWS_79 on `aws_launch_template.private` (lines 24‑31)
+- **Trigger**: The launch template at lines 24‑31 does not include a `metadata_options` block.
+- **What is wrong**: Same IMDSv1 exposure as above.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_launch_template "private"` resource.
+
+### 11. CKV_AWS_79 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: The resource block at lines 37‑42 lacks a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public"` resource.
+
+### 12. CKV_AWS_88 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: Line 41 sets `associate_public_ip_address = true`.
+- **What is wrong**: The instance will receive a public IP address, which increases its exposure to the internet.
+- **Change needed**: Change `associate_public_ip_address` to `false` (or remove the line, as the default is `false` in a VPC).
+
+### 13. CKV_AWS_126 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: The resource block does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public"` resource.
+
+### 14. CKV_AWS_135 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: The resource block does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public"` resource.
+
+### 15. CKV_AWS_8 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: No encrypted EBS volume configuration is present.
+- **What is wrong**: EBS volumes will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public"` resource.
+
+### 16. CKV_AWS_79 on `aws_launch_template.public` (lines 46‑53)
+- **Trigger**: The launch template at lines 46‑53 does not include a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed for instances launched from this template.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_launch_template "public"` resource.
+
+### 17. CKV_AWS_88 on `aws_launch_template.public` (lines 46‑53)
+- **Trigger**: Line 50 sets `associate_public_ip_address = true` inside the `network_interfaces` block.
+- **What is wrong**: Instances launched from this template will receive a public IP.
+- **Change needed**: Change `associate_public_ip_address` to `false` within the `network_interfaces` block of `aws_launch_template "public"`.
+
+### 18. CKV_AWS_79 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: The resource block at lines 62‑68 (which creates both `["key1"]` and `["key2"]`) does not include a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed for the instance created when `each.key == "key1"`.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach"` resource. This will fix the issue for all instances created by this `for_each`.
+
+### 19. CKV_AWS_88 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: Line 67 sets `associate_public_ip_address = each.value`. For `"key1"`, `each.value` is `true` (from the variable `public` default).
+- **What is wrong**: The instance `"key1"` will have a public IP.
+- **Change needed**: To satisfy the check, ensure that `associate_public_ip_address` is `false` for all instances. Either change the variable default so that all values are `false`, or remove the dynamic assignment and hardcode `false`. The resource block itself must not result in a public IP.
+
+### 20. CKV_AWS_126 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: The resource block does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled for the `"key1"` instance.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach"` resource.
+
+### 21. CKV_AWS_135 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: The resource block does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach"` resource.
+
+### 22. CKV_AWS_8 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: No encrypted EBS volume configuration is present.
+- **What is wrong**: EBS volumes will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach"` resource.
+
+### 23. CKV_AWS_79 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: The resource block at lines 83‑89 (which creates `["key3"]` and `["key4"]`) lacks a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed for the `"key3"` instance.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop"` resource.
+
+### 24. CKV_AWS_88 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: Line 88 sets `associate_public_ip_address = each.value`. The `for_each` expression maps both `"key3"` and `"key4"` to `true`, so `each.value` is always `true`.
+- **What is wrong**: The `"key3"` instance will have a public IP.
+- **Change needed**: Change the value in the `for_each` mapping to `false`, or hardcode `associate_public_ip_address = false` in the resource block.
+
+### 25. CKV_AWS_126 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: The resource block does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 26. CKV_AWS_135 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: The resource block does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 27. CKV_AWS_8 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: No encrypted EBS volume configuration is present.
+- **What is wrong**: EBS volumes will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 28. CKV_AWS_79 on `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)
+- **Trigger**: The resource block at lines 91‑96 (which creates `["k"]` and `["v"]`) lacks a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed for the `"k"` instance.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 29. CKV_AWS_126 on `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)
+- **Trigger**: The resource block does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 30. CKV_AWS_135 on `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)
+- **Trigger**: The resource block does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 31. CKV_AWS_8 on `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)
+- **Trigger**: No encrypted EBS volume configuration is present.
+- **What is wrong**: EBS volumes will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 32. CKV_AWS_79 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: The resource block at lines 120‑125 (which creates `["public"]` and `["private"]`) lacks a `metadata_options` block.
+- **What is wrong**: IMDSv1 is allowed for the `"public"` instance.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 33. CKV_AWS_88 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: Line 124 sets `associate_public_ip_address = each.value.public_ip`. For the `"public"` key, `public_ip` is `true` (from the variable default).
+- **What is wrong**: The `"public"` instance will have a public IP.
+- **Change needed**: Either change the variable default so that `public_ip` is `false` for the `"public"` entry, or override the value in the local or resource to ensure it is `false`.
+
+### 34. CKV_AWS_126 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: The resource block does not set `monitoring`.
+- **What is wrong**: Detailed monitoring is not enabled.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 35. CKV_AWS_135 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: The resource block does not set `ebs_optimized`.
+- **What is wrong**: EBS optimisation is not explicitly enabled.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 36. CKV_AWS_8 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: No encrypted EBS volume configuration is present.
+- **What is wrong**: EBS volumes will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 37. CKV_AWS_79 on `aws_instance.public_foreach["key2"]` (lines 62‑68)
+- **Trigger**: Same resource block as #18; the block lacks `metadata_options`.
+- **What is wrong**: IMDSv1 is allowed for the `"key2"` instance.
+- **Change needed**: The same addition of `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach"` resource will resolve this.
+
+### 38. CKV_AWS_126 on `aws_instance.public_foreach["key2"]` (lines 62‑68)
+- **Trigger**: Same missing `monitoring` as #20.
+- **What is wrong**: Detailed monitoring is not enabled for `"key2"`.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach"` resource (already covered).
+
+### 39. CKV_AWS_135 on `aws_instance.public_foreach["key2"]` (lines 62‑68)
+- **Trigger**: Same missing `ebs_optimized` as #21.
+- **What is wrong**: EBS optimisation is not explicitly enabled for `"key2"`.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach"` resource.
+
+### 40. CKV_AWS_8 on `aws_instance.public_foreach["key2"]` (lines 62‑68)
+- **Trigger**: Same missing encryption as #22.
+- **What is wrong**: EBS volumes for `"key2"` will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach"` resource.
+
+### 41. CKV_AWS_79 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same resource block as #23; no `metadata_options`.
+- **What is wrong**: IMDSv1 is allowed for `"key4"`.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop"` resource.
+
+### 42. CKV_AWS_88 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same `associate_public_ip_address = true` mapping as #24.
+- **What is wrong**: The `"key4"` instance will have a public IP.
+- **Change needed**: Change the `for_each` value to `false` or hardcode `false` in the resource.
+
+### 43. CKV_AWS_126 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same missing `monitoring` as #25.
+- **What is wrong**: Detailed monitoring is not enabled for `"key4"`.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 44. CKV_AWS_135 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same missing `ebs_optimized` as #26.
+- **What is wrong**: EBS optimisation is not explicitly enabled for `"key4"`.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 45. CKV_AWS_8 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same missing encryption as #27.
+- **What is wrong**: EBS volumes for `"key4"` will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop"` resource.
+
+### 46. CKV_AWS_79 on `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)
+- **Trigger**: Same resource block as #28; no `metadata_options`.
+- **What is wrong**: IMDSv1 is allowed for the `"v"` instance.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 47. CKV_AWS_126 on `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)
+- **Trigger**: Same missing `monitoring` as #29.
+- **What is wrong**: Detailed monitoring is not enabled for `"v"`.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 48. CKV_AWS_135 on `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)
+- **Trigger**: Same missing `ebs_optimized` as #30.
+- **What is wrong**: EBS optimisation is not explicitly enabled for `"v"`.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 49. CKV_AWS_8 on `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)
+- **Trigger**: Same missing encryption as #31.
+- **What is wrong**: EBS volumes for `"v"` will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 50. CKV_AWS_79 on `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+- **Trigger**: Same resource block as #32; no `metadata_options`.
+- **What is wrong**: IMDSv1 is allowed for the `"private"` instance.
+- **Change needed**: Add `metadata_options { http_tokens = "required" }` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 51. CKV_AWS_126 on `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+- **Trigger**: Same missing `monitoring` as #34.
+- **What is wrong**: Detailed monitoring is not enabled for `"private"`.
+- **Change needed**: Add `monitoring = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 52. CKV_AWS_135 on `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+- **Trigger**: Same missing `ebs_optimized` as #35.
+- **What is wrong**: EBS optimisation is not explicitly enabled for `"private"`.
+- **Change needed**: Add `ebs_optimized = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 53. CKV_AWS_8 on `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+- **Trigger**: Same missing encryption as #36.
+- **What is wrong**: EBS volumes for `"private"` will be unencrypted.
+- **Change needed**: Add a `root_block_device` block with `encrypted = true` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 54. CKV2_AWS_41 on `aws_instance.default` (lines 5‑8)
+- **Trigger**: The resource block at lines 5‑8 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the instance, so it cannot securely obtain AWS credentials for API calls.
+- **Change needed**: Add an `iam_instance_profile` attribute referencing an existing IAM instance profile (e.g., `iam_instance_profile = aws_iam_instance_profile.example.name`).
+
+### 55. CKV2_AWS_41 on `aws_instance.private` (lines 10‑15)
+- **Trigger**: The resource block at lines 10‑15 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached.
+- **Change needed**: Add `iam_instance_profile` with a valid instance profile to the `aws_instance "private"` resource.
+
+### 56. CKV2_AWS_41 on `aws_instance.public` (lines 37‑42)
+- **Trigger**: The resource block at lines 37‑42 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached.
+- **Change needed**: Add `iam_instance_profile` with a valid instance profile to the `aws_instance "public"` resource.
+
+### 57. CKV2_AWS_41 on `aws_instance.public_foreach["key1"]` (lines 62‑68)
+- **Trigger**: The resource block at lines 62‑68 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"key1"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach"` resource (applies to all instances created by this `for_each`).
+
+### 58. CKV2_AWS_41 on `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)
+- **Trigger**: The resource block at lines 83‑89 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"key3"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop"` resource.
+
+### 59. CKV2_AWS_41 on `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)
+- **Trigger**: The resource block at lines 91‑96 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"k"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 60. CKV2_AWS_41 on `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)
+- **Trigger**: The resource block at lines 120‑125 does not set `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"public"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+### 61. CKV2_AWS_41 on `aws_instance.public_foreach["key2"]` (lines 62‑68)
+- **Trigger**: Same resource block as #57; no `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"key2"` instance.
+- **Change needed**: The same addition of `iam_instance_profile` to the `aws_instance "public_foreach"` resource will resolve this.
+
+### 62. CKV2_AWS_41 on `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)
+- **Trigger**: Same resource block as #58; no `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"key4"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop"` resource.
+
+### 63. CKV2_AWS_41 on `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)
+- **Trigger**: Same resource block as #59; no `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"v"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop_list"` resource.
+
+### 64. CKV2_AWS_41 on `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+- **Trigger**: Same resource block as #60; no `iam_instance_profile`.
+- **What is wrong**: No IAM role is attached to the `"private"` instance.
+- **Change needed**: Add `iam_instance_profile` to the `aws_instance "public_foreach_loop_list_of_dicts"` resource.
+
+---
+
+All changes are additive and can be applied directly to the existing resource blocks. No resources need to be destroyed; the modifications will update in-place where supported (e.g., metadata options, monitoring, EBS optimisation) or require replacement for certain attributes (e.g., `iam_instance_profile` may trigger a new instance depending on the provider).

@@ -1,0 +1,25 @@
+Findings and required changes:
+
+1. **CKV_AWS_323 (default subnet group)** on resources:
+   - `aws_elasticache_cluster.pass` (lines 3-11)
+   - `aws_elasticache_cluster.pass2` (lines 13-19)
+   - `aws_elasticache_cluster.fail` (lines 21-29)
+   - `aws_elasticache_cluster.memcached` (lines 33-39)
+
+   The rule requires that ElastiCache clusters do not use the default subnet group. None of these resource blocks include a `subnet_group_name` argument. When omitted, the cluster is launched in the default subnet group of the VPC. The default subnet group may not meet your organization’s network segmentation or security requirements.  
+   **Remediation:** Add `subnet_group_name = "<your-custom-subnet-group>"` to each of these resource blocks.
+
+2. **CKV_AWS_134 (automatic backup)** on resources:
+   - `aws_elasticache_cluster.pass2` (lines 13-19)
+   - `aws_elasticache_cluster.fail` (lines 21-29)
+
+   The rule requires that Redis clusters have automatic backup enabled. In `pass2`, the `snapshot_retention_limit` argument is absent; its default value is `0`, which disables automatic backups. In `fail`, `snapshot_retention_limit` is explicitly set to `0` (line 28). Without automatic backups, data loss risk increases if the cluster fails.  
+   **Remediation:**
+   - In `pass2` (lines 13-19), add `snapshot_retention_limit = <number>` (e.g., `5`).
+   - In `fail` (line 28), change `snapshot_retention_limit` from `0` to a positive number (e.g., `5`).
+
+3. **CKV_AWS_322 (auto minor version upgrades)** on resource:
+   - `aws_elasticache_cluster.fail` (lines 21-29)
+
+   The rule requires that Redis clusters have auto minor version upgrades enabled. In `fail`, `auto_minor_version_upgrade` is set to `false` (line 27). Disabling this can prevent the cluster from receiving security patches delivered in minor version updates.  
+   **Remediation:** Change `auto_minor_version_upgrade` from `false` to `true` in the `fail` block (line 27).

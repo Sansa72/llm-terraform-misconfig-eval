@@ -1,0 +1,83 @@
+## Remediation Briefing
+
+Below are the failing checks in the order they appear in the scanner output, with the exact evidence from the file and the required change.
+
+### 1. CKV_AWS_351 on `aws_emr_security_configuration.pass` (lines 1–22)
+**What triggers it:**  
+Line 15: `"EnableInTransitEncryption": false`  
+**What is wrong:**  
+The check requires in‑transit encryption to be enabled; the configuration explicitly disables it.  
+**Remediation:**  
+Change the value of `EnableInTransitEncryption` from `false` to `true` inside the JSON configuration.
+
+### 2. CKV_AWS_171 on `aws_emr_security_configuration.pass` (lines 1–22)
+**What triggers it:**  
+Line 9: `"EncryptionMode": "SSE-S3"`  
+**What is wrong:**  
+The check requires S3 encryption to use SSE‑KMS; the configuration uses SSE‑S3.  
+**Remediation:**  
+Change the `EncryptionMode` from `"SSE-S3"` to `"SSE-KMS"` and add a `"AwsKmsKey"` field with a valid KMS key ARN (e.g., the key ARN already present in the `LocalDiskEncryptionConfiguration` block).
+
+### 3. CKV_AWS_351 on `aws_emr_security_configuration.fail` (lines 24–40)
+**What triggers it:**  
+Line 33: `"EnableInTransitEncryption": false`  
+**What is wrong:**  
+The check requires in‑transit encryption to be enabled; the configuration explicitly disables it.  
+**Remediation:**  
+Set `"EnableInTransitEncryption"` to `true`.
+
+### 4. CKV_AWS_171 on `aws_emr_security_configuration.fail` (lines 24–40)
+**What triggers it:**  
+Line 30: `"EncryptionMode": "SSE-S3"`  
+**What is wrong:**  
+The check requires S3 encryption to use SSE‑KMS; the configuration uses SSE‑S3.  
+**Remediation:**  
+Change the `EncryptionMode` to `"SSE-KMS"` and provide a valid KMS key ARN in the `S3EncryptionConfiguration` block.
+
+### 5. CKV_AWS_350 on `aws_emr_security_configuration.fail` (lines 24–40)
+**What triggers it:**  
+The `AtRestEncryptionConfiguration` block (lines 27–31) contains no `LocalDiskEncryptionConfiguration` block, so EBS encryption is not enabled.  
+**What is wrong:**  
+The check requires EBS volumes to be encrypted; the configuration omits the necessary local disk encryption settings.  
+**Remediation:**  
+Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` with `"EnableEbsEncryption": true` and a valid KMS key ARN.
+
+### 6. CKV_AWS_349 on `aws_emr_security_configuration.fail` (lines 24–40)
+**What triggers it:**  
+The same absence of a `LocalDiskEncryptionConfiguration` block (lines 27–31).  
+**What is wrong:**  
+The check requires local disk encryption to be configured; the configuration does not include it.  
+**Remediation:**  
+Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` with the appropriate encryption settings (this will also satisfy CKV_AWS_350).
+
+### 7. CKV_AWS_351 on `aws_emr_security_configuration.fail2` (lines 43–54)
+**What triggers it:**  
+Line 49: `"EnableInTransitEncryption": false`  
+**What is wrong:**  
+The check requires in‑transit encryption to be enabled; the configuration explicitly disables it.  
+**Remediation:**  
+Change `"EnableInTransitEncryption"` to `true`.
+
+### 8. CKV_AWS_171 on `aws_emr_security_configuration.fail2` (lines 43–54)
+**What triggers it:**  
+Line 50: `"EnableAtRestEncryption": false` and the complete absence of any `AtRestEncryptionConfiguration` block.  
+**What is wrong:**  
+The check requires at‑rest encryption using SSE‑KMS; the configuration disables at‑rest encryption entirely.  
+**Remediation:**  
+Set `"EnableAtRestEncryption"` to `true` and add an `AtRestEncryptionConfiguration` block that includes an S3 encryption configuration with `"EncryptionMode": "SSE-KMS"` and a valid KMS key ARN.
+
+### 9. CKV_AWS_350 on `aws_emr_security_configuration.fail2` (lines 43–54)
+**What triggers it:**  
+Line 50: `"EnableAtRestEncryption": false` and the absence of any `LocalDiskEncryptionConfiguration` block.  
+**What is wrong:**  
+The check requires EBS encryption; the configuration disables at‑rest encryption and provides no local disk encryption settings.  
+**Remediation:**  
+Enable at‑rest encryption and add a `LocalDiskEncryptionConfiguration` block with `"EnableEbsEncryption": true` and a KMS key ARN.
+
+### 10. CKV_AWS_349 on `aws_emr_security_configuration.fail2` (lines 43–54)
+**What triggers it:**  
+Same as above: no `LocalDiskEncryptionConfiguration` block and at‑rest encryption disabled.  
+**What is wrong:**  
+The check requires local disk encryption; the configuration does not provide it.  
+**Remediation:**  
+Add a `LocalDiskEncryptionConfiguration` block inside an enabled `AtRestEncryptionConfiguration` (this will also satisfy CKV_AWS_350).

@@ -1,0 +1,37 @@
+The scanner flagged `aws_db_snapshot_copy.fail` because it’s missing a customer-managed KMS key (CMK). Although the finding title mentions “App Flow connector profile,” the linked policy (CKV_AWS_266) actually enforces that **RDS DB snapshot copies use a CMK** – the title is a mislabel in the scanner output. The reference documentation clarifies that relying on the default AWS-managed key for snapshot encryption gives you less control over key lifecycle, access policies, and auditing.
+
+In your file, the `fail` resource:
+
+```hcl
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+}
+```
+
+does not set `kms_key_id`. That means the copied snapshot will be encrypted with the **default AWS-managed RDS key**, not a key you own. The `pass` resource shows the correct pattern:
+
+```hcl
+resource "aws_db_snapshot_copy" "pass" {
+  ...
+  kms_key_id = aws_kms_key.example.id
+}
+```
+
+**Why this matters for this specific resource:**  
+- Without a CMK, you can’t enforce granular key permissions (e.g., restrict which IAM roles can decrypt the snapshot).  
+- You lose the ability to rotate the key on your own schedule or revoke it in an emergency.  
+- CloudTrail logs for the default key are less detailed, making forensic analysis harder.  
+- If the source snapshot is already encrypted with a CMK, the copy must use a CMK anyway (AWS enforces that), but the scanner still flags the missing explicit declaration as a best-practice gap.
+
+**Fix:** Add a `kms_key_id` argument to the `fail` resource, referencing a valid CMK (like the one used in `pass`). Ensure the key policy allows RDS to use it for snapshot encryption. For example:
+
+```hcl
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                   = aws_kms_key.example.id
+}
+```
+
+This aligns the resource with the policy’s intent: maintain full control over encryption keys protecting your database snapshots.

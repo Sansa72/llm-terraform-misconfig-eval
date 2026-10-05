@@ -1,0 +1,31 @@
+file,condition,start_fails,attempts,final_fails,reached_zero,valid,outcome,trajectory,note
+tests_terraform_checks_data_aws_example_CloudSplainingCredentialsExposure_main.tf,C,7,5,3,False,True,not_fixed,7->7->2->2->3->3,budget exhausted
+tests_terraform_checks_data_aws_example_module_with_one_provider_example_main.tf,C,7,5,7,False,True,not_fixed,7->7->7->7->7->7,budget exhausted
+tests_terraform_checks_data_aws_example_provider_with_nested_module_assign_provider_example_example2_main.tf,C,7,5,7,False,True,not_fixed,7->7->7->7->7->7,budget exhausted
+tests_terraform_checks_data_aws_example_provider_without_module_main.tf,C,14,5,14,False,True,not_fixed,14->14->14->14->14->14,budget exhausted
+tests_terraform_checks_example_WildcardEntities_main.tf,C,9,5,9,False,False,not_fixed,9->9->9->9->9->9,budget exhausted
+tests_terraform_checks_resource_aws_example_APIGatewayCacheEnable_main.tf,C,11,5,11,False,True,not_fixed,11->11->12->-1->11->11,budget exhausted
+tests_terraform_checks_resource_aws_example_APIGatewayCreateBeforeDestroy_main.tf,C,2,5,2,False,True,not_fixed,2->2->1->2->2->2,budget exhausted
+tests_terraform_checks_resource_aws_example_APIGatewayMethodSettingsDataTrace_main.tf,C,7,5,6,False,True,not_fixed,7->7->6->6->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_AppFlowUsesCMK_main.tf,C,1,5,1,False,False,not_fixed,1->1->2->2->2->1,budget exhausted
+tests_terraform_checks_resource_aws_example_BatchJobIsNotPrivileged_main.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_CloudWatchLogGroupKMSKey_main.tf,C,3,5,4,False,True,not_fixed,3->2->2->2->2->4,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudWatchLogGroupRetentionYear_main.tf,C,5,5,4,False,True,not_fixed,5->5->5->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudfrontDistributionDefaultRoot_main.tf,C,15,5,7,False,True,not_fixed,15->14->7->7->7->7,budget exhausted
+tests_terraform_checks_resource_aws_example_CloudfrontDistributionOriginFailover_main.tf,C,33,5,33,False,True,not_fixed,33->33->33->33->33->33,budget exhausted
+tests_terraform_checks_resource_aws_example_ConnectInstanceKinesisVideoStreamStorageConfigUsesCMK_main.tf,C,3,5,4,False,True,not_fixed,3->4->4->4->4->4,budget exhausted
+tests_terraform_checks_resource_aws_example_DBSnapshotCopyUsesCMK_main.tf,C,1,5,1,False,False,not_fixed,1->1->1->1->1->1,budget exhausted
+tests_terraform_checks_resource_aws_example_DLMEventsCrossRegionEncryptionWithCMK_main.tf,C,3,2,0,True,True,fixed,3->2->0,
+tests_terraform_checks_resource_aws_example_DMSReplicationInstanceEncryptedWithCMK_main.tf,C,5,5,1,False,True,not_fixed,5->5->5->4->4->1,budget exhausted
+tests_terraform_checks_resource_aws_example_DynamoDBTablesEncrypted_main.tf,C,11,5,12,False,True,not_fixed,11->11->11->10->12->12,budget exhausted
+tests_terraform_checks_resource_aws_example_EBSDefaultEncryption_main.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_EBSEncryption_aws_ebs_volume.tf,C,5,5,3,False,True,not_fixed,5->6->6->6->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_ECRPolicy_main.tf,C,17,5,0,False,False,gamed_scanner,17->0->0->0->0->0,budget exhausted
+tests_terraform_checks_resource_aws_example_ECSContainerReadOnlyRoot_main.tf,C,4,5,1,False,True,not_fixed,4->4->4->2->1->1,budget exhausted
+tests_terraform_checks_resource_aws_example_EFSFileSystemEncryptedWithCMK_aws_efs_file_system.tf,C,1,1,0,True,True,fixed,1->0,
+tests_terraform_checks_resource_aws_example_EKSPublicAccess_main.tf,C,10,5,10,False,False,not_fixed,10->10->10->10->10->10,budget exhausted
+tests_terraform_checks_resource_aws_example_EMRClusterConfEncryptsLocalDisk_main.tf,C,10,5,6,False,True,not_fixed,10->10->10->8->6->6,budget exhausted
+tests_terraform_checks_resource_aws_example_ElastiCacheHasCustomSubnet_main.tf,C,2,5,3,False,True,not_fixed,2->2->3->3->3->3,budget exhausted
+tests_terraform_checks_resource_aws_example_ElasticBeanstalkUseEnhancedHealthChecks_main.tf,C,10,5,12,False,True,not_fixed,10->10->9->9->12->12,budget exhausted
+tests_terraform_checks_resource_aws_example_ElasticCacheAutomaticMinorUpgrades_main.tf,C,7,5,5,False,True,not_fixed,7->7->5->5->5->5,budget exhausted
+tests_terraform_checks_resource_aws_example_ElasticacheHasSecurityGroup_main.tf,C,4,5,8,False,True,not_fixed,4->4->3->3->7->8,budget exhausted

@@ -1,0 +1,80 @@
+The scanner flagged three EBS volumes in your Terraform file for two related but distinct security checks. Here’s what each check means, why your current configuration fails, and how to fix it.
+
+---
+
+### Check CKV_AWS_3: “Ensure all data stored in the EBS is securely encrypted”
+
+**General rule**  
+EBS volumes must have encryption enabled at rest. Without it, data written to the volume is stored in plaintext. If an attacker gains access to the physical media or a snapshot, they can read the data directly. This check simply requires `encrypted = true`.
+
+**What’s happening in your file**  
+- `aws_ebs_volume.enabled` – passes this check because `encrypted = True` is set.  
+- `aws_ebs_volume.default` – fails because the `encrypted` attribute is omitted, which defaults to `false` (no encryption).  
+- `aws_ebs_volume.disabled` – fails because `encrypted = False` explicitly disables encryption.
+
+---
+
+### Check CKV_AWS_189: “Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)”
+
+**General rule**  
+This check goes further than CKV_AWS_3. It requires not only encryption, but that the encryption key is a **customer-managed KMS key (CMK)**. When you set `encrypted = true` without specifying a `kms_key_id`, AWS uses the default EBS encryption key (`aws/ebs`), which is an AWS-managed key. AWS-managed keys are automatically rotated and managed by AWS, but they do not give you control over key policy, access auditing, or the ability to disable/revoke the key independently. A CMK lets you enforce granular permissions, monitor usage via CloudTrail, and revoke access to the data by disabling the key—capabilities that are critical for meeting many compliance and security requirements.
+
+**What’s happening in your file**  
+- `aws_ebs_volume.enabled` – fails because, although encrypted, it does not reference a CMK. It relies on the default AWS-managed key.  
+- `aws_ebs_volume.default` – fails because it is not encrypted at all, and even if it were, it would still need a CMK.  
+- `aws_ebs_volume.disabled` – fails for the same reason as `default`.
+
+---
+
+### How to fix all three volumes
+
+You need to:
+1. Ensure every EBS volume has `encrypted = true`.
+2. Provide a `kms_key_id` that points to a customer-managed KMS key.
+
+If you don’t already have a CMK defined in your Terraform, create one. For example:
+
+```hcl
+resource "aws_kms_key" "ebs" {
+  description             = "Customer-managed key for EBS volumes"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+}
+
+resource "aws_kms_alias" "ebs" {
+  name          = "alias/ebs-cmk"
+  target_key_id = aws_kms_key.ebs.key_id
+}
+```
+
+Then update each volume to use that key:
+
+```hcl
+resource "aws_ebs_volume" "enabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn   # or aws_kms_alias.ebs.target_key_arn
+}
+
+resource "aws_ebs_volume" "default" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn
+}
+
+resource "aws_ebs_volume" "disabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn
+}
+```
+
+**Important notes**  
+- The `kms_key_id` can be the key ARN, key ID, or alias ARN. Using the alias ARN (e.g., `aws_kms_alias.ebs.arn`) is often preferred for readability.  
+- If you already have a CMK in the account, reference its ARN directly instead of creating a new one.  
+- After applying these changes, any new volumes will be encrypted with the CMK. Existing unencrypted volumes cannot be encrypted in-place; you would need to migrate data (e.g., create a snapshot, copy it with encryption, and create a new volume from the encrypted snapshot). The Terraform changes will only affect the resource definitions going forward.
+
+By making these adjustments, you’ll satisfy both CKV_AWS_3 and CKV_AWS_189, ensuring your EBS data is encrypted under a key you control.

@@ -1,0 +1,142 @@
+The scanner ran a set of policy checks against your Terraform configuration. Below I’ve broken down each finding by the resource it targets, the exact lines in the file, and what the check expects versus what is actually configured. I’ll stick strictly to what the file shows and what the check IDs require.
+
+---
+
+### Checks and their meaning
+
+- **CKV_AWS_152** – Network/Gateway Load Balancers should have `enable_cross_zone_load_balancing` set to `true`.  
+- **CKV_AWS_150** – All load balancers should have `enable_deletion_protection` set to `true`.  
+- **CKV_AWS_131** – Application Load Balancers should have `drop_invalid_header_fields` set to `true`.  
+- **CKV_AWS_91** – Application and Network Load Balancers should have access logging enabled (an `access_logs` block with `enabled = true`).  
+- **CKV2_AWS_28** – Public-facing Application Load Balancers should be associated with an AWS WAF web ACL.
+
+---
+
+### Resource: `aws_lb.enabled` (lines 3–12)
+
+**Findings:**  
+- CKV_AWS_152 – cross-zone load balancing missing  
+- CKV_AWS_150 – deletion protection missing  
+
+**Evidence:**  
+The resource is a Network Load Balancer (`load_balancer_type = "network"`). The file does **not** contain the attributes `enable_cross_zone_load_balancing` or `enable_deletion_protection`. Their default values are `false`, which triggers the checks.  
+Access logging is correctly enabled (the `access_logs` block has `enabled = true`), so CKV_AWS_91 is not raised here.
+
+---
+
+### Resource: `aws_alb.enabled` (lines 14–23)
+
+**Findings:**  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_131 – drop invalid headers missing  
+- CKV2_AWS_28 – no WAF association  
+
+**Evidence:**  
+This is an Application Load Balancer (`load_balancer_type = "application"`). The configuration does not include `enable_deletion_protection` or `drop_invalid_header_fields`. Access logging is enabled, so CKV_AWS_91 is not raised.  
+The subnets are taken from `var.public_subnet_ids`, making the ALB internet‑facing. There is no `aws_wafv2_web_acl_association` resource in the file, so the ALB is not associated with a WAF.
+
+---
+
+### Resource: `aws_lb.default` (lines 27–31)
+
+**Findings:**  
+- CKV_AWS_152 – cross-zone load balancing missing  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+
+**Evidence:**  
+This Network Load Balancer has no `access_logs` block at all, so access logging is disabled. The `enable_cross_zone_load_balancing` and `enable_deletion_protection` attributes are absent, defaulting to `false`.
+
+---
+
+### Resource: `aws_alb.default` (lines 33–37)
+
+**Findings:**  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+- CKV_AWS_131 – drop invalid headers missing  
+- CKV2_AWS_28 – no WAF association  
+
+**Evidence:**  
+This Application Load Balancer has no `access_logs` block, no `enable_deletion_protection`, and no `drop_invalid_header_fields`. It uses `var.public_subnet_ids`, so it is internet‑facing. No WAF association is present in the file.
+
+---
+
+### Resource: `aws_lb.only_bucket` (lines 39–47)
+
+**Findings:**  
+- CKV_AWS_152 – cross-zone load balancing missing  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+
+**Evidence:**  
+The Network Load Balancer has an `access_logs` block that specifies a `bucket` but does **not** set `enabled = true`. Because `enabled` defaults to `false`, access logging is effectively disabled. The cross‑zone and deletion protection attributes are missing.
+
+---
+
+### Resource: `aws_alb.only_bucket` (lines 49–57)
+
+**Findings:**  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+- CKV_AWS_131 – drop invalid headers missing  
+- CKV2_AWS_28 – no WAF association  
+
+**Evidence:**  
+Same pattern as `aws_alb.default`, except here an `access_logs` block exists but without `enabled = true`. The ALB is public (uses `var.public_subnet_ids`) and has no WAF association.
+
+---
+
+### Resource: `aws_lb.disabled` (lines 59–68)
+
+**Findings:**  
+- CKV_AWS_152 – cross-zone load balancing missing  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+
+**Evidence:**  
+The Network Load Balancer explicitly sets `enabled = false` inside `access_logs`, so logging is off. The cross‑zone and deletion protection attributes are absent.
+
+---
+
+### Resource: `aws_alb.disabled` (lines 70–79)
+
+**Findings:**  
+- CKV_AWS_150 – deletion protection missing  
+- CKV_AWS_91 – access logging not enabled  
+- CKV_AWS_131 – drop invalid headers missing  
+- CKV2_AWS_28 – no WAF association  
+
+**Evidence:**  
+Same as `aws_alb.default`, but with `access_logs` explicitly disabled (`enabled = false`). No WAF association is present.
+
+---
+
+### Resource: `aws_lb.gateway` (lines 83–90)
+
+**Findings:**  
+- CKV_AWS_152 – cross-zone load balancing missing  
+- CKV_AWS_150 – deletion protection missing  
+
+**Evidence:**  
+This is a Gateway Load Balancer (`load_balancer_type = "gateway"`). The file does not set `enable_cross_zone_load_balancing` or `enable_deletion_protection`. Gateway LBs are not covered by CKV_AWS_91 (access logging) or CKV_AWS_131 (ALB‑specific), so those checks are not raised. CKV2_AWS_28 applies only to ALBs, so it is not raised here.
+
+---
+
+### Summary of what needs to be added
+
+For each flagged resource, the missing attributes are:
+
+| Resource | Missing attributes / blocks |
+|----------|-----------------------------|
+| `aws_lb.enabled` | `enable_cross_zone_load_balancing = true`, `enable_deletion_protection = true` |
+| `aws_alb.enabled` | `enable_deletion_protection = true`, `drop_invalid_header_fields = true`, WAF association |
+| `aws_lb.default` | `enable_cross_zone_load_balancing = true`, `enable_deletion_protection = true`, `access_logs { enabled = true … }` |
+| `aws_alb.default` | `enable_deletion_protection = true`, `drop_invalid_header_fields = true`, `access_logs { enabled = true … }`, WAF association |
+| `aws_lb.only_bucket` | `enable_cross_zone_load_balancing = true`, `enable_deletion_protection = true`, set `enabled = true` inside `access_logs` |
+| `aws_alb.only_bucket` | `enable_deletion_protection = true`, `drop_invalid_header_fields = true`, set `enabled = true` inside `access_logs`, WAF association |
+| `aws_lb.disabled` | `enable_cross_zone_load_balancing = true`, `enable_deletion_protection = true`, change `enabled` to `true` inside `access_logs` |
+| `aws_alb.disabled` | `enable_deletion_protection = true`, `drop_invalid_header_fields = true`, change `enabled` to `true` inside `access_logs`, WAF association |
+| `aws_lb.gateway` | `enable_cross_zone_load_balancing = true`, `enable_deletion_protection = true` |
+
+The WAF association requires a separate `aws_wafv2_web_acl_association` resource (not present in the file) linking each public ALB to a web ACL.

@@ -1,0 +1,36 @@
+**Finding 1: CKV_AWS_196 on `aws_elasticache_security_group.exists` (lines 1‑4)**  
+*Ensure no `aws_elasticache_security_group` resources exist*
+
+**Step‑back principle**  
+`aws_elasticache_security_group` is a legacy resource type designed for EC2‑Classic networking. AWS has deprecated EC2‑Classic, and modern ElastiCache clusters run inside a VPC. Using VPC security groups (`aws_security_group`) provides finer‑grained network controls, integrates with VPC flow logs, and aligns with current AWS best practices. The check enforces migration away from the legacy resource to reduce attack surface and avoid reliance on a retired networking model.
+
+**Apply**  
+The file defines an `aws_elasticache_security_group` named `exists`. This resource is only usable in EC2‑Classic, which is no longer available in new AWS accounts and is unsupported in modern regions. Even if the account still has EC2‑Classic, the resource represents a deprecated security model. The reference to `aws_security_group.bar.name` inside it does not make the group VPC‑aware; it merely adds a legacy rule.  
+**Fix**  
+Remove the `aws_elasticache_security_group` resource entirely. Instead, associate the VPC security group `aws_security_group.bar` directly with the ElastiCache cluster using the `security_group_ids` argument inside the `aws_elasticache_cluster` resource (not shown in the provided snippet, but assumed to exist or be planned). If no ElastiCache cluster exists, the legacy group is dead code and should be deleted.
+
+---
+
+**Finding 2: CKV_AWS_23 on `aws_security_group.bar` (lines 6‑8)**  
+*Ensure every security group rule has a description*
+
+**Step‑back principle**  
+Descriptions on security group rules serve as documentation, making it clear why a particular ingress or egress rule exists. This aids audits, troubleshooting, and change management, reducing the risk of overly permissive rules persisting because nobody remembers their original purpose.
+
+**Apply**  
+The security group `bar` is defined with only a `name` argument; no ingress or egress rules are present in the configuration. Because there are no rules, the requirement to provide descriptions is not technically violated—there is nothing to describe. The scanner likely flags the resource because it expects that any rules added later will lack descriptions, or it may be a false positive triggered by the resource’s existence.  
+**Fix**  
+If rules are added to this security group (either inline or via separate `aws_security_group_rule` resources), ensure every rule includes a `description` argument. For example, an ingress rule would require `description = "Allow HTTPS from trusted CIDR"`. If the group is intentionally empty, consider adding a comment to clarify its purpose, but the finding will only be resolved when rules with descriptions are present.
+
+---
+
+**Finding 3: CKV2_AWS_5 on `aws_security_group.bar` (lines 6‑8)**  
+*Ensure that Security Groups are attached to another resource*
+
+**Step‑back principle**  
+Security groups should be attached to at least one resource (e.g., EC2 instance, ELB, RDS, Lambda in a VPC). Unattached security groups represent unused configuration that can lead to confusion, accidental exposure if later attached without review, and violation of the principle of least privilege by leaving unused access controls in the environment.
+
+**Apply**  
+The security group `bar` is defined but not associated with any resource in the provided Terraform. The only reference to it is from the legacy `aws_elasticache_security_group.exists`, which itself is a deprecated resource and does not constitute a valid VPC attachment. Therefore, `bar` is effectively unattached and unused.  
+**Fix**  
+Remove the legacy ElastiCache security group (as per CKV_AWS_196) and attach `aws_security_group.bar` directly to the intended resource—for example, an ElastiCache cluster via `security_group_ids`, or an EC2 instance via `vpc_security_group_ids`. If the group is not needed, delete it to eliminate the unused resource.

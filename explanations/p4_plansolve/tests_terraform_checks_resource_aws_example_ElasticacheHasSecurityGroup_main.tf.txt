@@ -1,0 +1,13 @@
+The Terraform configuration has four security findings. Here is what each means and how to resolve it.
+
+**CKV_AWS_196 on `aws_elasticache_security_group.exists`**  
+This resource type is for EC2-Classic ElastiCache security groups, which are deprecated and no longer supported in modern AWS regions. You should remove this resource entirely and instead use VPC security groups (the `aws_security_group` resource) attached directly to your ElastiCache cluster or replication group via the `security_group_ids` argument.
+
+**CKV_AWS_23 on `aws_elasticache_security_group.exists`**  
+Because the resource itself is deprecated and should be removed, this finding will be resolved automatically when you delete the `aws_elasticache_security_group`. No further action is needed for this specific check once the resource is gone.
+
+**CKV_AWS_23 on `aws_security_group.bar`**  
+This check requires that every security group rule has a description. Currently, the `aws_security_group.bar` resource defines no ingress or egress rules at all, so there are no rules to describe. To pass the check, add at least one rule (ingress or egress) and include a `description` argument in each rule block. If the security group genuinely needs no rules, you can add a minimal, non‑permissive rule (e.g., an egress rule to `0.0.0.0/0` for all traffic) with a description explaining its purpose, or use separate `aws_security_group_rule` resources that include descriptions.
+
+**CKV2_AWS_5 on `aws_security_group.bar`**  
+Security groups should be attached to a resource (like an EC2 instance, load balancer, or ElastiCache cluster) to be useful. This security group is not associated with any resource. Since the deprecated `aws_elasticache_security_group` is being removed, attach this security group to your ElastiCache cluster or replication group using the `vpc_security_group_ids` argument. If the security group is no longer needed, remove it entirely.

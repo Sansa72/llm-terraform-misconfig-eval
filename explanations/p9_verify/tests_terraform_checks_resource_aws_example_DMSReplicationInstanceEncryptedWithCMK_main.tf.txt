@@ -1,0 +1,37 @@
+The Terraform configuration defines two DMS replication instances, both of which trigger multiple security checks. The issues and their fixes are as follows.
+
+**1. Public accessibility (CKV_AWS_89) – both instances**  
+Both `aws_dms_replication_instance.pass` and `aws_dms_replication_instance.fail` set `publicly_accessible = true`. This exposes the replication instance to the internet, increasing the attack surface.  
+**Fix:** Set `publicly_accessible = false` on both resources.
+
+**2. Automatic minor version upgrades (CKV_AWS_222) – both instances**  
+Neither resource includes the `auto_minor_version_upgrade` attribute. Although the AWS provider default is `true`, the scanner requires an explicit declaration to ensure the instance always receives minor version patches automatically. The commented-out lines (`# auto_minor_version_upgrade=false`) confirm the attribute was intentionally omitted.  
+**Fix:** Add `auto_minor_version_upgrade = true` to both resources.
+
+**3. EBS volume encryption with a customer-managed key (CKV_AWS_212) – `fail` instance only**  
+The `fail` instance has its `kms_key_arn` argument commented out, so the underlying EBS volume is not encrypted with a customer-managed key (CMK). The `pass` instance correctly references a CMK via `kms_key_arn = aws_kms_key.example.arn` and is not flagged.  
+**Fix:** Uncomment and set `kms_key_arn` to a valid CMK ARN in the `fail` resource.
+
+**Corrected configuration example:**
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  engine_version             = "3.1.4"
+  multi_az                   = false
+  publicly_accessible        = false          # was true
+  replication_instance_class = "dms.t2.micro"
+  replication_instance_id    = "test-dms-replication-instance-tf"
+  kms_key_arn                = aws_kms_key.example.arn
+  auto_minor_version_upgrade = true           # added
+}
+
+resource "aws_dms_replication_instance" "fail" {
+  engine_version             = "3.1.4"
+  multi_az                   = false
+  publicly_accessible        = false          # was true
+  replication_instance_class = "dms.t2.micro"
+  replication_instance_id    = "test-dms-replication-instance-tf"
+  kms_key_arn                = aws_kms_key.example.arn   # uncommented and set
+  auto_minor_version_upgrade = true                      # added
+}
+```

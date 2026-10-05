@@ -1,0 +1,3 @@
+The `aws_batch_job_definition.fail` resource explicitly sets `"privileged": true` in its container properties. This grants the container elevated access to the underlying host, increasing the risk of container breakout and host compromise. The scanner flagged this as a security misconfiguration because privileged containers should be avoided unless absolutely necessary.
+
+**Fix:** Change `"privileged": true` to `"privileged": false`, or remove the `"privileged"` field entirely (the default is `false`). The other job definitions in the file (`pass`, `pass2`, `pass3`) either set `"privileged": false` or omit the field, which is the secure configuration.

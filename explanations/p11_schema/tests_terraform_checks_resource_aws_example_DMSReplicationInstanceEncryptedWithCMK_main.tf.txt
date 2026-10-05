@@ -1,0 +1,54 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_89",
+      "resource": "aws_dms_replication_instance.pass",
+      "evidence": [
+        "publicly_accessible = true"
+      ],
+      "risk": "The DMS replication instance is publicly accessible, exposing the database migration service to the internet and increasing the risk of unauthorized access.",
+      "remediation": "Set publicly_accessible to false to restrict access to the DMS replication instance.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_222",
+      "resource": "aws_dms_replication_instance.pass",
+      "evidence": [
+        "# auto_minor_version_upgrade=false"
+      ],
+      "risk": "The DMS replication instance does not have automatic minor version upgrades enabled, which may leave it vulnerable to known security issues.",
+      "remediation": "Set auto_minor_version_upgrade to true to ensure the instance receives minor version upgrades automatically.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_212",
+      "resource": "aws_dms_replication_instance.fail",
+      "evidence": [
+        "# kms_key_arn = \"\""
+      ],
+      "risk": "The EBS volume of the DMS replication instance is not encrypted with a customer managed KMS key, potentially exposing data at rest.",
+      "remediation": "Set kms_key_arn to a valid customer managed KMS key ARN to encrypt the EBS volume.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_89",
+      "resource": "aws_dms_replication_instance.fail",
+      "evidence": [
+        "publicly_accessible = true"
+      ],
+      "risk": "The DMS replication instance is publicly accessible, exposing the database migration service to the internet and increasing the risk of unauthorized access.",
+      "remediation": "Set publicly_accessible to false to restrict access to the DMS replication instance.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_222",
+      "resource": "aws_dms_replication_instance.fail",
+      "evidence": [
+        "# auto_minor_version_upgrade=false"
+      ],
+      "risk": "The DMS replication instance does not have automatic minor version upgrades enabled, which may leave it vulnerable to known security issues.",
+      "remediation": "Set auto_minor_version_upgrade to true to ensure the instance receives minor version upgrades automatically.",
+      "confidence": "high"
+    }
+  ]
+}

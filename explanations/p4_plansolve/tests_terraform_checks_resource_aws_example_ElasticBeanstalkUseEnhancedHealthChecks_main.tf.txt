@@ -1,0 +1,36 @@
+To resolve the scanner findings, you need to ensure that every Elastic Beanstalk environment has **managed platform updates enabled** and **enhanced health reporting enabled**. The required settings are:
+
+- **Managed platform updates (CKV_AWS_340):** Add a `setting` block with `namespace = "aws:elasticbeanstalk:managedupdates"`, `name = "ManagedActionsEnabled"`, and `value = "true"`.  
+- **Enhanced health reporting (CKV_AWS_312):** Add a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`. (Setting `HealthStreamingEnabled` to `true` may also satisfy the check, but `SystemType = "enhanced"` is the canonical way to enable enhanced health reporting.)
+
+Below are the specific issues and required changes for each failing resource.
+
+---
+
+### `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+- **CKV_AWS_340 (managed updates):** No managed updates setting is present. Add a `setting` block with `namespace = "aws:elasticbeanstalk:managedupdates"`, `name = "ManagedActionsEnabled"`, and `value = "true"`.
+- **CKV_AWS_312 (enhanced health):** No health reporting setting is present. Add a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`.
+
+### `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+- **CKV_AWS_340 (managed updates):** No managed updates setting exists. Add a `setting` block as described above.
+- **CKV_AWS_312 (enhanced health):** The existing health setting explicitly sets `SystemType` to `"basic"`. Change the value to `"enhanced"`.
+
+### `aws_elastic_beanstalk_environment.fail3` (lines 28–48)
+- **CKV_AWS_340 (managed updates):** No managed updates setting exists. Add a `setting` block as described above.
+- **CKV_AWS_312 (enhanced health):** Two problems exist:
+  1. The first `setting` block disables health streaming (`HealthStreamingEnabled = "False"`). Change its value to `"true"`.
+  2. The second `setting` block attempts to set `SystemType` to `"basic"` but uses an incorrect namespace (`"guff"`). Delete this block entirely and replace it with a correct enhanced health setting: `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, `value = "enhanced"`.
+
+### `aws_elastic_beanstalk_environment.fail4` (lines 50–65)
+- **CKV_AWS_340 (managed updates):** No managed updates setting exists. Add the required `setting` block.
+- **CKV_AWS_312 (enhanced health):** The existing health setting has an empty `value` for `HealthStreamingEnabled`. Change the value to `"true"` and add a second setting for `SystemType = "enhanced"` in the same namespace.
+
+### `aws_elastic_beanstalk_environment.pass` (lines 68–82)
+- **CKV_AWS_340 (managed updates):** This resource already passes enhanced health (CKV_AWS_312 is not flagged), but managed updates are missing. Add a `setting` block with `namespace = "aws:elasticbeanstalk:managedupdates"`, `name = "ManagedActionsEnabled"`, and `value = "true"`.
+
+### `aws_elastic_beanstalk_environment.pass2` (lines 84–98)
+- **CKV_AWS_340 (managed updates):** Same as `pass` – enhanced health is already satisfied, but managed updates are missing. Add the same managed updates `setting` block.
+
+---
+
+By applying these changes, all environments will have managed platform updates turned on and enhanced health reporting enabled, satisfying both checks.

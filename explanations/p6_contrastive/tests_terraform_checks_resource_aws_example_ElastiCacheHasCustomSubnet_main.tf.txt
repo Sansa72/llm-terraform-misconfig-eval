@@ -1,0 +1,40 @@
+**CKV_AWS_134 – Automatic backup not enabled**
+
+- **What the file currently does:**  
+  The `aws_elasticache_cluster.fail` resource sets `snapshot_retention_limit = 0`. This explicitly disables automatic daily snapshots for the Redis cluster. No backups are taken automatically, and point-in-time recovery is unavailable.
+
+- **What a compliant configuration would do:**  
+  A compliant configuration would set `snapshot_retention_limit` to a value greater than 0 (for example, `5`). This enables ElastiCache to automatically take a daily snapshot of the cluster and retain those snapshots for the specified number of days, allowing you to restore data in case of corruption or accidental deletion.
+
+- **Precise difference:**  
+  Change the `snapshot_retention_limit` attribute from `0` to a positive integer (e.g., `5`). All other resource arguments remain identical. The difference is a single integer value.
+
+- **Why this matters for security:**  
+  Automatic backups are a critical data protection control. Without them, you lose the ability to recover the cluster’s data after a failure, ransomware event, or operator error. Enabling snapshots ensures business continuity and data durability, which are fundamental to a secure and resilient architecture.
+
+---
+
+**CKV_AWS_323 – Default subnet group in use**
+
+- **What the file currently does:**  
+  The `aws_elasticache_cluster.fail` resource does **not** include a `subnet_group_name` argument. As a result, AWS places the cluster in the **default subnet group** of the current region’s default VPC. This group is automatically created by AWS and may contain subnets with overly permissive routing or public exposure.
+
+- **What a compliant configuration would do:**  
+  A compliant configuration would explicitly set `subnet_group_name` to a custom, pre‑created subnet group (e.g., `"mysubnet"`). This ensures the cluster is launched inside a VPC and subnets that you have deliberately designed with appropriate network controls (private subnets, restricted route tables, etc.).
+
+- **Precise difference:**  
+  Add the argument `subnet_group_name = "mysubnet"` (or the name of an existing custom subnet group) to the resource block. No other changes are required. The difference is the presence of an explicit, non‑default subnet group assignment.
+
+- **Why this matters for security:**  
+  The default subnet group often resides in the default VPC, which may have an Internet Gateway and broad network access. Placing a Redis cluster there can expose it to the public internet or to unintended network paths, increasing the attack surface. Using a custom subnet group allows you to enforce network segmentation, private IP addressing, and strict security group rules, significantly reducing the risk of unauthorized access.
+
+---
+
+**Summary for the engineer**
+
+The `aws_elasticache_cluster.fail` resource needs two targeted changes to pass both checks:
+
+1. **Enable automatic backups:** Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5`). This turns on daily snapshots and retains them for the chosen number of days.
+2. **Avoid the default subnet group:** Add `subnet_group_name = "mysubnet"` (or another custom subnet group you have already created). This moves the cluster out of the default VPC subnet group and into a network environment you control.
+
+Make only these two property‑level adjustments; the rest of the resource definition stays the same. The first change protects your data, the second protects your network exposure.

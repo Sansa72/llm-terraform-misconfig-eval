@@ -1,0 +1,207 @@
+The scanner flagged seven missing security controls on the `aws_s3_bucket` resource named `"module-bucket"`. Each finding points to a hardening measure that is absent from the current minimal bucket definition. Below is a consolidated explanation of what each check requires, why it matters, and the Terraform changes needed to satisfy all of them while keeping the bucket’s intended purpose.
+
+---
+
+### 1. Lifecycle configuration (CKV2_AWS_61)
+**What’s missing:** A lifecycle policy that defines rules for transitioning objects to cheaper storage or expiring them after a certain time.  
+**Security consequence:** Without a lifecycle policy, objects are retained indefinitely. This can violate data retention requirements and increase the potential impact of a breach, because stale data that should have been deleted remains accessible.  
+**Fix:** Add an `aws_s3_bucket_lifecycle_configuration` resource. The example below expires objects after 90 days; adjust the rule to match your data retention policy.
+
+### 2. Access logging (CKV_AWS_18)
+**What’s missing:** Server access logging that records detailed request information for the bucket.  
+**Security consequence:** Without access logs, you lose visibility into who is accessing your data. This hampers forensic investigations, anomaly detection, and auditing of access patterns.  
+**Fix:** Create a separate logging bucket (or use an existing one) and attach an `aws_s3_bucket_logging` resource to `"module-bucket"`.
+
+### 3. Event notifications (CKV2_AWS_62)
+**What’s missing:** S3 event notifications that can trigger alerts (e.g., via SNS, SQS, or Lambda) when specific object events occur.  
+**Security consequence:** Without event notifications, you cannot react in real time to potentially malicious activities such as unexpected object uploads, deletions, or permission changes. This delays incident response.  
+**Fix:** Define an `aws_s3_bucket_notification` resource. The example sends all object creation events to an SNS topic; you can tailor the events and destination.
+
+### 4. Public Access block (CKV2_AWS_6)
+**What’s missing:** The bucket-level “Block Public Access” settings that prevent any public access, regardless of bucket policies or ACLs.  
+**Security consequence:** Without this block, a misconfigured bucket policy or ACL could accidentally expose the bucket’s contents to the internet, leading to a data breach.  
+**Fix:** Add an `aws_s3_bucket_public_access_block` resource with all four blocking options enabled.
+
+### 5. Default encryption with KMS (CKV_AWS_145)
+**What’s missing:** A default encryption configuration that ensures all new objects are encrypted at rest using a KMS key (either AWS-managed or customer-managed).  
+**Security consequence:** Without default encryption, objects may be stored in plaintext, violating confidentiality requirements and potentially exposing sensitive data if the underlying storage is compromised.  
+**Fix:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource that applies SSE-KMS by default. The example uses an AWS-managed KMS key (`aws/s3`); replace with a customer-managed key ARN if required.
+
+### 6. Cross-region replication (CKV_AWS_144)
+**What’s missing:** Replication of objects to a bucket in another AWS region.  
+**Security consequence:** Without cross-region replication, data is vulnerable to a regional outage or disaster. This can lead to permanent data loss and violates business continuity requirements.  
+**Fix:** Create a destination bucket in a different region, enable versioning on both buckets, and add an `aws_s3_bucket_replication_configuration` resource. The example assumes a destination bucket `"module-bucket-replica"` in `us-west-2`.
+
+### 7. Versioning (CKV_AWS_21)
+**What’s missing:** Bucket versioning, which keeps multiple variants of an object.  
+**Security consequence:** Without versioning, accidental deletions or overwrites (including ransomware that encrypts or replaces objects) are irreversible. Versioning provides a safety net for data integrity and recoverability.  
+**Fix:** Add an `aws_s3_bucket_versioning` resource with `Enabled` status.
+
+---
+
+### Consolidated Terraform fix
+The following code adds all required resources. Replace placeholder values (e.g., `aws_sns_topic`, destination bucket, region, lifecycle rules) with your actual configuration.
+
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "module-bucket"
+}
+
+# 1. Lifecycle configuration
+resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "expire-old-objects"
+    status = "Enabled"
+
+    expiration {
+      days = 90
+    }
+  }
+}
+
+# 2. Access logging (requires a target bucket)
+resource "aws_s3_bucket" "log_bucket" {
+  bucket = "module-bucket-logs"
+}
+
+resource "aws_s3_bucket_logging" "bucket_logging" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/"
+}
+
+# 3. Event notifications (example: SNS topic)
+resource "aws_sns_topic" "bucket_events" {
+  name = "module-bucket-events"
+}
+
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  bucket = aws_s3_bucket.bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.bucket_events.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+
+# 4. Public Access block
+resource "aws_s3_bucket_public_access_block" "bucket_public_access_block" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# 5. Default encryption with KMS
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket_encryption" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "aws/s3"   # or your CMK ARN
+    }
+  }
+}
+
+# 6. Cross-region replication (requires versioning on both buckets)
+resource "aws_s3_bucket" "replica" {
+  provider = aws.replica   # alias for the destination region
+  bucket  = "module-bucket-replica"
+}
+
+resource "aws_s3_bucket_versioning" "replica_versioning" {
+  provider = aws.replica
+  bucket  = aws_s3_bucket.replica.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_replication_configuration" "bucket_replication" {
+  depends_on = [aws_s3_bucket_versioning.bucket_versioning]
+
+  bucket = aws_s3_bucket.bucket.id
+  role   = aws_iam_role.replication_role.arn
+
+  rule {
+    id     = "replicate-all"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.replica.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+
+# 7. Versioning
+resource "aws_s3_bucket_versioning" "bucket_versioning" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# IAM role for replication (simplified; needs trust policy for S3)
+resource "aws_iam_role" "replication_role" {
+  name = "s3-replication-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "replication_policy" {
+  name = "s3-replication-policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetReplicationConfiguration",
+          "s3:ListBucket"
+        ]
+        Resource = [aws_s3_bucket.bucket.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObjectVersionForReplication",
+          "s3:GetObjectVersionAcl",
+          "s3:GetObjectVersionTagging"
+        ]
+        Resource = ["${aws_s3_bucket.bucket.arn}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags"
+        ]
+        Resource = ["${aws_s3_bucket.replica.arn}/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "replication_attach" {
+  role       = aws_iam_role.replication_role.name
+  policy_arn = aws_iam_policy.replication_policy.arn
+}
+```
+
+**Note:** If cross-region replication is not required for this bucket’s purpose, you may suppress `CKV_AWS_144` with an appropriate justification. However, the fix above addresses all findings to pass the scanner. Adjust lifecycle rules, event destinations, and KMS key IDs to align with your organization’s policies.

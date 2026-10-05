@@ -1,0 +1,44 @@
+The scanner flagged two types of misconfigurations across your `aws_cloudwatch_log_group` resources. Here’s what the findings tell you, based strictly on the provided file and check descriptions.
+
+---
+
+### 1. Missing KMS encryption – CKV_AWS_158
+
+**Check description:** *Ensure that CloudWatch Log Group is encrypted by KMS*
+
+**Affected resources and exact lines:**
+
+- `aws_cloudwatch_log_group.pass_365` (lines 1‑3)
+- `aws_cloudwatch_log_group.pass_0` (lines 5‑7)
+- `aws_cloudwatch_log_group.fail` (lines 9‑11)
+- `aws_cloudwatch_log_group.unknown` (lines 13‑15)
+
+**Evidence in the file:**  
+None of the four resource blocks includes a `kms_key_id` argument. The Terraform `aws_cloudwatch_log_group` resource defaults to using the default CloudWatch Logs encryption (AES‑256, managed by the service) when no KMS key is specified. The check CKV_AWS_158 requires an explicit customer‑managed or AWS‑managed KMS key to be set via `kms_key_id`. Because that argument is absent from every block, the scanner correctly reports the finding on all four resources.
+
+---
+
+### 2. Insufficient log retention – CKV_AWS_338
+
+**Check description:** *Ensure CloudWatch log groups retains logs for at least 1 year*
+
+**Affected resource and exact lines:**
+
+- `aws_cloudwatch_log_group.fail` (lines 9‑11)
+
+**Evidence in the file:**  
+The `fail` resource sets `retention_in_days = 5` (line 10). Five days is less than the required 365 days (1 year), so the check triggers.
+
+**Why other resources are not flagged for CKV_AWS_338:**
+
+- `pass_365` has `retention_in_days = 365` (line 2) – exactly 1 year, which satisfies the check.
+- `pass_0` has `retention_in_days = 0` (line 6) – in CloudWatch Logs, a value of `0` means logs never expire, which also satisfies “at least 1 year”.
+- `unknown` uses `retention_in_days = var.retention` (line 14). The scanner cannot evaluate the variable’s runtime value, so it does not raise CKV_AWS_338 against this resource. No finding means no conclusion can be drawn from the given data about whether the variable meets the requirement.
+
+---
+
+### Summary of what needs to be fixed
+
+- **All four resources** must have a `kms_key_id` argument added to pass CKV_AWS_158.  
+- **`aws_cloudwatch_log_group.fail`** must have its `retention_in_days` changed to at least `365` (or `0` for indefinite retention) to pass CKV_AWS_338.  
+- The `unknown` resource’s retention is controlled by a variable; the scanner did not flag it for CKV_AWS_338, so no action is demanded by this finding. However, you should ensure the variable’s value meets your retention policy.

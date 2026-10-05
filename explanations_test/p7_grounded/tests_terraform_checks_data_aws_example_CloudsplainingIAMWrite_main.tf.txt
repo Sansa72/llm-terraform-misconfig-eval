@@ -1,0 +1,31 @@
+The scanner flagged the `data "aws_iam_policy_document" "fail"` resource defined on **lines 34–46** of your Terraform file. Four separate checks all point to the same underlying issue: the policy statement grants `s3:*` on `"*"` resources with `Effect = "Allow"`.
+
+Here is exactly what the file shows for that resource (lines 37–44):
+
+```hcl
+  statement {
+    effect = "Allow"                # line 38
+    actions = [
+      "s3:*",                       # line 40
+    ]
+    resources = [
+      "*",                          # line 43
+    ]
+  }
+```
+
+The combination of a wildcard action (`s3:*`) and a wildcard resource (`*`) triggers all four findings:
+
+- **CKV_AWS_108 – Ensure IAM policies does not allow data exfiltration**  
+  `s3:*` includes read actions like `s3:GetObject`. Because the resource is `"*"`, the policy would allow reading objects from **any** S3 bucket, which is a direct data exfiltration path.
+
+- **CKV_AWS_111 – Ensure IAM policies does not allow write access without constraints**  
+  `s3:*` also includes write actions such as `s3:PutObject`. With a resource of `"*"`, the policy would allow writing to any S3 bucket without restriction.
+
+- **CKV_AWS_356 – Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions**  
+  S3 actions are considered “restrictable” (they can be scoped to specific resources). The policy uses `"*"` as the resource for `s3:*`, which violates this check.
+
+- **CKV_AWS_109 – Ensure IAM policies does not allow permissions management / resource exposure without constraints**  
+  `s3:*` includes permissions‑management actions like `s3:PutBucketPolicy`, `s3:PutBucketAcl`, and `s3:PutPublicAccessBlock`. Allowing these on `"*"` means the policy could be used to modify bucket policies or ACLs on any bucket, potentially exposing resources.
+
+The fix is to replace the wildcard resource `"*"` with specific bucket ARNs (as done in the `restrictable` policy on lines 11–12) and to scope the actions to only those that are necessary, rather than using `s3:*`.

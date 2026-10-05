@@ -1,0 +1,87 @@
+The scanner flagged both `aws_cloudfront_distribution` resources (`pass` and `fail`) for the same set of misconfigurations. Despite the resource names, the file shows that both distributions have identical security issues. Below is a breakdown of each finding, the specific evidence in the file, and what needs to be changed.
+
+---
+
+### 1. CKV_AWS_34: Viewer Protocol Policy is not set to HTTPS
+**Check requirement:** The distribution’s cache behaviors must use an HTTPS-only viewer protocol policy (`redirect-to-https` or `https-only`).  
+**Evidence in file:**
+- **`aws_cloudfront_distribution.pass`** – line 33:  
+  `viewer_protocol_policy = "allow-all"` (in the `default_cache_behavior` block)  
+- **`aws_cloudfront_distribution.fail`** – line 135:  
+  `viewer_protocol_policy = "allow-all"` (in the `default_cache_behavior` block)
+
+The `ordered_cache_behavior` blocks in both resources correctly use `redirect-to-https`, but the `default_cache_behavior` still allows plain HTTP. The check applies to the distribution as a whole, so the insecure default behavior triggers the finding.
+
+---
+
+### 2. CKV_AWS_174: Viewer Certificate does not enforce TLS v1.2
+**Check requirement:** The distribution must explicitly set a minimum TLS protocol version of at least TLSv1.2 in the `viewer_certificate` block.  
+**Evidence in file:**
+- **`pass`** – lines 92-94:  
+  ```hcl
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+  ```
+- **`fail`** – lines 194-196: identical block.
+
+No `minimum_protocol_version` argument is present. The default CloudFront certificate supports TLSv1.2, but the check requires an explicit declaration (e.g., `minimum_protocol_version = "TLSv1.2_2021"`). Without it, the finding is raised.
+
+---
+
+### 3. CKV_AWS_68: WAF is not enabled
+**Check requirement:** A WAF web ACL (v1 or v2) must be associated with the CloudFront distribution.  
+**Evidence in file:**
+- **`pass`** – The entire resource block (lines 1-101) contains no `web_acl_id` argument.  
+- **`fail`** – The entire resource block (lines 103-203) contains no `web_acl_id` argument.
+
+Neither distribution references a WAF, so the check fails.
+
+---
+
+### 4. CKV_AWS_310: Origin failover is not configured
+**Check requirement:** The distribution must have at least one origin group with multiple origins to provide failover.  
+**Evidence in file:**
+- **`pass`** – Only one `origin` block is defined (lines 2-6). No `origin_group` block exists.  
+- **`fail`** – Only one `origin` block is defined (lines 104-108). No `origin_group` block exists.
+
+With a single origin and no origin group, failover is impossible.
+
+---
+
+### 5. CKV2_AWS_42: Custom SSL certificate is not used
+**Check requirement:** The distribution must use a custom SSL certificate (e.g., from ACM) instead of the default CloudFront certificate.  
+**Evidence in file:**
+- **`pass`** – line 93: `cloudfront_default_certificate = true`  
+- **`fail`** – line 195: `cloudfront_default_certificate = true`
+
+No `acm_certificate_arn` or `iam_certificate_id` is provided. The default certificate is in use, which triggers the check.
+
+---
+
+### 6. CKV2_AWS_32: No response headers policy attached
+**Check requirement:** Every cache behavior must reference a response headers policy via `response_headers_policy_id`.  
+**Evidence in file:**
+- **`pass`** – `default_cache_behavior` (lines 20-37) and both `ordered_cache_behavior` blocks (lines 40-55, 58-73) contain no `response_headers_policy_id` argument.  
+- **`fail`** – `default_cache_behavior` (lines 122-139) and both `ordered_cache_behavior` blocks (lines 142-157, 160-175) contain no `response_headers_policy_id` argument.
+
+The absence of this argument means no response headers policy is attached.
+
+---
+
+### 7. CKV2_AWS_47: WAFv2 WebACL not configured with AMR for Log4j
+**Check requirement:** If a WAFv2 web ACL is attached, it must include AWS Managed Rules (AMR) for Log4j vulnerability (e.g., `AWSManagedRulesKnownBadInputsRuleSet` or `AWSManagedRulesAnonymousIpList` with Log4j-specific rules).  
+**Evidence in file:**
+- **`pass`** and **`fail`** – Neither distribution has a `web_acl_id` (see CKV_AWS_68). Without any WAF association, the check cannot be satisfied.
+
+---
+
+### Summary of required changes
+Both distributions need the same fixes:
+- Change `viewer_protocol_policy` in `default_cache_behavior` to `redirect-to-https` or `https-only`.
+- Add `minimum_protocol_version = "TLSv1.2_2021"` (or a higher version) inside `viewer_certificate`.
+- Attach a WAF web ACL by setting `web_acl_id`.
+- Add a second origin and an origin group for failover.
+- Replace `cloudfront_default_certificate = true` with a custom certificate ARN (`acm_certificate_arn`).
+- Add `response_headers_policy_id` to all cache behaviors, referencing an existing response headers policy.
+- Ensure the attached WAFv2 web ACL includes the relevant AWS Managed Rules for Log4j.

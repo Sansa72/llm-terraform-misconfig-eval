@@ -1,0 +1,38 @@
+**Remediation briefing: IAM policy document `data.aws_iam_policy_document.fail`**
+
+All four findings relate to the same overly permissive statement in `data "aws_iam_policy_document" "fail"` (lines 34–46). The statement grants `s3:*` on `*`, which triggers every check. The fixes are interdependent: scoping the resource and actions will resolve all findings together.
+
+---
+
+### 1. CKV_AWS_108 – Ensure IAM policies does not allow data exfiltration
+**What is wrong:** The policy allows `s3:*` on all resources, which includes read actions like `s3:GetObject` that can be used to exfiltrate data from any S3 bucket the principal can reach.  
+**Why it matters:** An overly permissive policy could let an identity read sensitive objects and copy data outside the organisation, leading to a data breach.  
+**Change needed:** Restrict the `resources` to only the specific bucket ARNs (and optionally object paths) that the identity genuinely needs to read. If read access is not required, remove read actions (e.g., `s3:GetObject`, `s3:ListBucket`) from the `actions` list entirely.
+
+---
+
+### 2. CKV_AWS_111 – Ensure IAM policies does not allow write access without constraints
+**What is wrong:** The wildcard `s3:*` includes write actions (`s3:PutObject`, `s3:DeleteObject`, etc.) on `*`, granting unrestricted ability to modify or delete objects in any bucket.  
+**Why it matters:** Unconstrained write access can lead to data tampering, destruction, or unauthorised uploads, potentially causing data integrity issues or malware distribution.  
+**Change needed:** Limit the `resources` to the specific buckets/objects that require write access. If write actions are not needed, remove them from the `actions` list and keep only the necessary read or management actions.
+
+---
+
+### 3. CKV_AWS_356 – Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions
+**What is wrong:** The statement uses `"*"` as the resource while containing restrictable actions (`s3:*`). S3 actions can be scoped to individual buckets and objects, so a wildcard resource is a clear violation.  
+**Why it matters:** Using `"*"` as a resource for actions that support resource‑level permissions violates the principle of least privilege and is a strong indicator of an overly broad policy.  
+**Change needed:** Replace `"*"` with explicit resource ARNs, e.g., `"arn:aws:s3:::my-bucket"` and `"arn:aws:s3:::my-bucket/*"`. This is the most direct fix and will also help satisfy the other checks.
+
+---
+
+### 4. CKV_AWS_109 – Ensure IAM policies does not allow permissions management / resource exposure without constraints
+**What is wrong:** The `s3:*` wildcard includes permissions‑management actions such as `s3:PutBucketPolicy`, `s3:PutBucketAcl`, and `s3:PutObjectAcl`, all granted on `*`.  
+**Why it matters:** These actions can change access controls, making private resources public or granting cross‑account access, leading to resource exposure or privilege escalation.  
+**Change needed:** Remove permissions‑management actions unless they are explicitly required. If they are needed, scope them to the exact bucket ARNs that must be managed, and consider adding a `Condition` block (e.g., restricting by source VPC or explicit bucket names) to further constrain the exposure.
+
+---
+
+### Interactions between fixes
+- **Resource wildcard (`*`)** is the common root cause. Replacing `resources = ["*"]` with specific bucket ARNs will immediately resolve **CKV_AWS_356** and will partially address the other three checks by limiting the scope of the allowed actions.  
+- However, **CKV_AWS_108, 111, and 109** also require that the **actions** list be narrowed to only those necessary for the intended workload. Even with a specific resource, granting `s3:*` still allows data exfiltration, write, and permissions management on that bucket. Therefore, after scoping the resource, the engineer must also split the statement or reduce the actions to a minimal set (e.g., `s3:GetObject`, `s3:PutObject` if only read/write is needed, and omit `s3:Delete*` and `s3:PutBucketPolicy`).  
+- The passing policy `restrictable` (lines 1–14) demonstrates the correct pattern: a specific bucket ARN and a restricted action set. Use that as a reference for the fix.

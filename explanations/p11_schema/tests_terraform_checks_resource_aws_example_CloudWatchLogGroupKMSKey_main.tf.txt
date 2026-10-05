@@ -1,0 +1,34 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_338",
+      "resource": "aws_cloudwatch_log_group.pass",
+      "evidence": [
+        "retention_in_days = 1"
+      ],
+      "risk": "Log group retention is set to 1 day, which is less than the required 365 days. Logs will be automatically deleted after 1 day, causing loss of audit and forensic data.",
+      "remediation": "Set retention_in_days to at least 365 to retain logs for one year.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_338",
+      "resource": "aws_cloudwatch_log_group.fail",
+      "evidence": [
+        "retention_in_days = 1"
+      ],
+      "risk": "Log group retention is set to 1 day, which is less than the required 365 days. Logs will be automatically deleted after 1 day, causing loss of audit and forensic data.",
+      "remediation": "Set retention_in_days to at least 365 to retain logs for one year.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_158",
+      "resource": "aws_cloudwatch_log_group.fail",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"fail\" {\n  retention_in_days = 1\n}"
+      ],
+      "risk": "The log group does not specify a KMS key, so logs are encrypted with the default AWS-managed key. This may not meet organizational requirements for customer-managed encryption, potentially exposing sensitive data.",
+      "remediation": "Add kms_key_id with the ARN or alias of a customer-managed KMS key to enable encryption at rest using that key.",
+      "confidence": "high"
+    }
+  ]
+}

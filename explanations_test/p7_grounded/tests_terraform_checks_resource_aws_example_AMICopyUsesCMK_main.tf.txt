@@ -1,0 +1,13 @@
+The scanner flagged two related issues on the `aws_ami_copy.fail` resource (lines 1–11):
+
+1. **CKV_AWS_235: Ensure that copied AMIs are encrypted**  
+   The resource explicitly sets `encrypted = false` on **line 6**. This means the resulting AMI copy will not be encrypted at rest, which violates the check.
+
+2. **CKV_AWS_236: Ensure AMI copying uses a CMK**  
+   Because encryption is disabled (`encrypted = false`), no Customer Master Key (CMK) is used for the copy operation. The check requires that a CMK be specified, which is only possible when encryption is enabled.
+
+The evidence is directly in the configuration:  
+- `encrypted = false` on line 6 disables encryption and prevents any CMK from being applied.  
+- No `kms_key_id` argument is present, so even if encryption were enabled, a CMK would still be missing.
+
+For comparison, the `aws_ami_copy.pass` resource in the same file (lines 13–23) shows the correct pattern: `encrypted = true` and a `kms_key_id` referencing a KMS key. That is the expected configuration to satisfy both checks.

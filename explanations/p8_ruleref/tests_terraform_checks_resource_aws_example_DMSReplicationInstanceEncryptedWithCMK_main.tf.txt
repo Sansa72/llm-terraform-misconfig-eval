@@ -1,0 +1,78 @@
+The scanner flagged five misconfigurations across the two DMS replication instances defined in your Terraform file. Both resources share two issues, and the `fail` resource has an additional encryption problem. Below I explain each finding, the security rationale behind the rule, and exactly what needs to change in your configuration.
+
+---
+
+### 1. CKV_AWS_89 – DMS replication instance should not be publicly accessible
+**Affected resources:** `aws_dms_replication_instance.pass` (line 1) and `aws_dms_replication_instance.fail` (line 12)
+
+**What it means**  
+The `publicly_accessible` attribute is set to `true` on both instances. This assigns a public IP address to the DMS replication instance, making it reachable from the internet. A publicly exposed database migration service increases the attack surface significantly – it can be discovered, brute‑forced, or targeted by exploits, potentially leading to data exfiltration or service disruption. The Prisma Cloud policy (CKV_AWS_89) enforces that DMS replication instances should remain in private subnets and not be directly accessible from the public internet.
+
+**What to fix in this file**  
+Change `publicly_accessible` from `true` to `false` on both resources. If the instance genuinely needs to communicate with an on‑premises or external database, use a VPN, Direct Connect, or a VPC endpoint instead of opening it to the world.
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  # ...
+  publicly_accessible = false   # was true
+  # ...
+}
+
+resource "aws_dms_replication_instance" "fail" {
+  # ...
+  publicly_accessible = false   # was true
+  # ...
+}
+```
+
+---
+
+### 2. CKV_AWS_222 – Ensure DMS instance gets all minor upgrades automatically
+**Affected resources:** `aws_dms_replication_instance.pass` (line 1) and `aws_dms_replication_instance.fail` (line 12)
+
+**What it means**  
+The `auto_minor_version_upgrade` attribute is not set in either resource (it is commented out in both). The default value for this attribute is `false`. When automatic minor version upgrades are disabled, the DMS instance will not receive minor engine updates that often include critical security patches and bug fixes. Over time, the instance can fall behind on supported versions, leaving known vulnerabilities unpatched. The policy (CKV_AWS_222) requires that this feature be enabled so that the instance stays current with security maintenance.
+
+**What to fix in this file**  
+Uncomment the `auto_minor_version_upgrade` line and set it to `true` on both resources. This ensures the DMS service automatically applies minor upgrades during the configured maintenance window.
+
+```hcl
+resource "aws_dms_replication_instance" "pass" {
+  # ...
+  auto_minor_version_upgrade = true   # was commented out / false
+  # ...
+}
+
+resource "aws_dms_replication_instance" "fail" {
+  # ...
+  auto_minor_version_upgrade = true   # was commented out / false
+  # ...
+}
+```
+
+---
+
+### 3. CKV_AWS_212 – Ensure EBS Volume is encrypted by KMS using a customer managed Key (CMK)
+**Affected resource:** `aws_dms_replication_instance.fail` (line 12)
+
+**What it means**  
+The `fail` resource has the `kms_key_arn` argument commented out, so no customer‑managed KMS key is specified. DMS replication instances use EBS volumes for storage. If no KMS key is provided, the volume is encrypted with the AWS‑managed default key for EBS. While that still encrypts the data at rest, the policy (CKV_AWS_212) requires a **customer‑managed key (CMK)** to give you control over key rotation, access policies, and auditing. The `pass` resource already satisfies this by referencing `aws_kms_key.example.arn`. The `fail` resource does not.
+
+**What to fix in this file**  
+Provide a valid CMK ARN for the `fail` instance, just as you did for the `pass` instance. You can reuse the same key or create a separate one, depending on your key management strategy.
+
+```hcl
+resource "aws_dms_replication_instance" "fail" {
+  # ...
+  kms_key_arn = aws_kms_key.example.arn   # uncomment and set to a CMK ARN
+  # ...
+}
+```
+
+---
+
+### Summary of required changes
+- **Both instances:** Set `publicly_accessible = false` and `auto_minor_version_upgrade = true`.
+- **`fail` instance only:** Uncomment `kms_key_arn` and assign it a customer‑managed KMS key ARN (e.g., `aws_kms_key.example.arn`).
+
+These adjustments will bring your DMS replication instances into compliance with the flagged policies and improve the security posture of your data migration infrastructure.

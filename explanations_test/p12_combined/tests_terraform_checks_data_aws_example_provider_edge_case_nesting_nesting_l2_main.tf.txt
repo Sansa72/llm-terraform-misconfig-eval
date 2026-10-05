@@ -1,0 +1,7 @@
+**Remediation Briefing**
+
+**Check ID:** CKV_AWS_186  
+**Resource:** `aws_s3_bucket_object.this_file_2` (lines 2–5)  
+**Trigger:** The resource block at lines 2–5 defines an S3 object without any encryption configuration.  
+**What’s wrong:** The object is not set to use KMS encryption with a customer managed key. Without this, the object’s encryption key management does not meet the requirement enforced by the check.  
+**Remediation:** Add the `server_side_encryption` argument with the value `"aws:kms"` and the `kms_key_id` argument referencing the ARN of a customer managed KMS key to the `aws_s3_bucket_object` resource. This will ensure the object is encrypted using a customer managed KMS key, satisfying the check.

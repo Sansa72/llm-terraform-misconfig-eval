@@ -1,0 +1,59 @@
+**Remediation briefing: Terraform security misconfigurations**
+
+Below are the failing checks, the exact resources and lines that trigger them, a concise explanation of the problem, and the change required to resolve each one. All evidence is drawn directly from the provided Terraform file and scanner output.
+
+---
+
+### 1. CKV_AWS_315 on `aws_autoscaling_group.passtag` (lines 1–24)
+
+**Triggering lines:**  
+Line 10: `launch_configuration = aws_launch_configuration.foobar.name`
+
+**What is wrong and why it matters:**  
+The Auto Scaling group is using a launch configuration (`launch_configuration`) instead of an EC2 launch template. The check requires that Auto Scaling groups use launch templates, which are the current best practice for EC2 instance configuration.
+
+**Remediation:**  
+Remove the `launch_configuration` argument and replace it with a `launch_template` block that references an EC2 launch template resource. The block must specify at least the template `id` (or `name`) and a `version` (e.g. `"$Latest"`). No other changes are required to satisfy this specific check.
+
+---
+
+### 2. CKV_AWS_315 on `aws_autoscaling_group.passtags` (lines 27–49)
+
+**Triggering lines:**  
+Line 32: `launch_configuration = aws_launch_configuration.foobar.name`
+
+**What is wrong and why it matters:**  
+Identical to the previous finding: the group references a launch configuration rather than a launch template. The scanner flags any ASG that does not use a launch template.
+
+**Remediation:**  
+Replace the `launch_configuration` argument with a `launch_template` block that points to a valid EC2 launch template. The existing `tags` definition (lines 35–47) is not related to this check and can remain as-is.
+
+---
+
+### 3. CKV_AWS_153 on `aws_autoscaling_group.fail` (lines 52–58)
+
+**Triggering lines:**  
+The entire resource block (lines 52–58) contains no `tag` or `tags` configuration. The absence of any tag definition triggers the check.
+
+**What is wrong and why it matters:**  
+The Auto Scaling group does not supply any tags to its launch configuration. The check requires that tags be defined so that they can be propagated to instances at launch, which is essential for resource identification, cost allocation, and governance.
+
+**Remediation:**  
+Add one or more tags to the Auto Scaling group. You can use either the `tag` block (with `propagate_at_launch` set to `true` for tags that should appear on instances) or the `tags` argument (a list of maps). The check will pass as long as at least one tag is present and configured to propagate at launch.
+
+---
+
+### 4. CKV_AWS_315 on `aws_autoscaling_group.fail` (lines 52–58)
+
+**Triggering lines:**  
+Line 55: `launch_configuration = aws_launch_configuration.foobar.name`
+
+**What is wrong and why it matters:**  
+Same issue as checks #1 and #2: the group uses a launch configuration instead of a launch template. The scanner requires launch templates for all Auto Scaling groups.
+
+**Remediation:**  
+Remove the `launch_configuration` argument and add a `launch_template` block referencing a valid launch template. This change must be made alongside the tag addition required by CKV_AWS_153 to fully resolve all findings on this resource.
+
+---
+
+*All changes should be applied in the same Terraform configuration file. After updating the resources, run `terraform validate` and re-scan to confirm the checks pass.*

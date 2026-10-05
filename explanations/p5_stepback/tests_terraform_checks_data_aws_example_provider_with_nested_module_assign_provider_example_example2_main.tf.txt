@@ -1,0 +1,50 @@
+The bucket resource `aws_s3_bucket.bucket` is defined with only a name; it lacks all the security-relevant configurations flagged below. Each missing setting is explained with the principle it enforces, the specific violation in this file, and the required change.
+
+---
+
+**CKV2_AWS_6 – Public Access Block**  
+*Principle:* S3 buckets must explicitly block public access to prevent accidental exposure of data to the internet. Without this, bucket policies or ACLs could inadvertently grant public read/write.  
+*Violation:* The resource contains no `block_public_access` configuration. This means the bucket does not enforce any restrictions at the account/bucket level, leaving it possible for other settings to make objects publicly accessible.  
+*Fix:* Add a `block_public_access` block with all four options set to `true` (block public ACLs, ignore public ACLs, block public policy, restrict public buckets).
+
+---
+
+**CKV_AWS_145 – Default Encryption with KMS**  
+*Principle:* S3 buckets should enforce default encryption so that every object is encrypted at rest, ideally using a customer-managed KMS key for better control, key rotation, and audit trails.  
+*Violation:* No `server_side_encryption_configuration` block exists. Objects written without explicit encryption headers will be stored unencrypted.  
+*Fix:* Add a `server_side_encryption_configuration` block with a rule that sets `sse_algorithm = "aws:kms"` (and optionally a KMS key ARN).
+
+---
+
+**CKV_AWS_21 – Versioning Enabled**  
+*Principle:* Versioning protects against accidental deletion and overwrites by keeping multiple variants of an object, enabling point-in-time recovery.  
+*Violation:* The resource has no `versioning` block. Without it, deletions and overwrites are permanent and unrecoverable.  
+*Fix:* Add a `versioning` block with `enabled = true`.
+
+---
+
+**CKV_AWS_18 – Access Logging Enabled**  
+*Principle:* Server access logging provides a detailed record of requests made to the bucket, which is essential for security audits, anomaly detection, and forensic investigations.  
+*Violation:* No `logging` block is present. There is no target bucket or prefix defined, so no access logs are generated.  
+*Fix:* Add a `logging` block specifying a target bucket (and optionally a prefix) where logs will be delivered. The target bucket must have appropriate permissions.
+
+---
+
+**CKV2_AWS_61 – Lifecycle Configuration**  
+*Principle:* Lifecycle policies manage data retention, automatically transitioning objects to cheaper storage classes or expiring them. This reduces costs and limits the risk of retaining stale, sensitive data indefinitely.  
+*Violation:* The resource has no `lifecycle_rule` blocks. Objects will remain in the bucket forever with no automated cleanup or archival.  
+*Fix:* Add one or more `lifecycle_rule` blocks with appropriate transitions/expiration (e.g., move to STANDARD_IA after 30 days, expire after 365 days).
+
+---
+
+**CKV2_AWS_62 – Event Notifications Enabled**  
+*Principle:* Event notifications allow real-time alerting on bucket activity (e.g., object creation, deletion) to trigger security monitoring, data processing, or compliance workflows.  
+*Violation:* No `event_notification` configuration exists. The bucket will not emit any events, leaving security teams blind to changes.  
+*Fix:* Add an `event_notification` block with at least one `event` (e.g., `s3:ObjectCreated:*`) and a destination (SNS topic, SQS queue, or Lambda function).
+
+---
+
+**CKV_AWS_144 – Cross-Region Replication**  
+*Principle:* Cross-region replication (CRR) copies objects to a bucket in another AWS region, providing disaster recovery and ensuring data durability against region-wide failures.  
+*Violation:* No `replication_configuration` block is present. Data exists only in a single region, with no automatic failover copy.  
+*Fix:* Add a `replication_configuration` block with an IAM role and at least one rule specifying a destination bucket in a different region. Versioning must be enabled on both source and destination buckets.

@@ -1,0 +1,11 @@
+**Check ID:** CKV_AWS_166  
+**Resource:** `aws_backup_vault.backup` (lines 2–4)
+
+**What is wrong**  
+The backup vault defined on lines 2–4 does not specify a `kms_key_arn`. Without it, the vault will be encrypted using the default AWS-managed key, not a customer-managed KMS key. The check requires a customer-managed KMS key to meet the encryption-at-rest control.
+
+**Why it matters**  
+The scanner flagged this resource because the absence of `kms_key_arn` means the vault is not using a customer-managed KMS key. The finding only states that the vault must be encrypted at rest using a KMS CMK; no further impact is evidenced in the provided material.
+
+**Remediation**  
+Add the `kms_key_arn` argument to the `aws_backup_vault` resource block, referencing a valid KMS key ARN (for example, the ARN of an `aws_kms_key` resource). The passing resource `aws_backup_vault.backup_with_kms_key` in the same file demonstrates the required pattern.

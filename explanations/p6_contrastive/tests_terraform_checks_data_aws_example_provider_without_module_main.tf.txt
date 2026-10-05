@@ -1,0 +1,61 @@
+The scanner flagged eight missing security controls across both S3 buckets. In every case, the current Terraform defines only the bucket name (and a provider alias for the first bucket) with no additional security settings. Below is a check-by-check contrast of what’s missing, what a compliant configuration would do, and why the difference matters.
+
+---
+
+### CKV2_AWS_61 – Lifecycle configuration
+- **Current state:** No lifecycle rules are defined. Objects will remain in the bucket indefinitely unless manually deleted.
+- **Compliant state:** A lifecycle configuration (e.g., `lifecycle_rule` block or `aws_s3_bucket_lifecycle_configuration` resource) is present, defining expiration or transition actions.
+- **Difference:** The presence of a lifecycle rule.  
+  **Why it matters:** Lifecycle rules automatically remove or archive old data, reducing the attack surface of stale objects and helping meet data retention policies.
+
+### CKV_AWS_18 – Access logging
+- **Current state:** No logging configuration exists. API activity against the bucket is not recorded.
+- **Compliant state:** A logging configuration (e.g., `logging` block or `aws_s3_bucket_logging` resource) points to a target bucket where access logs will be delivered.
+- **Difference:** The `logging` block is present, specifying a `target_bucket` and `target_prefix`.  
+  **Why it matters:** Access logs are essential for auditing, detecting unauthorised access, and supporting forensic investigations.
+
+### CKV2_AWS_62 – Event notifications
+- **Current state:** No event notification configuration is attached to the bucket.
+- **Compliant state:** An event notification configuration (e.g., `notification_configuration` block or `aws_s3_bucket_notification` resource) sends events to SNS, SQS, or Lambda for specific bucket operations.
+- **Difference:** The bucket has an event notification configuration.  
+  **Why it matters:** Real-time notifications enable immediate response to security-relevant events (e.g., object uploads, deletions, public access changes).
+
+### CKV2_AWS_6 – Public access block
+- **Current state:** No public access block settings are applied. The bucket could be made public accidentally through ACLs or policies.
+- **Compliant state:** A public access block configuration (e.g., `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` all set to `true`) is explicitly attached.
+- **Difference:** The bucket has a public access block that prevents any public access, regardless of other permissions.
+  **Why it matters:** This is a critical guardrail against unintended data exposure. Without it, a single misconfigured policy or ACL can leak the entire bucket.
+
+### CKV_AWS_145 – Default encryption with KMS
+- **Current state:** No server-side encryption configuration is defined. Objects are stored unencrypted (or with Amazon S3-managed keys, which is not considered KMS encryption by this check).
+- **Compliant state:** A `server_side_encryption_configuration` block (or `aws_s3_bucket_server_side_encryption_configuration` resource) sets the default encryption to `aws:kms` and references a KMS key ARN.
+- **Difference:** The encryption configuration uses `sse_algorithm = "aws:kms"` with a customer-managed or AWS-managed KMS key.  
+  **Why it matters:** KMS encryption gives you control over key rotation, access policies, and audit trails via CloudTrail, which is stronger than SSE-S3.
+
+### CKV_AWS_144 – Cross-region replication
+- **Current state:** No replication configuration exists. Data exists in only one region.
+- **Compliant state:** A `replication_configuration` block (or `aws_s3_bucket_replication_configuration` resource) defines a replication rule to a destination bucket in a different region.
+- **Difference:** The bucket has a replication rule targeting a bucket in another region.  
+  **Why it matters:** Cross-region replication ensures data durability and availability in case of a regional outage, and can be a requirement for disaster recovery compliance.
+
+### CKV_AWS_21 – Versioning enabled
+- **Current state:** No versioning configuration is present. Overwritten or deleted objects cannot be recovered.
+- **Compliant state:** A `versioning` block (or `aws_s3_bucket_versioning` resource) with `enabled = true` is set.
+- **Difference:** The `versioning` block is present and enabled.  
+  **Why it matters:** Versioning protects against accidental or malicious deletion/overwrites by preserving every object version, a fundamental data protection measure.
+
+---
+
+## What the engineer needs to change
+
+Both `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2` are bare-bones definitions. To resolve all findings, you must add the following configurations to each bucket (either as nested blocks in the `aws_s3_bucket` resource or as separate, dedicated resources, depending on your provider version):
+
+1. **Lifecycle configuration** – Add a lifecycle rule (e.g., expire old versions or transition to cheaper storage).
+2. **Access logging** – Specify a target bucket and prefix for server access logs.
+3. **Event notifications** – Define at least one notification destination (SNS, SQS, Lambda) for bucket events.
+4. **Public access block** – Enable all four block settings (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`) to `true`.
+5. **KMS default encryption** – Set `server_side_encryption_configuration` to use `aws:kms` with a KMS key ARN.
+6. **Cross-region replication** – Create a replication rule pointing to a destination bucket in a different region (requires versioning enabled on both source and destination).
+7. **Versioning** – Enable versioning on the bucket.
+
+Each of these additions closes a specific security gap, from preventing data leaks to ensuring recoverability and auditability. The key difference in every case is the **presence of an explicit, protective configuration** where currently there is none.

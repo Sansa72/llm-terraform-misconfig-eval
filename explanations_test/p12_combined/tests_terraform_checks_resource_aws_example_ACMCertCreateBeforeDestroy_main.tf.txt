@@ -1,0 +1,32 @@
+**Remediation Briefing: CKV_AWS_233 – ACM Certificate Lifecycle**
+
+Below are the findings, the exact evidence in the file, and the required changes.
+
+---
+
+### Finding 1
+- **Check ID:** CKV_AWS_233  
+- **Resource:** `aws_acm_certificate.fail`  
+- **Triggering lines:** 22–24  
+  ```terraform
+  lifecycle {
+    create_before_destroy = false
+  }
+  ```
+- **What is wrong:** The lifecycle policy explicitly disables `create_before_destroy`.  
+- **Why it matters:** ACM certificates cannot be updated in-place. When `create_before_destroy` is `false`, Terraform will destroy the existing certificate before creating a replacement. This causes downtime and breaks TLS-secured endpoints until the new certificate is issued and associated with the resources.  
+- **Remediation:** Change the value of `create_before_destroy` from `false` to `true` inside the existing `lifecycle` block.
+
+---
+
+### Finding 2
+- **Check ID:** CKV_AWS_233  
+- **Resource:** `aws_acm_certificate.fail2`  
+- **Triggering lines:** 27–34 (the entire resource block, which omits a `lifecycle` block)  
+- **What is wrong:** No `lifecycle` block is present, so Terraform uses the default `create_before_destroy = false`.  
+- **Why it matters:** Same as above – the default behaviour destroys the old certificate first, leading to a gap in certificate availability.  
+- **Remediation:** Add a `lifecycle` block inside the resource that sets `create_before_destroy = true`. The resource `aws_acm_certificate.pass` (lines 10–12) already demonstrates the correct pattern.
+
+---
+
+Both changes ensure that a new certificate is created and validated before the old one is destroyed, preserving service continuity.

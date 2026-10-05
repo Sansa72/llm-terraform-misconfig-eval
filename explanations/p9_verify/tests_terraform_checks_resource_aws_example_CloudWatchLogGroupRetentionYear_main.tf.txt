@@ -1,0 +1,10 @@
+The scanner flagged two types of misconfigurations in the provided Terraform file:
+
+1. **Missing KMS encryption (CKV_AWS_158)** on all four CloudWatch Log Groups (`pass_365`, `pass_0`, `fail`, `unknown`). None of the resource blocks include a `kms_key_id` argument, so logs are not encrypted with a customer-managed key.
+
+2. **Insufficient log retention (CKV_AWS_338)** on the `fail` log group. Its `retention_in_days` is set to `5`, which is below the required minimum of 365 days (1 year). The other groups are not flagged: `pass_365` explicitly meets the requirement with 365 days, `pass_0` uses 0 (never expire, which satisfies “at least 1 year”), and `unknown` uses a variable that the scanner cannot evaluate.
+
+**How to fix**
+
+- Add a `kms_key_id` argument to every `aws_cloudwatch_log_group` resource, pointing to a valid KMS key ARN (e.g., `kms_key_id = aws_kms_key.example.arn`).
+- For the `fail` group, change `retention_in_days` to `365` (or `0` for indefinite retention) to meet the 1-year retention requirement.

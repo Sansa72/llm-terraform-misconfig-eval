@@ -1,0 +1,65 @@
+The Checkov findings identify two distinct issues in `aws_api_gateway_method_settings` resources:
+
+## 1. Data trace logging is enabled (`CKV_AWS_276`)
+
+**Where:** `aws_api_gateway_method_settings.fail` only.
+
+**What it is:**  
+`data_trace_enabled = true` enables full data trace logging for the `path1/GET` method in this stage.
+
+**Why it matters:**  
+API Gateway will log full request and response data—including headers, query parameters, and body content—to CloudWatch Logs. This data often contains sensitive information such as API keys, session tokens, PII, or business data. Any principal with access to those CloudWatch log groups can read that data, and it may violate least-privilege or compliance requirements.
+
+**How to fix:**  
+Set `data_trace_enabled = false` or remove it entirely (the default is `false`).
+
+---
+
+## 2. Caching is not enabled / not encrypted (`CKV_AWS_225`, `CKV_AWS_308`)
+
+**Where:** All three resources: `fail`, `pass_explicit`, and `pass_implicit`.
+
+**What it is:**  
+None of the method settings enable caching (`caching_enabled = true`) or encryption of cached data (`cache_data_encrypted = true`).  
+The resources named `pass_explicit` and `pass_implicit` only avoid `CKV_AWS_276`; they still do not satisfy the caching checks.
+
+**Why it matters:**  
+- **Caching disabled** (`CKV_AWS_225`) is primarily an availability and resilience issue. Without caching, every request is forwarded to the backend, increasing load, cost, and the impact of traffic spikes or repeated identical requests.  
+- **Cache not encrypted** (`CKV_AWS_308`) is a security issue. If caching were enabled without encryption, cached responses would be stored unencrypted at rest. Since cached responses may contain sensitive data, this fails encryption-at-rest requirements and increases exposure if the underlying cache storage is compromised.
+
+**How to fix:**  
+Add the following to each `settings` block (or add a `settings` block where missing, as in `pass_implicit`):
+
+```hcl
+settings {
+  data_trace_enabled   = false
+  caching_enabled      = true
+  cache_data_encrypted = true
+  # Optional but recommended: set an appropriate TTL
+  cache_ttl_in_seconds = 300
+}
+```
+
+For `pass_implicit`, add the entire `settings` block because it currently has none.
+
+**Important:**  
+`caching_enabled = true` only takes effect if the API Gateway stage has a cache cluster enabled. Ensure the referenced `aws_api_gateway_stage.test` has `cache_cluster_enabled = true`; otherwise the method-level caching setting will be ignored.
+
+---
+
+### Example corrected resource
+
+```hcl
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled   = false
+    caching_enabled      = true
+    cache_data_encrypted = true
+    cache_ttl_in_seconds = 300
+  }
+}
+```

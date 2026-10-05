@@ -1,0 +1,64 @@
+The scanner flagged two issues in this Terraform configuration, both related to encryption of Amazon Connect instance storage. Here’s what’s wrong and how to fix it.
+
+## 1. CKV_AWS_269 – Kinesis Video Stream storage not using a CMK (resource `fail`)
+
+**What the rule says:**  
+Any Kinesis Video Stream storage configuration for Amazon Connect must use a customer-managed key (CMK) in AWS KMS, not the default AWS-managed key.
+
+**What’s happening in your file:**  
+The `fail` resource (lines 20–35) declares a Kinesis Video Stream storage config with `encryption_type = "KMS"`, but it **omits the `key_id`** argument. This means it will use the AWS-managed KMS key for the service, which does not give you control over key rotation, access policies, or auditing. The scanner correctly flags this as a violation of CKV_AWS_269.
+
+**Fix:**  
+Add a `key_id` pointing to a customer-managed KMS key ARN inside the `encryption_config` block, exactly as you already did in the `pass` resource.
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+  key_id          = aws_kms_key.test.arn   # <-- add this
+}
+```
+
+---
+
+## 2. CKV_AWS_270 – S3 storage config not using a CMK (both resources)
+
+**What the rule says:**  
+If an Amazon Connect instance storage configuration includes an S3 bucket, that S3 storage must be encrypted with a customer-managed key (CMK). The policy expects that **any** storage configuration for `MEDIA_STREAMS` includes an S3 storage block with KMS encryption using a CMK.
+
+**What’s happening in your file:**  
+Both the `pass` and `fail` resources define only a Kinesis Video Stream storage config. Neither includes an S3 storage config. The scanner interprets this as a missing S3 configuration that would otherwise need to be CMK-encrypted, so it flags both resources.
+
+**Why this matters:**  
+Amazon Connect media streams can be stored in both Kinesis Video Streams and S3 simultaneously. If you only configure Kinesis, the S3 side is absent, but the policy expects that when you set up media stream storage, you also secure the S3 destination with a CMK. This gives you full control over key lifecycle, access policies, and audit trails for the S3 data.
+
+**Fix:**  
+Add a second `storage_config` block to **both** resources, specifying `storage_type = "S3"` and an `encryption_config` with `encryption_type = "KMS"` and a `key_id` pointing to a CMK.
+
+Example addition (to be placed after the existing Kinesis Video Stream block):
+
+```hcl
+storage_config {
+  storage_type = "S3"
+  s3_config {
+    bucket_name   = aws_s3_bucket.example.id
+    bucket_prefix = "connect-media"
+    encryption_config {
+      encryption_type = "KMS"
+      key_id          = aws_kms_key.test.arn
+    }
+  }
+}
+```
+
+You’ll need to create or reference an S3 bucket and ensure the KMS key policy allows the Connect service to use it.
+
+---
+
+## Summary of required changes
+
+| Resource | Current issue | Action |
+|----------|---------------|--------|
+| `pass` | Missing S3 storage config with CMK (CKV_AWS_270) | Add an S3 `storage_config` block with KMS CMK encryption |
+| `fail` | Missing `key_id` in Kinesis Video Stream encryption (CKV_AWS_269) **and** missing S3 storage config with CMK (CKV_AWS_270) | Add `key_id` to the existing Kinesis encryption block **and** add an S3 `storage_config` block with KMS CMK encryption |
+
+After these changes, both resources will satisfy the policies and provide stronger security for your Connect instance media streams.

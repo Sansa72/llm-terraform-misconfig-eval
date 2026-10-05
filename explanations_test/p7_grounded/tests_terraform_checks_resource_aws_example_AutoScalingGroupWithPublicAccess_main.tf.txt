@@ -1,0 +1,111 @@
+Based on the scanner output and the provided Terraform file, here’s what each finding means and where the issues are.
+
+---
+
+### Finding 1: CKV_AWS_79 – Instance Metadata Service Version 1 is not disabled
+
+**Flagged resources:**
+- `aws_launch_configuration.fail` (lines 1–6)
+- `aws_launch_configuration.pass` (lines 29–34)
+
+**What the check requires:**  
+EC2 instances should be configured to require IMDSv2 (Instance Metadata Service Version 2) and disable IMDSv1. IMDSv1 is vulnerable to request forgery and other attacks because it does not require a session token.
+
+**What the file shows:**  
+Neither launch configuration includes a `metadata_options` block. The relevant resources are:
+
+```terraform
+resource "aws_launch_configuration" "fail" {
+  name          = "vulnerable-lc-${random_id.id.hex}"
+  image_id      = "ami-0c55b24b055c14ff6"
+  instance_type = "t2.micro"
+  associate_public_ip_address = true
+}
+```
+
+```terraform
+resource "aws_launch_configuration" "pass" {
+  name          = "safe-lc-${random_id.id.hex}"
+  image_id      = "ami-0c55b24b055c14ff6"
+  instance_type = "t2.micro"
+  associate_public_ip_address = false
+}
+```
+
+Because no `metadata_options` block is present, the default behaviour applies: IMDSv1 is enabled. The scanner correctly flags both resources, regardless of the `associate_public_ip_address` setting.
+
+**Fix:**  
+Add a `metadata_options` block with `http_tokens = "required"` to each launch configuration. For example:
+
+```terraform
+metadata_options {
+  http_tokens = "required"
+}
+```
+
+---
+
+### Finding 2: CKV_AWS_8 – EBS volumes are not encrypted
+
+**Flagged resources:**
+- `aws_launch_configuration.fail` (lines 1–6)
+- `aws_launch_configuration.pass` (lines 29–34)
+
+**What the check requires:**  
+All EBS volumes (root and additional) launched via the configuration must be encrypted at rest.
+
+**What the file shows:**  
+Neither launch configuration defines a `root_block_device` or `ebs_block_device` block with `encrypted = true`. The file contains no encryption-related settings. The default is that EBS volumes are not encrypted unless the AMI or account-level settings enforce it, but the check expects explicit configuration.
+
+**Fix:**  
+Add a `root_block_device` block with `encrypted = true` (and optionally `ebs_block_device` for additional volumes). For example:
+
+```terraform
+root_block_device {
+  encrypted = true
+}
+```
+
+---
+
+### Finding 3: CKV_AWS_315 – Auto Scaling groups use launch configurations instead of launch templates
+
+**Flagged resources:**
+- `aws_autoscaling_group.vulnerable_asg` (lines 8–23)
+- `aws_autoscaling_group.safe_asg` (lines 36–52)
+
+**What the check requires:**  
+EC2 Auto Scaling groups should use `launch_template` instead of the deprecated `launch_configuration`. AWS recommends launch templates because they support versioning, more instance options, and newer features.
+
+**What the file shows:**  
+Both ASG resources reference a launch configuration via the `launch_configuration` attribute:
+
+- Line 10: `launch_configuration = aws_launch_configuration.vulnerable_launch_config.name`
+- Line 38: `launch_configuration = aws_launch_configuration.safe_launch_config.name`
+
+(Note: The referenced launch configuration names `vulnerable_launch_config` and `safe_launch_config` do not match the actual resource names `fail` and `pass` in the file, but the scanner finding is based on the use of the `launch_configuration` attribute itself.)
+
+**Fix:**  
+Replace the `aws_launch_configuration` resources with `aws_launch_template` resources, and update the ASG resources to use the `launch_template` block. For example:
+
+```terraform
+resource "aws_launch_template" "example" {
+  name          = "example-lt-${random_id.id.hex}"
+  image_id      = "ami-0c55b24b055c14ff6"
+  instance_type = "t2.micro"
+  # ... other settings
+}
+
+resource "aws_autoscaling_group" "example" {
+  name = "example-asg-${random_id.id.hex}"
+  launch_template {
+    id      = aws_launch_template.example.id
+    version = "$Latest"
+  }
+  # ... other settings
+}
+```
+
+---
+
+All findings are supported by the absence of the required configuration blocks or the use of a deprecated attribute in the provided file. No additional attack scenarios or impacts beyond what the checks themselves describe are asserted.

@@ -1,0 +1,29 @@
+**Remediation Briefing: CKV_AWS_298 – DMS S3 Endpoint must use a Customer Managed Key**
+
+Below are the two failing checks, in the order they appear in the scanner output. Each section identifies the resource, the triggering lines, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_298 on `aws_dms_s3_endpoint.fail` (lines 1–8)
+
+**Triggering lines**  
+The entire resource block at lines 1–8. The `kms_key_arn` argument is completely absent.
+
+**What is wrong and why it matters**  
+The resource does not specify a customer managed key (CMK). The check requires a CMK to be explicitly set; without it, the S3 endpoint will not use a customer-managed key, which fails the policy enforced by this check.
+
+**Required change**  
+Add a `kms_key_arn` argument inside the `aws_dms_s3_endpoint.fail` block. The value must be a valid KMS customer managed key ARN, either as a literal string (like the one in the `pass` resource) or as a reference to a KMS key resource (like the one in `pass2`). Do not leave it empty or omit it.
+
+---
+
+### 2. CKV_AWS_298 on `aws_dms_s3_endpoint.fail2` (lines 10–18)
+
+**Triggering lines**  
+Line 16: `kms_key_arn=""`
+
+**What is wrong and why it matters**  
+The `kms_key_arn` is set to an empty string, which is not a valid customer managed key. The check interprets this as not using a CMK, so the resource fails the requirement.
+
+**Required change**  
+Replace the empty string value of `kms_key_arn` with a valid KMS customer managed key ARN. As with the first resource, use a literal ARN string or a reference to a KMS key resource. The empty value must be removed entirely and substituted with a proper key identifier.

@@ -1,0 +1,48 @@
+## Remediation Briefing for `aws_iam_policy_document.fail`
+
+All findings below apply to the same resource: the `fail` policy document defined at lines 19–31. The fixes are interdependent; a single, properly scoped replacement of the statement will resolve all issues.
+
+---
+
+### CKV_AWS_107 – IAM policy allows credentials exposure
+**Resource:** `data.aws_iam_policy_document.fail`  
+**What’s wrong:** The policy grants `iam:*` on `*`, which includes actions that expose long-term credentials (e.g., `iam:CreateAccessKey`, `iam:UpdateAccessKey`, `iam:GetAccessKeyLastUsed`).  
+**Why it matters:** An attacker or over-privileged principal could create, retrieve, or modify access keys, leading to account compromise and lateral movement.  
+**Change required:** Remove the wildcard action and explicitly list only the IAM actions that are necessary. Ensure that no action allowing credential creation, retrieval, or modification is included unless strictly required and tightly scoped with resource and condition constraints.
+
+---
+
+### CKV_AWS_356 – Wildcard resource for restrictable actions
+**Resource:** `data.aws_iam_policy_document.fail`  
+**What’s wrong:** The statement uses `"*"` as the resource with `iam:*` actions, many of which are restrictable (can be scoped to specific resources).  
+**Why it matters:** A wildcard resource allows the actions to be performed on any IAM resource in the account, removing the ability to limit blast radius.  
+**Change required:** Replace `"*"` with the exact ARNs of the IAM resources (users, roles, policies, etc.) that the policy needs to affect. If the policy must apply to multiple resources, enumerate them individually or use constrained wildcards (e.g., `arn:aws:iam::123456789012:role/specific-*`), but never a bare `*`.
+
+---
+
+### CKV_AWS_109 – Permissions management / resource exposure without constraints
+**Resource:** `data.aws_iam_policy_document.fail`  
+**What’s wrong:** The policy allows broad permissions-management actions (e.g., `iam:Attach*`, `iam:Detach*`, `iam:Create*`, `iam:Delete*`, `iam:Put*`, `iam:Update*`) on all resources without any condition.  
+**Why it matters:** Unconstrained permissions-management actions can be abused to grant excessive privileges, modify trust policies, or delete security controls, effectively handing over control of the IAM layer.  
+**Change required:** Restrict the action list to only the specific, non-management actions that are required. If any management action is unavoidable, scope it to the exact resource and add a condition (e.g., `aws:RequestedRegion`, `aws:PrincipalTag`, or a specific `ResourceTag`) to limit when and how it can be used.
+
+---
+
+### CKV_AWS_110 – IAM policy allows privilege escalation
+**Resource:** `data.aws_iam_policy_document.fail`  
+**What’s wrong:** The policy grants `iam:*` on `*`, which includes actions known to allow privilege escalation (e.g., `iam:CreateUser`, `iam:AttachUserPolicy`, `iam:PutUserPolicy`, `iam:AddUserToGroup`, `iam:UpdateAssumeRolePolicy`).  
+**Why it matters:** A principal with these permissions can create a new administrative identity or modify an existing one to gain full access to the account.  
+**Change required:** Remove all actions that can be used for privilege escalation. If any such action is genuinely needed, it must be restricted to a specific resource and combined with strong conditions (e.g., only allowing attachment of a limited set of policies, or requiring MFA). In most cases, these actions should not be present in a workload policy.
+
+---
+
+### CKV2_AWS_40 – Full IAM privileges granted
+**Resource:** `data.aws_iam_policy_document.fail`  
+**What’s wrong:** The policy effectively grants full IAM administrative access by combining `iam:*` with a resource of `*`.  
+**Why it matters:** This is equivalent to giving the principal unrestricted control over all IAM resources, violating the principle of least privilege and creating a critical security risk.  
+**Change required:** Replace the statement with one that grants only the minimum set of IAM actions required for the intended task, and restrict the resource to the specific ARNs involved. Never use `iam:*` on `*` in any policy.
+
+---
+
+### Interaction note
+All five findings are triggered by the same overly permissive statement. A single revision that replaces `iam:*` with a minimal, specific action list and replaces `"*"` with exact resource ARNs will resolve every check simultaneously. No separate, conflicting changes are needed.

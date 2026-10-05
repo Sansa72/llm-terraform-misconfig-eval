@@ -1,0 +1,19 @@
+The scanner flagged three resources with check **CKV_AWS_206**, which requires API Gateway domain names to use a modern security policy. Here’s what the evidence shows:
+
+- **`aws_api_gateway_domain_name.fail`** (lines 5–8)  
+  `security_policy = "TLS_1_0"`  
+  This is an outdated protocol and correctly triggers the finding.
+
+- **`aws_api_gateway_domain_name.pass2`** (lines 15–18)  
+  `security_policy = "SecurityPolicy_TLS13_1_3_2025_09"`  
+  This policy enforces TLS 1.3, which is modern.
+
+- **`aws_api_gateway_domain_name.pass3`** (lines 20–23)  
+  `security_policy = "SecurityPolicy_TLS13_1_2_2021_06"`  
+  This policy enforces TLS 1.2 and 1.3, both considered modern.
+
+Notably, the resource **`aws_api_gateway_domain_name.pass`** (lines 10–13) with `security_policy = "TLS_1_2"` is **not flagged** by the same check. This indicates the scanner accepts `TLS_1_2` as a modern policy, but does not recognize the newer policy names (`SecurityPolicy_TLS13_*`) as modern, even though they provide equal or stronger security.
+
+**Conclusion:**  
+- The finding on `fail` is valid: TLS 1.0 is outdated and should be upgraded.  
+- The findings on `pass2` and `pass3` appear to be false positives caused by the scanner not recognizing the `SecurityPolicy_TLS13_*` policy identifiers as modern. The check likely needs an update to its allowed policy list. No misconfiguration is evidenced in those two resources.

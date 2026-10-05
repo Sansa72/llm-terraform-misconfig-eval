@@ -1,0 +1,32 @@
+**Remediation Briefing**
+
+---
+
+### 1. CKV_AWS_26 – SNS topic encryption
+
+- **Resource:** `aws_sns_topic.some-topic` (line 1)
+- **Trigger:** The resource is declared with an empty body; no encryption configuration is present.
+- **What is wrong:** The SNS topic does not have server-side encryption enabled, so data stored in the topic is not encrypted at rest.
+- **Remediation:** Add the `kms_master_key_id` argument to the `aws_sns_topic` resource, referencing a valid KMS key (e.g., an AWS managed key alias `alias/aws/sns` or a customer-managed key ARN). This will enable encryption of messages stored in the topic.
+
+---
+
+### 2. CKV_AWS_283 – IAM policy document allows any AWS principal (first occurrence)
+
+- **Resource:** `data.aws_iam_policy_document.fail` (lines 3–14)
+- **Trigger:** The `principals` block at lines 9–12 sets `type = "AWS"` and `identifiers = ["*"]`, granting permissions to any AWS principal.
+- **What is wrong:** The policy document allows **any** AWS principal (every AWS account, user, or role) to perform the `sns:Publish` action on the SNS topic. This is an overly permissive grant that violates the principle of least privilege.
+- **Remediation:** Replace the wildcard `"*"` in the `identifiers` list with one or more specific AWS account IDs or IAM role ARNs that are trusted to publish to the topic. If the intent is to allow only resources within the same account, use the current account ID. If cross-account access is needed, list only the trusted external account IDs.
+
+---
+
+### 3. CKV_AWS_283 – IAM policy document allows any AWS principal (second occurrence)
+
+- **Resource:** `data.aws_iam_policy_document.fail2` (lines 78–106)
+- **Trigger:** The policy contains two statements, both of which use `principals` with `type = "AWS"` and `identifiers = ["*"]`:
+  - First statement: lines 85–88 (includes a condition block, but the condition uses a placeholder ARN pattern that does not effectively restrict access).
+  - Second statement: lines 101–104 (no condition, directly allows any AWS principal).
+- **What is wrong:** Both statements grant `sns:Publish` permission to **any** AWS principal. Even the statement with a condition does not restrict the principal to a specific entity, because the condition value is a generic, non-specific ARN pattern. This leaves the SNS topic open to publishing by any AWS identity.
+- **Remediation:** For each statement, replace the wildcard `"*"` in the `identifiers` list with the specific AWS account ID(s) or IAM role ARN(s) that should be allowed to publish. If the condition in the first statement is intended to further restrict access, ensure the principal list is also narrowed to the intended set of identities. If the goal is to allow only a specific AWS service, change the `type` to `"Service"` and provide the service’s principal identifier (e.g., `"sns.amazonaws.com"`) instead of using `"AWS"` with a wildcard.
+
+Make these changes directly in the Terraform configuration. After updating, run `terraform validate` and re-scan to confirm the findings are resolved.

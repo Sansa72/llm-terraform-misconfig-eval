@@ -1,0 +1,68 @@
+The `aws_s3_bucket.bucket` resource only sets the bucket name. None of the S3 security controls flagged by Checkov are configured.
+
+| Finding | Missing control | Concrete risk | Fix |
+|---|---|---|---|
+| `CKV_AWS_21` | Versioning | Object overwrites or deletions are permanent; no recovery of prior versions | Enable `aws_s3_bucket_versioning` with `status = "Enabled"` |
+| `CKV_AWS_144` | Cross-region replication | No automatic copy in another AWS region; data could be unavailable after a regional failure | Add `aws_s3_bucket_replication_configuration` with a destination bucket and IAM role; requires versioning enabled first |
+| `CKV_AWS_145` | KMS default encryption | Objects are not explicitly encrypted with KMS; you lose KMS key control, rotation, and audit trail | Add `aws_s3_bucket_server_side_encryption_configuration` using `sse_algorithm = "aws:kms"` |
+| `CKV2_AWS_6` | Public Access block | No bucket-level block against public ACLs/policies; if a future policy/ACL grants public access, objects could be exposed | Add `aws_s3_bucket_public_access_block` with all four block settings `true` |
+| `CKV_AWS_18` | Access logging | Server access requests are not logged; unauthorized access or suspicious operations cannot be investigated | Add `aws_s3_bucket_logging` pointing to a dedicated log bucket |
+| `CKV2_AWS_62` | Event notifications | No real-time alerting on object create/delete events; incident response is delayed | Add `aws_s3_bucket_notification` to send events to SNS/SQS/Lambda |
+| `CKV2_AWS_61` | Lifecycle configuration | No automatic expiration/transition of objects or old versions; stale data remains indefinitely and costs increase | Add `aws_s3_bucket_lifecycle_configuration` with retention/expiration rules |
+
+Example Terraform fixes for the core controls:
+
+```hcl
+resource "aws_s3_bucket_versioning" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket                  = aws_s3_bucket.bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "aws:kms"
+    }
+  }
+}
+
+resource "aws_s3_bucket_logging" "bucket" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = var.logging_bucket_name   # dedicated log destination
+  target_prefix = "module-bucket/"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "default-retention"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30   # adjust to your retention policy
+    }
+
+    expiration {
+      days = 365              # adjust to your retention policy
+    }
+  }
+}
+```
+
+For event notifications and cross-region replication, add `aws_s3_bucket_notification` and `aws_s3_bucket_replication_configuration`. These require separate prerequisites:
+
+- Notification destination: an SNS topic, SQS queue, or Lambda function.
+- Replication: a destination bucket, an IAM role with replication permissions, and versioning enabled on both source and destination buckets.
+
+Safe rollout order: enable versioning first, then replication; verify logging destination permissions; align lifecycle rules with your retention requirements before enabling expiration.

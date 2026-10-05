@@ -1,0 +1,55 @@
+**Remediation briefing**
+
+Below are the failing checks in the order they appear in the scanner output. For each, I identify the resource, the exact lines that trigger the finding, what is wrong, and the change required to make the check pass.
+
+---
+
+### 1. CKV_AWS_323 on `aws_elasticache_cluster.enabled` (lines 3–11)
+
+**Trigger:** The resource block at lines 3–11 does not include a `subnet_group_name` argument.  
+**What is wrong:** The cluster will be placed in the default subnet group for the VPC. The default subnet group typically spans all subnets in the VPC, which may include public subnets and subnets not intended for ElastiCache, increasing the network exposure of the cluster.  
+**Change needed:** Add a `subnet_group_name` argument that references a dedicated ElastiCache subnet group containing only the private subnets where the cluster should reside.
+
+---
+
+### 2. CKV_AWS_134 on `aws_elasticache_cluster.default` (lines 15–21)
+
+**Trigger:** The resource block at lines 15–21 omits the `snapshot_retention_limit` argument.  
+**What is wrong:** For a Redis cluster, the absence of `snapshot_retention_limit` (or its default of `0`) means automatic backups are disabled. This removes the ability to recover data automatically in case of failure or corruption.  
+**Change needed:** Set `snapshot_retention_limit` to a positive integer (e.g., `5`) to enable automatic daily backups and retain them for the specified number of days.
+
+---
+
+### 3. CKV_AWS_323 on `aws_elasticache_cluster.default` (lines 15–21)
+
+**Trigger:** Same resource block as above; no `subnet_group_name` is specified.  
+**What is wrong:** The cluster will use the default subnet group, which may place it in subnets not designed for ElastiCache, increasing unintended network exposure.  
+**Change needed:** Add a `subnet_group_name` argument pointing to a custom subnet group with appropriate private subnets.
+
+---
+
+### 4. CKV_AWS_134 on `aws_elasticache_cluster.disabled` (lines 23–31)
+
+**Trigger:** Line 30 explicitly sets `snapshot_retention_limit = 0`.  
+**What is wrong:** Setting the retention limit to `0` disables automatic backups for this Redis cluster, removing the ability to perform point‑in‑time recovery and increasing the risk of data loss.  
+**Change needed:** Change `snapshot_retention_limit` to a positive integer (e.g., `5`) to enable automatic backups.
+
+---
+
+### 5. CKV_AWS_323 on `aws_elasticache_cluster.disabled` (lines 23–31)
+
+**Trigger:** The resource block at lines 23–31 does not include a `subnet_group_name` argument.  
+**What is wrong:** The cluster will be placed in the default subnet group, which may include subnets not intended for ElastiCache, potentially exposing the cluster to unwanted network paths.  
+**Change needed:** Add a `subnet_group_name` argument referencing a custom subnet group with private subnets.
+
+---
+
+### 6. CKV_AWS_323 on `aws_elasticache_cluster.memcached` (lines 35–41)
+
+**Trigger:** The resource block at lines 35–41 does not include a `subnet_group_name` argument.  
+**What is wrong:** The Memcached cluster will use the default subnet group, which can lead to placement in subnets not designed for ElastiCache, increasing the attack surface.  
+**Change needed:** Add a `subnet_group_name` argument that references a custom subnet group containing only the intended private subnets.
+
+---
+
+*Note: CKV_AWS_134 was not raised for the `memcached` resource because the check is specific to Redis engine clusters; the `memcached` resource is therefore not in scope for that control.*

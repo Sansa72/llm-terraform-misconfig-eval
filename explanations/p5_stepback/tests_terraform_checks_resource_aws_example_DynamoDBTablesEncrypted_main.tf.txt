@@ -1,0 +1,52 @@
+## CKV_AWS_28 – Point‑in‑time recovery (PITR)
+
+**Principle**  
+Point‑in‑time recovery provides continuous backups of a DynamoDB table, allowing you to restore to any point within the last 35 days. This protects against accidental data loss from application errors, malicious deletes, or other corruption. Without it, you rely solely on on‑demand backups or manual exports, which can leave a significant recovery gap.
+
+**Application to this file**  
+All four tables (`cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`) are missing the `point_in_time_recovery` block entirely. The default is `enabled = false`, so none of these tables have PITR active. This means none of them can be restored to a specific point in time in the event of data corruption or accidental deletion.
+
+**Required change**  
+Add the following block inside each `aws_dynamodb_table` resource:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+---
+
+## CKV_AWS_119 – DynamoDB tables encrypted with a KMS Customer Managed CMK
+
+**Principle**  
+Using a customer managed KMS key (CMK) for DynamoDB encryption gives you full control over key rotation, access policies, and audit logging via CloudTrail. The default AWS‑owned key or AWS‑managed key does not provide the same level of control or visibility.
+
+**Application to this file**  
+- **`aws_dynamodb_table.cmk` (lines 3‑20):** Already uses a customer managed CMK (`kms_key_arn` specified). This resource is compliant; the finding is a false positive for this table.  
+- **`aws_dynamodb_table.default` (lines 24‑36):** No `server_side_encryption` block is present. The table will use the default AWS‑owned key, which is not a customer managed CMK.  
+- **`aws_dynamodb_table.encrypted_false` (lines 38‑54):** `server_side_encryption` is explicitly set to `enabled = false`. This also results in the default AWS‑owned key, not a customer managed CMK.  
+- **`aws_dynamodb_table.encrypted_no_cmk` (lines 56‑72):** `server_side_encryption` is enabled but no `kms_key_arn` is provided. This uses an AWS‑managed CMK, not a customer managed CMK.
+
+**Required change**  
+For the three non‑compliant tables, replace or add a `server_side_encryption` block that references a customer managed KMS key ARN:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/your-cmk-id"
+}
+```
+
+---
+
+## CKV2_AWS_16 – Auto Scaling enabled on DynamoDB tables
+
+**Principle**  
+Auto Scaling dynamically adjusts provisioned read and write capacity in response to actual traffic patterns. Without it, a table with fixed provisioned capacity can experience throttling under load or waste money during idle periods. Auto Scaling ensures performance and cost efficiency.
+
+**Application to this file**  
+All four tables use `billing_mode = "PROVISIONED"` with static `read_capacity` and `write_capacity` values. No `aws_appautoscaling_target` or `aws_appautoscaling_policy` resources are defined in the file, and no `autoscaling` blocks are present within the table definitions. Therefore, none of the tables have Auto Scaling enabled.
+
+**Required change**  
+Either switch the tables to on‑demand mode (if workload patterns are unpredictable) by setting `billing_mode = "PAY_PER_REQUEST"` and removing the `read_capacity`/`write_capacity` arguments, or define Auto Scaling targets and policies for each table’s read and write capacity. For example, using the `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources to scale between a minimum and maximum provisioned capacity based on a target utilization metric.

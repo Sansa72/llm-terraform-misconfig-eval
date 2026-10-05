@@ -1,0 +1,60 @@
+The scanner flagged the following misconfigurations across three `aws_emr_security_configuration` resources. Each finding is tied to the exact configuration excerpt and line numbers from the provided Terraform file.
+
+**CKV_AWS_351 – In-transit encryption not enabled**
+- **aws_emr_security_configuration.pass** (line 17): `"EnableInTransitEncryption": false`
+- **aws_emr_security_configuration.fail** (line 35): `"EnableInTransitEncryption": false`
+- **aws_emr_security_configuration.fail2** (line 49): `"EnableInTransitEncryption": false`
+The rule requires `EnableInTransitEncryption` to be `true`.
+
+**CKV_AWS_171 – S3 encryption not using SSE-KMS**
+- **aws_emr_security_configuration.pass** (line 9): `"EncryptionMode": "SSE-S3"` – uses SSE-S3, not SSE-KMS.
+- **aws_emr_security_configuration.fail** (line 32): `"EncryptionMode": "SSE-S3"` – same issue.
+- **aws_emr_security_configuration.fail2** (lines 47–51): No `S3EncryptionConfiguration` block exists, so no SSE-KMS is used.
+The rule requires S3 encryption to be configured with SSE-KMS.
+
+**CKV_AWS_350 – EBS disk encryption not enabled**
+- **aws_emr_security_configuration.fail** (lines 30–34): The `AtRestEncryptionConfiguration` block lacks a `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption: true`.
+- **aws_emr_security_configuration.fail2** (lines 47–51): No `AtRestEncryptionConfiguration` or `LocalDiskEncryptionConfiguration` is present.
+The rule requires `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption` set to `true`.
+
+**CKV_AWS_349 – Local disk encryption not enabled**
+- **aws_emr_security_configuration.fail** (lines 30–34): No `LocalDiskEncryptionConfiguration` is defined.
+- **aws_emr_security_configuration.fail2** (lines 47–51): No `LocalDiskEncryptionConfiguration` is defined.
+The rule requires a `LocalDiskEncryptionConfiguration` block (as present in the `pass` resource) to encrypt local disks.
+
+**Remediation (changes to the file)**
+
+*For `aws_emr_security_configuration.pass`:*
+- Change line 17 from `false` to `true`.
+- Change line 9 from `"SSE-S3"` to `"SSE-KMS"` and add an `"AwsKmsKey"` field with a valid KMS key ARN inside the `S3EncryptionConfiguration` block (e.g., after line 9).
+
+*For `aws_emr_security_configuration.fail`:*
+- Change line 35 from `false` to `true`.
+- Change line 32 from `"SSE-S3"` to `"SSE-KMS"` and add an `"AwsKmsKey"` field with a valid KMS key ARN inside the `S3EncryptionConfiguration` block.
+- Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` (after line 33) with:
+  ```json
+  "LocalDiskEncryptionConfiguration": {
+    "EnableEbsEncryption": true,
+    "EncryptionKeyProviderType": "AwsKms",
+    "AwsKmsKey": "<valid-kms-key-arn>"
+  }
+  ```
+
+*For `aws_emr_security_configuration.fail2`:*
+- Change line 49 from `false` to `true`.
+- Change line 50 from `false` to `true`.
+- Add an `AtRestEncryptionConfiguration` block inside `EncryptionConfiguration` (after line 49) containing:
+  ```json
+  "AtRestEncryptionConfiguration": {
+    "S3EncryptionConfiguration": {
+      "EncryptionMode": "SSE-KMS",
+      "AwsKmsKey": "<valid-kms-key-arn>"
+    },
+    "LocalDiskEncryptionConfiguration": {
+      "EnableEbsEncryption": true,
+      "EncryptionKeyProviderType": "AwsKms",
+      "AwsKmsKey": "<valid-kms-key-arn>"
+    }
+  }
+  ```
+  Ensure the JSON structure remains valid (commas between blocks).

@@ -1,0 +1,14 @@
+**Remediation Briefing: CKV_AWS_257 – CodeCommit Approval Rule Template**
+
+---
+
+### Finding 1: CKV_AWS_257 on `aws_codecommit_approval_rule_template.fail` (lines 1–16)
+
+**What is wrong**  
+The approval rule template requires only 1 approval for changes to the `master` branch.
+
+**Why it matters**  
+A single approval is insufficient to enforce a robust peer-review process. Requiring at least two approvals reduces the risk of a single actor introducing malicious or erroneous code, and aligns with security best practices for protecting critical branches.
+
+**Change needed**  
+In the `content` JSON string of the `aws_codecommit_approval_rule_template.fail` resource, increase the `NumberOfApprovalsNeeded` field from `1` to at least `2`. The companion resource `aws_codecommit_approval_rule_template.pass` already demonstrates the correct value (`2`), so you can use that as a reference. No other resources are affected by this change, and no interactions between fixes are required.

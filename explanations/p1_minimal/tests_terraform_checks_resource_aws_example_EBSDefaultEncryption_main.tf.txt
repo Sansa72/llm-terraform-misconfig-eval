@@ -1,0 +1,32 @@
+The scanner flagged the `aws_ebs_encryption_by_default` resource named `"disabled"` because it explicitly sets `enabled = false`, which disables default EBS encryption for the AWS account in the region where this Terraform is applied.
+
+## What’s the problem?
+
+- **Resource type:** `aws_ebs_encryption_by_default` is a **singleton** – it controls a single account‑wide, per‑region setting.  
+- **What it does:** When `enabled = true`, every new EBS volume created in the account/region is automatically encrypted using the default KMS key (or a specified one). When `enabled = false`, encryption is not applied by default; volumes are created unencrypted unless the user explicitly requests encryption.  
+- **Why it’s a risk:** Unencrypted EBS volumes expose data at rest. If a volume is lost, stolen, or improperly disposed of, the data on it can be read by anyone with physical access. Many compliance frameworks (PCI‑DSS, HIPAA, etc.) require encryption at rest. Disabling default encryption makes it easy for developers to accidentally create unencrypted volumes, increasing the risk of a data breach.
+
+## How to fix it
+
+1. **Remove the `"disabled"` resource entirely** – it’s the only one explicitly setting `enabled = false`.  
+2. **Consolidate to a single `aws_ebs_encryption_by_default` resource** with `enabled = true`.  
+   - The resource named `"enabled"` already does this correctly.  
+   - The resource named `"default"` (no `enabled` argument) also defaults to `true` in the AWS provider, but it’s redundant and could cause conflicts.  
+   - The resource named `"null"` sets `enabled = null`, which is effectively the same as omitting it (defaults to `true`), but it’s also redundant.  
+3. **Keep only one resource definition** – for example:
+
+```hcl
+resource "aws_ebs_encryption_by_default" "enabled" {
+  enabled = true
+}
+```
+
+4. **Run `terraform apply`** to update the account setting. This will enable default EBS encryption for all new volumes in the region.
+
+## Additional considerations
+
+- **Existing volumes:** Enabling this setting does **not** retroactively encrypt existing unencrypted volumes. You’ll need to handle those separately (e.g., by creating encrypted snapshots and re‑creating volumes).  
+- **Multiple regions:** If you manage multiple regions, ensure this resource is applied in each region (e.g., using a provider alias for each region).  
+- **KMS permissions:** Default encryption uses the AWS‑managed EBS KMS key (`aws/ebs`). If you want to use a customer‑managed key, you’ll need to specify it separately (via `aws_ebs_default_kms_key`), but that’s not required to pass this check.
+
+By keeping only the `"enabled"` resource, you satisfy the scanner rule and ensure that all new EBS volumes are encrypted by default.

@@ -1,0 +1,228 @@
+The scanner found multiple security misconfigurations across all four CloudFront distributions defined in this file. Each finding points to a missing or incorrectly configured security control. I’ll walk through every check, explain what it means for your specific resources, and show how to fix it.
+
+---
+
+### CKV_AWS_216 – Ensure CloudFront distribution is enabled
+
+**What it checks**  
+A disabled distribution does not serve traffic. While there are legitimate reasons to disable a distribution temporarily, a permanently disabled distribution is often a misconfiguration or an orphaned resource that should be cleaned up.
+
+**Where it fails**  
+- `aws_cloudfront_distribution.pass` (line 42) – `enabled = false`
+- `aws_cloudfront_distribution.fail2` (line 118) – `enabled = false`
+- `aws_cloudfront_distribution.fail3` (line 156) – `enabled = false`
+
+**Fix**  
+Set `enabled = true` on these distributions unless they are intentionally decommissioned. If they are no longer needed, remove the resource entirely.
+
+---
+
+### CKV_AWS_86 – Ensure CloudFront distribution has Access Logging enabled
+
+**What it checks**  
+Access logs record every request handled by CloudFront. They are essential for security monitoring, incident investigation, and compliance. Without logging, you lose visibility into who is accessing your content and how.
+
+**Where it fails**  
+All four distributions lack a `logging_config` block. None of them ship logs to an S3 bucket.
+
+**Fix**  
+Add a `logging_config` block to each distribution. You need an S3 bucket that CloudFront is allowed to write to. For example:
+
+```hcl
+logging_config {
+  bucket          = "my-cloudfront-logs.s3.amazonaws.com"
+  prefix          = "cf-logs/"
+  include_cookies = false
+}
+```
+
+The bucket must exist and have the appropriate bucket policy granting CloudFront’s principal `logs.amazonaws.com` (or the regional equivalent) write access.
+
+---
+
+### CKV_AWS_174 – Verify CloudFront Distribution Viewer Certificate is using TLS v1.2
+
+**What it checks**  
+The minimum TLS version for viewer connections should be at least 1.2. Older protocols (TLS 1.0, 1.1, SSLv3) have known weaknesses and should not be used.
+
+**Where it fails**  
+All four distributions either omit `minimum_protocol_version` or leave it at the provider default of `TLSv1`:
+
+- `pass` – `viewer_certificate {}` (line 43) → default `TLSv1`
+- `fail` – `viewer_certificate { cloudfront_default_certificate = true }` (line 79) → no `minimum_protocol_version`, default `TLSv1`
+- `fail2` – `viewer_certificate {}` (line 120) → default `TLSv1`
+- `fail3` – `viewer_certificate {}` (line 158) → default `TLSv1`
+
+**Fix**  
+Explicitly set `minimum_protocol_version = "TLSv1.2_2021"` (or at least `TLSv1.2_2018`) inside each `viewer_certificate` block. For example:
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+---
+
+### CKV_AWS_68 – CloudFront Distribution should have WAF enabled
+
+**What it checks**  
+A Web Application Firewall (WAF) protects against common web exploits like SQL injection, cross‑site scripting, and bot traffic. CloudFront distributions that serve dynamic content or are internet‑facing should always have a WAF attached.
+
+**Where it fails**  
+None of the distributions define a `web_acl_id`. The argument is completely absent from all four resources.
+
+**Fix**  
+Create an AWS WAFv2 Web ACL (or use an existing one) and attach it by setting `web_acl_id` to the ACL’s ARN. For example:
+
+```hcl
+resource "aws_cloudfront_distribution" "pass" {
+  # ... other configuration ...
+  web_acl_id = aws_wafv2_web_acl.example.arn
+}
+```
+
+Make sure the Web ACL is in the `us-east-1` region if you are using WAFv2 with CloudFront (global requirement).
+
+---
+
+### CKV_AWS_305 – Ensure CloudFront distribution has a default root object configured
+
+**What it checks**  
+A default root object (e.g., `index.html`) prevents CloudFront from returning a directory listing or an access‑denied error when a user requests the root URL. This reduces information leakage and improves user experience.
+
+**Where it fails**  
+- `aws_cloudfront_distribution.pass` – no `default_root_object` argument
+- `aws_cloudfront_distribution.fail2` – no `default_root_object`
+- `aws_cloudfront_distribution.fail3` – no `default_root_object`
+
+(`fail` already has `default_root_object = "index.html"` and is not flagged.)
+
+**Fix**  
+Add `default_root_object = "index.html"` (or whatever object you want to serve) to the three distributions that are missing it.
+
+---
+
+### CKV_AWS_310 – Ensure CloudFront distributions have origin failover configured
+
+**What it checks**  
+Origin failover increases availability by automatically routing requests to a secondary origin when the primary returns specific HTTP error codes (e.g., 500, 502, 503). Without it, a single origin failure can take your entire distribution offline.
+
+**Where it fails**  
+- `aws_cloudfront_distribution.fail` – only one origin, no `origin_group` at all.
+- `aws_cloudfront_distribution.fail2` – has an `origin_group` with two members, but **no `failover_criteria` block** (lines 85‑91). The group is defined but never triggers failover.
+- `aws_cloudfront_distribution.fail3` – has an `origin_group` with `failover_criteria`, but **no `member` blocks** (lines 127‑131). The group is empty, so failover cannot work.
+
+(`pass` has a correctly configured origin group with both criteria and members, so it passes.)
+
+**Fix**  
+- For `fail`: introduce an origin group that includes a primary and a secondary origin, and set `failover_criteria`. You already have the pattern in `pass` – replicate it.
+- For `fail2`: add a `failover_criteria` block inside the existing `origin_group`, e.g.:
+  ```hcl
+  failover_criteria {
+    status_codes = [403, 404, 500, 502]
+  }
+  ```
+- For `fail3`: add two `member` blocks referencing the existing origin IDs (`primaryS3` and `failoverS3`).
+
+---
+
+### CKV2_AWS_42 – Ensure AWS CloudFront distribution uses custom SSL certificate
+
+**What it checks**  
+The default CloudFront certificate (`*.cloudfront.net`) does not validate your own domain. Using a custom SSL certificate from AWS Certificate Manager (ACM) ensures that viewers see your domain name in the certificate, which is critical for trust and for applications that require domain‑validated TLS.
+
+**Where it fails**  
+- `pass` – `viewer_certificate {}` (line 43) provides no custom certificate.
+- `fail` – `viewer_certificate { cloudfront_default_certificate = true }` (line 79) explicitly uses the default certificate.
+- `fail2` – `viewer_certificate {}` (line 120) no custom certificate.
+- `fail3` – `viewer_certificate {}` (line 158) no custom certificate.
+
+**Fix**  
+Replace the default certificate with an ACM certificate that covers your custom domain. You must also set `ssl_support_method` and `minimum_protocol_version`. For example:
+
+```hcl
+viewer_certificate {
+  acm_certificate_arn      = aws_acm_certificate.example.arn
+  ssl_support_method        = "sni-only"
+  minimum_protocol_version  = "TLSv1.2_2021"
+}
+```
+
+If you are intentionally using the CloudFront domain (e.g., for a test environment), the policy still recommends a custom certificate; however, you may accept the risk if the distribution is not public‑facing.
+
+---
+
+### CKV2_AWS_32 – Ensure CloudFront distribution has a response headers policy attached
+
+**What it checks**  
+A response headers policy injects security‑related HTTP headers (like `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`) into every response. This helps protect end users from common browser‑side attacks.
+
+**Where it fails**  
+None of the distributions reference a `response_headers_policy_id` in their default cache behavior (or any other cache behavior). The `default_cache_behavior` blocks only set `target_origin_id` (and in `fail`, a `cache_policy_id`), but no response headers policy.
+
+**Fix**  
+Attach a managed or custom response headers policy. AWS provides a managed policy `SecurityHeadersPolicy` (ID `67f7725c-6f97-4210-82d7-5512b31e9d03`). Add it to each `default_cache_behavior`:
+
+```hcl
+default_cache_behavior {
+  target_origin_id           = "groupS3"
+  response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"
+  # ... other settings ...
+}
+```
+
+If you need a custom set of headers, define an `aws_cloudfront_response_headers_policy` resource and reference its ID.
+
+---
+
+### CKV2_AWS_47 – Ensure AWS CloudFront attached WAFv2 WebACL is configured with AMR for Log4j Vulnerability
+
+**What it checks**  
+This check goes one step further than CKV_AWS_68. It requires that the WAFv2 Web ACL attached to CloudFront includes the AWS Managed Rules (AMR) rule group that inspects for the Log4j vulnerability (CVE‑2021‑44228). Simply having a WAF is not enough; it must actively block Log4j exploitation attempts.
+
+**Where it fails**  
+All four distributions are flagged because they either have no WAF at all (CKV_AWS_68) or, if a WAF were attached, it would need to contain the Log4j rule group. Since none of them have a `web_acl_id`, the check fails.
+
+**Fix**  
+After attaching a WAFv2 Web ACL (see CKV_AWS_68), ensure that Web ACL includes the managed rule group `AWSManagedRulesLog4jRuleSet`. In Terraform, this is done inside the `aws_wafv2_web_acl` resource:
+
+```hcl
+rule {
+  name     = "log4j"
+  priority = 1
+
+  override_action {
+    none {}
+  }
+
+  statement {
+    managed_rule_group_statement {
+      name        = "AWSManagedRulesLog4jRuleSet"
+      vendor_name = "AWS"
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "log4j"
+    sampled_requests_enabled   = true
+  }
+}
+```
+
+Then reference that Web ACL’s ARN in the CloudFront distribution’s `web_acl_id`.
+
+---
+
+### Summary of required changes per resource
+
+| Resource | Missing / Misconfigured |
+|----------|--------------------------|
+| `pass`   | Enable distribution, add logging, set TLS 1.2, attach WAF, add default root object, use custom SSL cert, attach response headers policy, ensure WAF has Log4j rule |
+| `fail`   | Add logging, set TLS 1.2, attach WAF, configure origin failover, use custom SSL cert, attach response headers policy, ensure WAF has Log4j rule |
+| `fail2`  | Enable distribution, add logging, set TLS 1.2, attach WAF, add default root object, add failover criteria to origin group, use custom SSL cert, attach response headers policy, ensure WAF has Log4j rule |
+| `fail3`  | Enable distribution, add logging, set TLS 1.2, attach WAF, add default root object, add members to origin group, use custom SSL cert, attach response headers policy, ensure WAF has Log4j rule |
+
+All of these controls are foundational for a secure, highly available CloudFront deployment. Implementing them will bring your distributions in line with AWS security best practices.

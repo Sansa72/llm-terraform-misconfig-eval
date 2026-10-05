@@ -1,0 +1,22 @@
+**CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail`**  
+- **What fails:** The `cross_region_copy` block contains an empty `encryption_configuration {}`. This means cross‑region snapshot copies are **not encrypted at all**.  
+- **What passes:** The `encryption_configuration` block must explicitly set `encryption = true`.  
+- **Difference:** Adding `encryption = true` inside the existing `encryption_configuration` block.  
+- **Why it matters:** Without this flag, snapshot data transferred across regions is in plaintext, exposing it to interception or unauthorised access. Enabling encryption ensures data is protected in transit and at rest in the destination region.
+
+**CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail`**  
+- **What fails:** The same empty `encryption_configuration {}` provides no encryption and therefore no customer‑managed key.  
+- **What passes:** The block must contain both `encryption = true` and a `cmk_arn` pointing to a customer‑managed KMS key (e.g., `aws_kms_key.test.arn`).  
+- **Difference:** Adding `encryption = true` and `cmk_arn = <customer-managed-key-arn>`.  
+- **Why it matters:** A customer‑managed key gives you control over key rotation, access policies, and auditing. The default AWS‑managed key (used when `cmk_arn` is omitted) does not provide the same level of control or compliance assurance.
+
+**CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail2`**  
+- **What fails:** The `encryption_configuration` sets `encryption = true` but omits `cmk_arn`. This means the cross‑region copy is encrypted, but with the **default AWS‑managed key**, not a customer‑managed key.  
+- **What passes:** The same block must include a `cmk_arn` referencing a customer‑managed KMS key.  
+- **Difference:** Adding `cmk_arn = <customer-managed-key-arn>` alongside the existing `encryption = true`.  
+- **Why it matters:** Using a customer‑managed key is required for full control over the encryption key’s lifecycle, permissions, and audit trail. The default key does not satisfy this requirement.
+
+**Summary for the engineer**  
+- In `aws_dlm_lifecycle_policy.fail`, the `cross_region_copy` block’s `encryption_configuration` is empty. You must set `encryption = true` and provide a `cmk_arn` of a customer‑managed KMS key.  
+- In `aws_dlm_lifecycle_policy.fail2`, the `encryption_configuration` already has `encryption = true` but lacks a `cmk_arn`. Add a `cmk_arn` property pointing to a customer‑managed KMS key.  
+- The `pass` resource already demonstrates the correct pattern: `encryption_configuration { encryption = true; cmk_arn = aws_kms_key.test.arn }`. Replicate that pattern in both failing resources.

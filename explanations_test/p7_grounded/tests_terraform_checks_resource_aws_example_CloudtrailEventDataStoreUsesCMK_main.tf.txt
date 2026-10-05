@@ -1,0 +1,37 @@
+The scanner flagged two resources for the same misconfiguration: **CKV_AWS_294** – “Ensure CloudTrail Event Data Store uses CMK”.
+
+## What the check requires
+CKV_AWS_294 verifies that the `kms_key_id` argument is set to a valid KMS key ARN. This ensures the event data store is encrypted with a Customer Managed Key (CMK) rather than the default AWS‑owned key.
+
+## Evidence in your file
+
+### Resource `aws_cloudtrail_event_data_store.fail` (lines 6–8)
+```terraform
+resource "aws_cloudtrail_event_data_store" "fail" {
+  name = "example-event-data-store"
+}
+```
+- The `kms_key_id` argument is **completely absent**.
+- Because no key is specified, the data store will use the default AWS‑owned KMS key, which does not satisfy the check.
+
+### Resource `aws_cloudtrail_event_data_store.fail2` (lines 9–12)
+```terraform
+resource "aws_cloudtrail_event_data_store" "fail2" {
+  name = "example-event-data-store"
+  kms_key_id=""
+}
+```
+- The `kms_key_id` argument is present but set to an **empty string** (`""`).
+- An empty string is functionally equivalent to omitting the argument – it does not point to a valid CMK, so the check fails.
+
+### Contrast with the passing resource (lines 2–5)
+```terraform
+resource "aws_cloudtrail_event_data_store" "pass" {
+  name = "pike-data-store"
+  kms_key_id=aws_kms_key.pike.arn
+}
+```
+- Here `kms_key_id` is set to a valid ARN from a KMS key resource. This satisfies the check.
+
+## What to fix
+For both `fail` and `fail2`, provide a valid KMS key ARN in the `kms_key_id` argument. For example, reference an existing `aws_kms_key` resource (like the passing resource does) or a known key ARN. Do not leave the argument out or set it to an empty string.

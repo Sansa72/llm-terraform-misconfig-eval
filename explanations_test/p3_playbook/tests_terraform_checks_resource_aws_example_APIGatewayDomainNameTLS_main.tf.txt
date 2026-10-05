@@ -1,0 +1,28 @@
+**Remediation Briefing: API Gateway Domain Security Policy**
+
+Below are the findings from the scanner, each addressing a specific resource. All three relate to the same check, **CKV_AWS_206**, which requires that an API Gateway domain name uses a modern security policy (TLS 1.2 or higher). The resource `aws_api_gateway_domain_name.pass` already uses `TLS_1_2` and is not flagged, confirming the expected value.
+
+---
+
+### 1. CKV_AWS_206 on `aws_api_gateway_domain_name.fail` (line 5)
+- **What is wrong:** The security policy is set to `TLS_1_0`, which is an outdated and insecure protocol version.
+- **Why it matters:** TLS 1.0 is vulnerable to several known attacks (e.g., BEAST, POODLE) and does not meet modern security standards. Using it exposes API traffic to interception and tampering.
+- **Required change:** Update the `security_policy` argument to `"TLS_1_2"`. This is the only value that satisfies the check and aligns with the already‑passing resource `pass`.
+
+---
+
+### 2. CKV_AWS_206 on `aws_api_gateway_domain_name.pass2` (line 15)
+- **What is wrong:** The security policy is set to `"SecurityPolicy_TLS13_1_3_2025_09"`, which is not a valid AWS API Gateway security policy.
+- **Why it matters:** An invalid policy value will cause the domain name configuration to fail at apply time, and even if it were accepted, it does not represent a recognised modern policy. The domain would be left without a secure, supported TLS configuration.
+- **Required change:** Replace the `security_policy` value with `"TLS_1_2"`. This is the only value that passes the check and is consistent with the working `pass` resource.
+
+---
+
+### 3. CKV_AWS_206 on `aws_api_gateway_domain_name.pass3` (line 20)
+- **What is wrong:** The security policy is set to `"SecurityPolicy_TLS13_1_2_2021_06"`, which is not a valid AWS API Gateway security policy.
+- **Why it matters:** As with the previous resource, an invalid policy will cause deployment errors and leaves the domain without a properly defined, modern TLS configuration.
+- **Required change:** Set the `security_policy` argument to `"TLS_1_2"`. This is the only value that satisfies the check and matches the working `pass` resource.
+
+---
+
+**No interactions between fixes** are present; each resource can be corrected independently by changing its `security_policy` to `"TLS_1_2"`.

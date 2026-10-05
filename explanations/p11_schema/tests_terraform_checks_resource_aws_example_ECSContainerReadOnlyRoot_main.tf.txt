@@ -1,0 +1,45 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_336",
+      "resource": "aws_ecs_task_definition.fail",
+      "evidence": [
+        "{\n      name      = \"second\"\n      image     = \"service-second\"\n      cpu       = 10\n      memory    = 256\n      essential = true\n      portMappings = [\n        {\n          containerPort = 443\n          hostPort      = 443\n        }\n      ]\n    }"
+      ],
+      "risk": "The second container does not have a read-only root filesystem, allowing processes to write to the container's filesystem and potentially enabling malicious modifications or persistence.",
+      "remediation": "Set readonlyRootFilesystem = true in the container definition for the second container to enforce a read-only root filesystem.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_336",
+      "resource": "aws_ecs_task_definition.fail2",
+      "evidence": [
+        "{\n      name      = \"first\"\n      image     = \"service-first\"\n      cpu       = 10\n      memory    = 512\n      essential = true\n      readonlyRootFilesystem = false\n      portMappings = [\n        {\n          containerPort = 80\n          hostPort      = 80\n        }\n      ]\n    }",
+        "{\n      name      = \"second\"\n      image     = \"service-second\"\n      cpu       = 10\n      memory    = 256\n      essential = true\n      privilege = true\n      pidMode = \"host\"\n      readonlyRootFilesystem = false\n      portMappings = [\n        {\n          containerPort = 443\n          hostPort      = 443\n        }\n      ]\n    }"
+      ],
+      "risk": "Both containers have read-only root filesystem set to false, allowing processes to write to the container's filesystem and potentially enabling malicious modifications or persistence.",
+      "remediation": "Set readonlyRootFilesystem = true for all container definitions in the task definition.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_334",
+      "resource": "aws_ecs_task_definition.fail2",
+      "evidence": [
+        "{\n      name      = \"second\"\n      image     = \"service-second\"\n      cpu       = 10\n      memory    = 256\n      essential = true\n      privilege = true\n      pidMode = \"host\"\n      readonlyRootFilesystem = false\n      portMappings = [\n        {\n          containerPort = 443\n          hostPort      = 443\n        }\n      ]\n    }"
+      ],
+      "risk": "The second container is running with elevated privileges, granting it access to host resources and increasing the risk of container breakout and host compromise.",
+      "remediation": "Remove the privilege = true setting from the container definition or explicitly set it to false to run the container without elevated privileges.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_335",
+      "resource": "aws_ecs_task_definition.fail2",
+      "evidence": [
+        "{\n      name      = \"second\"\n      image     = \"service-second\"\n      cpu       = 10\n      memory    = 256\n      essential = true\n      privilege = true\n      pidMode = \"host\"\n      readonlyRootFilesystem = false\n      portMappings = [\n        {\n          containerPort = 443\n          hostPort      = 443\n        }\n      ]\n    }"
+      ],
+      "risk": "The container definition includes pidMode = \"host\", which shares the host's process namespace with the container, allowing the container to see and potentially interact with host processes and increasing the risk of information disclosure and privilege escalation.",
+      "remediation": "Remove the pidMode = \"host\" setting from the container definition to isolate the container's process namespace from the host.",
+      "confidence": "high"
+    }
+  ]
+}

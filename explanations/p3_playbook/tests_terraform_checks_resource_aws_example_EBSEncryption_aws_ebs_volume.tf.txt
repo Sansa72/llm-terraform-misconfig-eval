@@ -1,0 +1,45 @@
+**Remediation Briefing: EBS Volume Encryption Findings**
+
+Below is a finding-by-finding breakdown of the issues, why they matter, and the changes required. All resources are in the same Terraform file, so a consistent approach to the KMS key will simplify the fixes.
+
+---
+
+### 1. CKV_AWS_189 on `aws_ebs_volume.enabled` (lines 3–8)
+**What’s wrong:** The volume is encrypted, but it uses the default AWS-managed key instead of a customer-managed key (CMK).  
+**Why it matters:** Customer-managed keys give you control over key rotation, access policies, and auditing. Relying on the AWS-managed key limits your ability to meet compliance requirements that mandate customer-controlled encryption.  
+**Change needed:** Add a `kms_key_id` argument referencing the ARN of a KMS CMK. The key can be provided via a variable, a data source lookup, or a direct ARN string. The `encrypted` argument can remain `true`.
+
+---
+
+### 2. CKV_AWS_189 on `aws_ebs_volume.default` (lines 12–15)
+**What’s wrong:** The volume is not encrypted at all, and even if it were, it would not use a customer-managed key.  
+**Why it matters:** Unencrypted volumes expose data at rest to unauthorized access if the underlying physical storage is compromised. Additionally, using a CMK is required for governance over key lifecycle and access.  
+**Change needed:** Set `encrypted = true` and provide a `kms_key_id` pointing to a CMK. The same CMK used for the `enabled` volume can be referenced here for consistency.
+
+---
+
+### 3. CKV_AWS_3 on `aws_ebs_volume.default` (lines 12–15)
+**What’s wrong:** The volume has no encryption configured.  
+**Why it matters:** This is a direct violation of the requirement that all data stored in EBS be encrypted. Unencrypted volumes are a common source of data exposure.  
+**Change needed:** Set `encrypted = true`. This check will pass once encryption is enabled; the same change that satisfies CKV_AWS_189 (adding `encrypted = true` and a CMK) will also resolve this finding.
+
+---
+
+### 4. CKV_AWS_189 on `aws_ebs_volume.disabled` (lines 17–22)
+**What’s wrong:** The volume explicitly sets `encrypted = false`, so it is unencrypted and does not use a CMK.  
+**Why it matters:** Same as above—unencrypted volumes are a direct data protection risk, and lack of a customer-managed key reduces control.  
+**Change needed:** Change `encrypted` to `true` and add a `kms_key_id` argument referencing a CMK. Use the same key identifier as for the other volumes to simplify key management.
+
+---
+
+### 5. CKV_AWS_3 on `aws_ebs_volume.disabled` (lines 17–22)
+**What’s wrong:** The volume is explicitly set to `encrypted = false`.  
+**Why it matters:** This check requires all EBS volumes to be encrypted. The explicit `false` is a clear misconfiguration.  
+**Change needed:** Set `encrypted = true`. This will be resolved by the same change that addresses the CKV_AWS_189 finding on this resource.
+
+---
+
+### Interactions and Consistency
+- The `default` and `disabled` volumes both require enabling encryption **and** specifying a CMK. A single change (adding `encrypted = true` and a `kms_key_id`) will clear both findings for each resource.  
+- The `enabled` volume only lacks the CMK reference; adding `kms_key_id` there will resolve its finding without other modifications.  
+- To avoid duplication and simplify key rotation, define the KMS key ARN once (e.g., as a local value or variable) and reference it in all three resources.

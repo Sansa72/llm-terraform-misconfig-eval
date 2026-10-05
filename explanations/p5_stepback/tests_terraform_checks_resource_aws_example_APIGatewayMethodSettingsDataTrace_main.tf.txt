@@ -1,0 +1,59 @@
+The scanner identified three distinct security issues across the three `aws_api_gateway_method_settings` resources in the file. Here is what needs to change and why.
+
+---
+
+### 1. CKV_AWS_276 – Data Trace must not be enabled
+
+**Principle**  
+Enabling data trace causes full request and response payloads to be logged to CloudWatch. This can expose sensitive data (e.g., PII, credentials, tokens) in logs, violating data protection requirements and increasing the risk of leakage.
+
+**Violation in the file**  
+The resource `aws_api_gateway_method_settings.fail` (lines 1‑9) explicitly sets `data_trace_enabled = true`. This directly enables payload logging for the `path1/GET` method on the stage.
+
+**Required fix**  
+Set `data_trace_enabled = false` or remove the setting entirely (the default is `false`). The resource `pass_explicit` already does this correctly; `pass_implicit` omits the setting and therefore also defaults to `false`. Only the `fail` resource needs correction.
+
+---
+
+### 2. CKV_AWS_225 – API Gateway method caching must be enabled
+
+**Principle**  
+Enabling response caching reduces the number of calls reaching the backend, which can help mitigate certain denial‑of‑service patterns and improve availability. The check requires that caching be explicitly turned on for the method.
+
+**Violation in the file**  
+None of the three resources enable caching:
+
+- `aws_api_gateway_method_settings.fail` (lines 1‑9) – `settings` block present but no `caching_enabled` attribute.
+- `aws_api_gateway_method_settings.pass_explicit` (lines 11‑19) – `settings` block present but no `caching_enabled` attribute.
+- `aws_api_gateway_method_settings.pass_implicit` (lines 21‑25) – no `settings` block at all, so caching is implicitly disabled.
+
+**Required fix**  
+In each resource’s `settings` block, add `caching_enabled = true`. For `pass_implicit`, you must first add a `settings` block.
+
+---
+
+### 3. CKV_AWS_308 – API Gateway cache encryption must be enabled
+
+**Principle**  
+When method response caching is enabled, the cached data can contain sensitive information. Encrypting the cache at rest protects that data from unauthorised access if the underlying storage is compromised.
+
+**Violation in the file**  
+Even after enabling caching, none of the resources specify encryption for the cache:
+
+- `fail` and `pass_explicit` have a `settings` block but no `cache_data_encrypted` attribute.
+- `pass_implicit` has no `settings` block at all.
+
+**Required fix**  
+In the same `settings` block where you enable caching, add `cache_data_encrypted = true`. This must be done for all three resources.
+
+---
+
+### Summary of required changes
+
+| Resource | Add / Change |
+|----------|--------------|
+| `aws_api_gateway_method_settings.fail` | 1. Change `data_trace_enabled` to `false` (or remove it).<br>2. Add `caching_enabled = true`.<br>3. Add `cache_data_encrypted = true`. |
+| `aws_api_gateway_method_settings.pass_explicit` | 1. Add `caching_enabled = true`.<br>2. Add `cache_data_encrypted = true`. |
+| `aws_api_gateway_method_settings.pass_implicit` | 1. Add a `settings` block containing `caching_enabled = true` and `cache_data_encrypted = true`. |
+
+After applying these changes, all three resources will satisfy the checks.

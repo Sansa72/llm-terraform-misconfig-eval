@@ -1,0 +1,77 @@
+The findings apply to both `aws_api_gateway_stage` resources because they are minimally configured.  
+- `pass` enables only `cache_cluster_enabled`; it lacks tracing, access logging, client certificate authentication, appropriate method logging level, and WAF association.  
+- `fail` only sets `name`; it lacks all of the above plus API Gateway caching.
+
+## 1. What the misconfiguration is
+
+The stage definitions do not enable or attach several security and observability controls:
+
+- **X-Ray tracing** is not enabled (`xray_tracing_enabled` is absent).
+- **Access logging** is not configured (`access_log_settings` is absent).
+- **Client certificate authentication** is not configured (`client_certificate_id` is absent).
+- **Method-level logging level** is not set appropriately (`method_settings` logging level is absent or insufficient).
+- **WAF protection** is not associated with the public API stage.
+- Additionally, `fail` does not enable API Gateway caching (`cache_cluster_enabled` is absent).
+
+## 2. Why it matters
+
+- **No X-Ray tracing** means API requests are not traced through API Gateway and downstream services. This reduces visibility during incident response and makes performance or failure diagnosis harder.
+- **No access logging** means there is no request/response audit trail for the API. You lose the ability to detect abuse, investigate security events, or meet compliance requirements.
+- **No client certificate** means the API Gateway stage cannot present a client certificate to backend integrations. If the backend expects or requires that certificate, this control is missing, weakening backend authentication.
+- **No appropriate logging level** reduces the detail of execution logs, limiting operational and security monitoring.
+- **No WAF association** leaves the public API endpoint exposed to common web attacks such as SQL injection, cross-site scripting, and bot traffic, with no filtering layer.
+- **No caching on `fail`** is primarily a resilience/performance issue: the backend may receive avoidable load, increasing latency and the risk of overload.
+
+## 3. How to fix it safely
+
+Add the missing settings to each `aws_api_gateway_stage` resource.
+
+Example for `pass` and `fail`:
+
+```hcl
+resource "aws_api_gateway_stage" "example" {
+  name                  = "example"
+  cache_cluster_enabled = true
+  xray_tracing_enabled  = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
+  }
+
+  client_certificate_id = aws_api_gateway_client_certificate.example.id
+
+  method_settings {
+    metrics_enabled = true
+    logging_level   = "INFO"
+    resource_path   = "/*"
+    http_method     = "*"
+  }
+}
+```
+
+Then associate a WAF WebACL with the stage:
+
+```hcl
+resource "aws_wafv2_web_acl_association" "api" {
+  resource_arn = aws_api_gateway_stage.example.arn
+  web_acl_arn  = aws_wafv2_web_acl.example.arn
+}
+```
+
+Safe rollout notes:
+
+- Test changes in a non-production stage first.
+- Create the CloudWatch log group and ensure API Gateway has IAM permissions to write logs.
+- Generate the client certificate and coordinate with the backend so it trusts/requires the certificate before enforcing it.
+- Deploy the WAF association in count/observe mode first if possible, then tune rules to avoid blocking legitimate traffic.
+- For `fail`, enabling `cache_cluster_enabled = true` is safe but may incur additional cost; select an appropriate `cache_cluster_size` if needed.

@@ -1,0 +1,68 @@
+**Explanation of flagged misconfigurations**
+
+The Terraform file defines two `aws_api_gateway_stage` resources: `pass` (lines 1‑4) and `fail` (lines 6‑8). The scanner raised the following findings against them. Each finding is explained with the risk it addresses, the specific configuration gap in the file, and the change needed.
+
+---
+
+### Resource `aws_api_gateway_stage.pass` (lines 1‑4)
+
+**CKV_AWS_73 – X‑Ray tracing not enabled**  
+*Risk:* Without X‑Ray tracing, you lose end‑to‑end visibility into request paths, latencies, and failures, making debugging and performance analysis harder.  
+*What’s missing:* The resource block does not set `xray_tracing_enabled = true`.  
+*Remediation:* Add `xray_tracing_enabled = true` inside the `aws_api_gateway_stage.pass` block (lines 1‑4).
+
+**CKV_AWS_76 – Access logging not enabled**  
+*Risk:* No access logs means you have no record of who called the API, when, or what was requested, which hinders auditing and security investigations.  
+*What’s missing:* The resource block does not contain an `access_log_settings` block.  
+*Remediation:* Add an `access_log_settings` block (with `destination_arn` and `format`) to the `pass` resource.
+
+**CKV2_AWS_51 – Client certificate authentication not used**  
+*Risk:* Without client certificate authentication, the API endpoint may accept requests from any client that can reach it, increasing the risk of unauthorized access.  
+*What’s missing:* The resource block does not include a `client_certificate_id` attribute.  
+*Remediation:* Set `client_certificate_id` to the ID of a valid client certificate in the `pass` resource.
+
+**CKV2_AWS_4 – Logging level not defined**  
+*Risk:* If no logging level is set, execution logging may be absent or insufficient, reducing your ability to monitor and troubleshoot API behaviour.  
+*What’s missing:* The resource block does not include a `method_settings` block with a `logging_level`.  
+*Remediation:* Add a `method_settings` block that specifies a `logging_level` (e.g., `ERROR`, `INFO`) to the `pass` resource.
+
+**CKV2_AWS_29 – No WAF protection**  
+*Risk:* A public API without a Web Application Firewall is exposed to common web attacks (SQL injection, cross‑site scripting, etc.).  
+*What’s missing:* The file contains no WAF Web ACL association for this stage. The stage resource itself has no attribute to directly attach a WAF; an `aws_wafv2_web_acl_association` (or equivalent) resource is required.  
+*Remediation:* Create a WAF Web ACL and an association resource that links it to this API Gateway stage. The current file lacks both.  
+*Uncertainty:* The check assumes the API is public. If the API is private, this finding may be a false positive.
+
+---
+
+### Resource `aws_api_gateway_stage.fail` (lines 6‑8)
+
+**CKV_AWS_120 – API caching not enabled**  
+*Risk:* Without caching, every request reaches the backend, increasing latency and backend load.  
+*What’s missing:* The resource block does not set `cache_cluster_enabled = true`.  
+*Remediation:* Add `cache_cluster_enabled = true` to the `fail` resource.
+
+**CKV_AWS_73 – X‑Ray tracing not enabled**  
+*Risk:* Same as above – no request tracing.  
+*What’s missing:* `xray_tracing_enabled` is not set to `true`.  
+*Remediation:* Add `xray_tracing_enabled = true` to the `fail` resource.
+
+**CKV_AWS_76 – Access logging not enabled**  
+*Risk:* Same as above – no audit trail.  
+*What’s missing:* No `access_log_settings` block.  
+*Remediation:* Add an `access_log_settings` block to the `fail` resource.
+
+**CKV2_AWS_51 – Client certificate authentication not used**  
+*Risk:* Same as above – potential unauthorized access.  
+*What’s missing:* No `client_certificate_id`.  
+*Remediation:* Set `client_certificate_id` in the `fail` resource.
+
+**CKV2_AWS_4 – Logging level not defined**  
+*Risk:* Same as above – insufficient execution logging.  
+*What’s missing:* No `method_settings` block with a `logging_level`.  
+*Remediation:* Add a `method_settings` block with a `logging_level` to the `fail` resource.
+
+**CKV2_AWS_29 – No WAF protection**  
+*Risk:* Same as above – exposure to web attacks.  
+*What’s missing:* No WAF association resource exists in the file for this stage.  
+*Remediation:* Create a WAF Web ACL and an association resource for this stage.  
+*Uncertainty:* The check assumes the API is public; if it is private, the finding may not apply.

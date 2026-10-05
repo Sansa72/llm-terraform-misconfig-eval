@@ -1,0 +1,13 @@
+The scanner flagged two related security misconfigurations in the `aws_api_gateway_method_settings.fail` resource.
+
+**Finding 1: CKV_AWS_225 – Ensure API Gateway method setting caching is enabled**
+- **Resource:** `aws_api_gateway_method_settings.fail` (lines 1–13)
+- **Trigger:** Line 8: `caching_enabled = false`
+- **Explanation:** The check requires that caching be enabled for the API Gateway method. The current configuration explicitly disables it.
+
+**Finding 2: CKV_AWS_308 – Ensure API Gateway method setting caching is set to encrypted**
+- **Resource:** `aws_api_gateway_method_settings.fail` (lines 1–13)
+- **Trigger:** Line 10: `cache_data_encrypted = false`
+- **Explanation:** Even if caching were enabled, the check requires that cached data be encrypted. The current configuration explicitly disables encryption.
+
+Both findings apply to the same `settings` block within the `fail` resource. The `pass` resource in the same file (lines 15–27) shows the expected secure configuration: `caching_enabled = true` and `cache_data_encrypted = true`. To fix the issues, update the `fail` resource’s settings to match those values.

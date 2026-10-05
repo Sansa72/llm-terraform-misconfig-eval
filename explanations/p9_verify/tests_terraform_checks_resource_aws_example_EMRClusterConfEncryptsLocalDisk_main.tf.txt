@@ -1,0 +1,17 @@
+The scanner identified multiple encryption misconfigurations in the three EMR security configuration resources defined in the Terraform file. The findings are:
+
+- **CKV_AWS_351 (In-transit encryption)**: All three resources (`pass`, `fail`, `fail2`) have `EnableInTransitEncryption` set to `false`. EMR security configurations must enable in-transit encryption to protect data moving between cluster nodes.
+
+- **CKV_AWS_171 (SSE-KMS for S3)**: The `pass` and `fail` resources use `SSE-S3` for S3 encryption, which does not meet the requirement for customer-managed KMS keys. The `fail2` resource has no at-rest encryption at all. All must use `SSE-KMS` with a KMS key ARN.
+
+- **CKV_AWS_350 (EBS encryption)**: The `fail` and `fail2` resources lack a `LocalDiskEncryptionConfiguration` block, so EBS volumes are not encrypted. The `pass` resource already includes this block with `EnableEbsEncryption` set to `true`, so it passes this check.
+
+- **CKV_AWS_349 (Local disk encryption)**: The `fail` and `fail2` resources do not define local disk encryption. The `pass` resource already includes a `LocalDiskEncryptionConfiguration` with `EncryptionKeyProviderType` set to `AwsKMS` and a KMS key ARN, so it passes this check.
+
+To fix all findings, update each security configuration to:
+- Set `EnableInTransitEncryption` to `true`.
+- Set `EnableAtRestEncryption` to `true`.
+- Change the S3 encryption mode to `SSE-KMS` and provide a valid KMS key ARN.
+- Add a `LocalDiskEncryptionConfiguration` block with `EnableEbsEncryption: true`, `EncryptionKeyProviderType: AwsKMS`, and a KMS key ARN.
+
+The `pass` resource already satisfies the local disk and EBS encryption requirements, so only the in-transit and S3 SSE-KMS settings need to be corrected there.

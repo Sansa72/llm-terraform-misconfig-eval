@@ -1,0 +1,19 @@
+## Remediation Briefing
+
+### Finding: CKV_AWS_186 – S3 Bucket Object Encryption
+
+- **Check ID:** CKV_AWS_186  
+- **Resource:** `aws_s3_bucket_object.this_file_2`  
+- **Triggering lines:** 21–24  
+  ```terraform
+  resource "aws_s3_bucket_object" "this_file_2" {
+    bucket   = "your_bucket_name"
+    key = "some_key"
+  }
+  ```
+
+**What is wrong and why it matters**  
+The resource definition does not include any encryption configuration. The check requires that the S3 object be encrypted using a customer-managed KMS key (SSE-KMS with a CMK). Without this setting, the object may be stored without encryption or with a key that does not meet the policy requirement, potentially exposing data at rest.
+
+**Remediation**  
+Add the `server_side_encryption` argument set to `"aws:kms"` and provide a `kms_key_id` that references a customer-managed KMS key ARN. This will instruct S3 to encrypt the object using the specified CMK, satisfying the check.

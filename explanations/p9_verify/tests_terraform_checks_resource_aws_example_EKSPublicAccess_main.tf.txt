@@ -1,0 +1,30 @@
+The Terraform configuration defines three EKS clusters: `disabled`, `default`, and `enabled`. The scanner flagged all three for missing secrets encryption and missing control plane logging. Additionally, the `default` and `enabled` clusters are flagged for having the public endpoint enabled and for allowing unrestricted access (0.0.0.0/0) to that endpoint. The `disabled` cluster is not flagged for public endpoint issues because it explicitly sets `endpoint_public_access = false`.
+
+**Secrets Encryption (CKV_AWS_58)**  
+None of the clusters include an `encryption_config` block with a KMS key. This means Kubernetes secrets are stored in plaintext in etcd, which is a security risk.  
+*Fix:* Add an `encryption_config` block to each `aws_eks_cluster` resource, referencing a KMS key ARN. Example:
+
+```hcl
+encryption_config {
+  resources = ["secrets"]
+  provider {
+    key_arn = aws_kms_key.eks.arn
+  }
+}
+```
+
+**Control Plane Logging (CKV_AWS_37)**  
+None of the clusters have an `enabled_cluster_log_types` block. All log types (api, audit, authenticator, controllerManager, scheduler) should be enabled to capture control plane activity.  
+*Fix:* Add an `enabled_cluster_log_types` block to each cluster resource, listing all required log types:
+
+```hcl
+enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+```
+
+**Public Endpoint Disabled (CKV_AWS_39)**  
+The `default` and `enabled` clusters have the public endpoint enabled (explicitly or by default). The `disabled` cluster correctly sets `endpoint_public_access = false` and is not flagged.  
+*Fix:* For `default` and `enabled`, set `endpoint_public_access = false` inside the `vpc_config` block if public access is not required. If public access is needed, ensure it is restricted via `public_access_cidrs`.
+
+**Public Endpoint CIDR Restriction (CKV_AWS_38)**  
+The `default` and `enabled` clusters do not specify `public_access_cidrs`, so they default to `["0.0.0.0/0"]`, allowing access from any IP. The `disabled` cluster is not flagged because its public endpoint is disabled.  
+*Fix:* If the public endpoint must remain enabled, restrict access by setting `public_access_cidrs` to a list of trusted CIDR blocks, e.g., `["10.0.0.0/16"]`. Otherwise, disable the public endpoint entirely.

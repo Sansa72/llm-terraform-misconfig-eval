@@ -1,0 +1,43 @@
+**Remediation Briefing**
+
+Below are the four failing checks, addressed in the order they appear in the scanner output. Each section identifies the check, the resource, the exact lines that trigger the failure, a concise explanation of the problem, and the change required to resolve it.
+
+---
+
+### 1. CKV_AWS_256 – Ensure DLM cross region schedules are encrypted using a Customer Managed Key
+
+- **Resource:** `aws_dlm_lifecycle_policy.fail` (lines 49–105)
+- **Triggering lines:** 81–88 (the second `cross_region_copy_rule` block)
+- **What is wrong:** The second cross‑region copy rule has `encrypted = false`. Because it is not encrypted at all, it also fails to use a Customer Managed Key (CMK).  
+- **Why it matters:** The check requires that every cross‑region copy schedule be encrypted with a CMK. An unencrypted rule means snapshots copied to the target region will not be protected by encryption, and the CMK requirement is not met.
+- **Remediation:** In the second `cross_region_copy_rule` block (lines 81–88), change `encrypted` from `false` to `true`. The existing `cmk_arn` attribute already references a KMS key, so after enabling encryption the rule will use that CMK.
+
+---
+
+### 2. CKV_AWS_255 – Ensure DLM cross region schedules are encrypted
+
+- **Resource:** `aws_dlm_lifecycle_policy.fail` (lines 49–105)
+- **Triggering lines:** 81–88 (the second `cross_region_copy_rule` block)
+- **What is wrong:** The second cross‑region copy rule explicitly sets `encrypted = false`, meaning snapshots copied to the target region will not be encrypted at rest.  
+- **Why it matters:** The check requires that all cross‑region copy rules enforce encryption. An unencrypted rule leaves snapshot data unprotected.
+- **Remediation:** Set `encrypted = true` in the second `cross_region_copy_rule` block (line 83). The `cmk_arn` is already provided, so the rule will then use the specified KMS key for encryption.
+
+---
+
+### 3. CKV_AWS_7 – Ensure rotation for customer created CMKs is enabled
+
+- **Resource:** `aws_kms_key.dlm_cross_region_copy_cmk` (line 111)
+- **Triggering line:** 111 (the entire resource block, which is empty)
+- **What is wrong:** The KMS key is defined without `enable_key_rotation = true`. Automatic key rotation is therefore disabled.
+- **Why it matters:** Without rotation, the same key material is used indefinitely, increasing the window of exposure if the key is ever compromised. The check requires that customer‑managed keys have rotation enabled.
+- **Remediation:** Add `enable_key_rotation = true` to the `aws_kms_key.dlm_cross_region_copy_cmk` resource block.
+
+---
+
+### 4. CKV2_AWS_64 – Ensure KMS key Policy is defined
+
+- **Resource:** `aws_kms_key.dlm_cross_region_copy_cmk` (line 111)
+- **Triggering line:** 111 (the resource block has no `policy` argument)
+- **What is wrong:** The KMS key is created without an explicit key policy.  
+- **Why it matters:** A missing key policy means the key has no defined access controls, which can lead to either an unusable key or overly permissive default access. The check requires that a key policy be explicitly provided.
+- **Remediation:** Add a `policy` argument to the `aws_kms_key` resource containing a valid JSON policy document. The policy must grant the necessary permissions (e.g., allowing the DLM service to use the key for encryption and decryption) and should follow the principle of least privilege.

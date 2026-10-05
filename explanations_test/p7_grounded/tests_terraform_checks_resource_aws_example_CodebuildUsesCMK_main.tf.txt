@@ -1,0 +1,52 @@
+The scanner flagged three misconfigurations across two resources in your Terraform file. Here’s what the findings mean, based solely on the provided configuration.
+
+---
+
+### 1. Missing logging configuration – CKV_AWS_314
+
+**Finding:**  
+`CKV_AWS_314` on `aws_codebuild_project.enabled` (lines 3‑20), `aws_codebuild_project.default` (lines 24‑39), and `aws_codebuild_project.no_artifacts` (lines 43‑58).  
+**Check description:** *Ensure CodeBuild project environments have a logging configuration.*
+
+**Evidence in the file:**  
+None of the three resources include a `logs` block inside the `environment` block.  
+- `enabled`: environment block at lines 12‑16 – no `logs` sub‑block.  
+- `default`: environment block at lines 31‑35 – no `logs` sub‑block.  
+- `no_artifacts`: environment block at lines 50‑54 – no `logs` sub‑block.
+
+The check requires that each CodeBuild project explicitly define a logging configuration (typically to send build logs to CloudWatch Logs or S3). Because the `logs` argument is absent, the scanner reports a violation for all three resources.
+
+---
+
+### 2. Missing encryption with a customer-managed key – CKV_AWS_147
+
+**Finding:**  
+`CKV_AWS_147` on `aws_codebuild_project.default` (lines 24‑39).  
+**Check description:** *Ensure that CodeBuild projects are encrypted using a CMK.*
+
+**Evidence in the file:**  
+- The `enabled` resource (line 8) sets `encryption_key = "aws_kms_key.scanner_key.id"`.  
+- The `default` resource (lines 24‑39) does **not** contain an `encryption_key` argument.  
+- The `no_artifacts` resource (lines 43‑58) also lacks `encryption_key`, but the scanner did not raise CKV_AWS_147 against it (only CKV_AWS_314). The finding is limited to the `default` resource.
+
+The check requires that the CodeBuild project be encrypted with a customer-managed KMS key (CMK) rather than relying on the default AWS-managed key. The `default` resource is missing the `encryption_key` attribute, so the scanner flags it.
+
+---
+
+### What to fix
+
+- **For CKV_AWS_314 (all three resources):** Add a `logs` block inside each `environment` block. For example:
+  ```hcl
+  environment {
+    # ... existing arguments ...
+    logs {
+      cloudwatch_logs {
+        group_name  = "your-log-group"
+        stream_name = "your-log-stream"
+      }
+    }
+  }
+  ```
+- **For CKV_AWS_147 (`default` resource only):** Add an `encryption_key` argument pointing to a valid KMS key ARN or ID, similar to the `enabled` resource (line 8).
+
+The file’s comments (`# pass`, `# fail`, `# unknown`) are not part of the scanner output and do not affect the findings. The scanner evaluated the actual resource blocks and reported the missing configurations as described.

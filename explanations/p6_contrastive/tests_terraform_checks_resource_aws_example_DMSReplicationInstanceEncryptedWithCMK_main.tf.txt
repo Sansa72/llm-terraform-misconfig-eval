@@ -1,0 +1,50 @@
+Below I contrast the current configuration with a compliant one for each failing check, then provide a concise fix summary.
+
+---
+
+### CKV_AWS_89 – DMS replication instance should not be publicly accessible
+
+**Current configuration (both `pass` and `fail` resources):**  
+`publicly_accessible = true` is explicitly set. This assigns a public IP address to the replication instance, making it reachable from the internet.
+
+**Compliant configuration:**  
+`publicly_accessible = false` (or omit the attribute, as the default is `false`). The instance then only has a private IP inside the VPC and is not exposed to the public internet.
+
+**Difference:** The value of the `publicly_accessible` attribute changes from `true` to `false`. This single boolean controls whether AWS attaches an internet-routable IP. Removing public accessibility shrinks the attack surface to only network paths you explicitly allow (e.g., VPN, Direct Connect, VPC peering), which is critical for a database replication service that often moves sensitive data.
+
+---
+
+### CKV_AWS_222 – DMS replication instance should have automatic minor version upgrades enabled
+
+**Current configuration (both `pass` and `fail`):**  
+The attribute `auto_minor_version_upgrade` is not set, so it defaults to `false`. The instance will not receive minor engine upgrades automatically.
+
+**Compliant configuration:**  
+Set `auto_minor_version_upgrade = true`. AWS will then automatically apply minor version upgrades during the maintenance window, keeping the instance patched against known vulnerabilities.
+
+**Difference:** Adding `auto_minor_version_upgrade = true` (or changing the default). Without it, you remain on a fixed minor version indefinitely unless you manually intervene. Automatic minor upgrades ensure security fixes are applied promptly without operational overhead.
+
+---
+
+### CKV_AWS_212 – EBS volume must be encrypted with a customer-managed KMS key (CMK)
+
+**Current configuration (`fail` resource only):**  
+The `kms_key_arn` attribute is commented out (`# kms_key_arn = ""`), so no KMS key is specified. The underlying EBS volume either uses the default AWS-managed key (which does not satisfy the check) or, if default encryption is not enabled, may be unencrypted.
+
+**Compliant configuration:**  
+Set `kms_key_arn` to the ARN of a customer-managed KMS key (e.g., `kms_key_arn = aws_kms_key.example.arn`). This ensures the replication instance’s storage is encrypted with a key you control, allowing you to manage access, rotation, and auditing.
+
+**Difference:** Providing a valid `kms_key_arn` that points to a CMK. A customer-managed key gives you full control over encryption permissions and key lifecycle, which is required for many compliance frameworks. The default AWS-managed key does not offer the same granularity or auditability.
+
+---
+
+### What the engineer needs to change
+
+- **For both `aws_dms_replication_instance.pass` and `aws_dms_replication_instance.fail`:**  
+  - Set `publicly_accessible = false` to remove the public endpoint.  
+  - Add `auto_minor_version_upgrade = true` to enable automatic minor version upgrades.
+
+- **For `aws_dms_replication_instance.fail` only:**  
+  - Uncomment and set `kms_key_arn` to a valid customer-managed KMS key ARN (the same pattern used in the `pass` resource). This ensures EBS volumes are encrypted with a CMK.
+
+These three property-level changes will resolve all five findings while keeping the rest of the configuration identical.

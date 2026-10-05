@@ -1,0 +1,17 @@
+Based on the provided scanner output and Terraform file, here is an explanation of each finding.
+
+### Finding 1: CKV_AWS_196 on `aws_elasticache_security_group.exists` (lines 1-4)
+- **Check**: “Ensure no aws_elasticache_security_group resources exist”
+- **Problem**: The resource type `aws_elasticache_security_group` itself is flagged. This resource is used for EC2-Classic ElastiCache security groups, which are deprecated in favor of VPC security groups. The scanner has identified that this resource type exists in your configuration on lines 1–4. The check’s requirement is that no such resource should be present at all. The file contains exactly that resource, so the finding is triggered.
+
+### Finding 2: CKV_AWS_23 on `aws_elasticache_security_group.exists` (lines 1-4)
+- **Check**: “Ensure every security groups rule has a description”
+- **Problem**: The resource block (lines 1–4) does not define any `description` argument, nor does it contain any inline rules. The check expects that every security group rule carries a description. Since the resource has no rules defined, the scanner may be flagging the absence of a description on the group itself, or it may be flagging that no rules are present to carry a description. The file shows only `name` and `security_group_names`; no `description` attribute is set.
+
+### Finding 3: CKV_AWS_23 on `aws_security_group.bar` (lines 6-8)
+- **Check**: “Ensure every security groups rule has a description”
+- **Problem**: The security group `bar` is defined with only a `name` argument. No `description` is provided, and no ingress/egress rules are defined. The check requires that every security group rule have a description. Because no rules are present, the group itself may be flagged for lacking a description, or the scanner may interpret the absence of rules as a violation. The file shows no `description` and no rules on lines 6–8.
+
+### Finding 4: CKV2_AWS_5 on `aws_security_group.bar` (lines 6-8)
+- **Check**: “Ensure that Security Groups are attached to another resource”
+- **Problem**: The security group `bar` is defined but not directly attached to any resource (such as an EC2 instance, ENI, ELB, RDS instance, etc.) within the provided file. The only reference to it is from the `aws_elasticache_security_group.exists` resource, which uses its name. The scanner likely does not consider this a valid “attachment” for the purposes of this check. Therefore, the security group appears unused, triggering the finding.

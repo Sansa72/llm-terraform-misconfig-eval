@@ -1,0 +1,68 @@
+**Remediation Briefing**
+
+Below are the failing checks, in the order reported by the scanner, with the evidence from the provided Terraform file and the required change.
+
+---
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.pass` (lines 3–21)
+
+**What triggers it:**  
+The resource block `aws_codebuild_project.pass` (lines 3–21) contains an `environment` block (lines 12–17) but no `logs_config` block anywhere in the resource. The scanner flags the entire resource because logging configuration is absent.
+
+**What is wrong and why it matters:**  
+The CodeBuild project environment has no logging configuration. Without a defined log destination, build output logs are not captured, which removes a key audit trail and makes it harder to monitor build activity or investigate issues.
+
+**Change needed:**  
+Add a `logs_config` block to the resource (at the top level, not inside `environment`). Configure at least one log destination—for example, a `cloudwatch_logs` block with `status = "ENABLED"`—so that build logs are sent to CloudWatch Logs.
+
+---
+
+### 2. CKV_AWS_314 on `aws_codebuild_project.pass2` (lines 23–40)
+
+**What triggers it:**  
+The resource `aws_codebuild_project.pass2` (lines 23–40) also lacks a `logs_config` block. The `environment` block (lines 32–37) does not include any logging settings, and no separate `logs_config` block exists.
+
+**What is wrong and why it matters:**  
+Same as above: no logging configuration means build logs are not captured, reducing visibility and auditability of the build process.
+
+**Change needed:**  
+Add a `logs_config` block to this resource, enabling at least one log destination (e.g., CloudWatch Logs) with `status = "ENABLED"`.
+
+---
+
+### 3. CKV_AWS_314 on `aws_codebuild_project.fail` (lines 44–60)
+
+**What triggers it:**  
+The resource `aws_codebuild_project.fail` (lines 44–60) has no `logs_config` block. The `environment` block (lines 52–57) contains no logging configuration.
+
+**What is wrong and why it matters:**  
+The project environment is not configured to send logs anywhere, so build output is not recorded. This eliminates a source of operational and security insight.
+
+**Change needed:**  
+Add a `logs_config` block to the resource, specifying a log destination (e.g., CloudWatch Logs) with `status = "ENABLED"`.
+
+---
+
+### 4. CKV_AWS_316 on `aws_codebuild_project.fail` (lines 44–60)
+
+**What triggers it:**  
+Line 56 inside the `environment` block: `privileged_mode = true`.
+
+**What is wrong and why it matters:**  
+Privileged mode is explicitly enabled. This gives the build container elevated access to the underlying host (e.g., access to the Docker daemon), which increases the risk of container escape or unintended privileged operations if the build is compromised.
+
+**Change needed:**  
+Set `privileged_mode` to `false` (or remove the line entirely, as the default is `false`). This ensures the build runs without unnecessary host-level privileges.
+
+---
+
+### 5. CKV_AWS_147 on `aws_codebuild_project.fail` (lines 44–60)
+
+**What triggers it:**  
+The resource block (lines 44–60) does not contain an `encryption_key` attribute. The scanner detects the absence of a customer-managed key.
+
+**What is wrong and why it matters:**  
+Without an `encryption_key`, the project uses the default AWS-managed KMS key for artifact encryption. This limits your control over key rotation, access policies, and auditing compared to a customer-managed CMK.
+
+**Change needed:**  
+Add an `encryption_key` attribute to the resource, referencing the ARN of a customer-managed KMS key (e.g., `aws_kms_key.scanner_key.arn` or another valid CMK ARN). This ensures artifacts are encrypted under a key you control.

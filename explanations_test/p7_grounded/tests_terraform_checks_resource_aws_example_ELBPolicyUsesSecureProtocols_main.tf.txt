@@ -1,0 +1,94 @@
+The scanner check **CKV_AWS_213** (“Ensure ELB Policy uses only secure protocols”) has flagged six `aws_load_balancer_policy` resources in your Terraform file. Each flagged resource contains a policy attribute that either enables an insecure protocol or references an outdated security policy that allows weak protocols.
+
+Here is the evidence for each flagged resource, with the exact lines that trigger the finding:
+
+---
+
+### 1. `aws_load_balancer_policy.fail` (lines 1–15)
+- **Triggering lines:** 10–13  
+  ```terraform
+  policy_attribute {
+    name  = "Protocol-TLSv1"
+    value = "true"
+  }
+  ```
+- **Why it fails:** The policy explicitly enables TLSv1, which is considered insecure. The check requires that only secure protocols (e.g., TLSv1.2 or higher) be used. The presence of `Protocol-TLSv1 = true` violates this requirement.
+
+---
+
+### 2. `aws_load_balancer_policy.fail2` (lines 17–26)
+- **Triggering lines:** 23–26  
+  ```terraform
+  policy_attribute {
+    name  = "Reference-Security-Policy"
+    value = "ELBSecurityPolicy-2016-08"
+  }
+  ```
+- **Why it fails:** The referenced security policy `ELBSecurityPolicy-2016-08` is an older predefined policy that does not restrict connections to only secure protocols. The check flags any reference policy that is not a known secure policy (e.g., `ELBSecurityPolicy-TLS-1-2-*`).
+
+---
+
+### 3. `aws_load_balancer_policy.fail3` (lines 28–37)
+- **Triggering lines:** 33–36  
+  ```terraform
+  policy_attribute {
+    name  = "Reference-Security-Policy"
+    value = "ELBSecurityPolicy-TLS-1-1-2017-01"
+  }
+  ```
+- **Why it fails:** The policy `ELBSecurityPolicy-TLS-1-1-2017-01` allows TLS 1.1, which is not considered a secure protocol. The check expects only policies that enforce TLS 1.2 or higher.
+
+---
+
+### 4. `aws_load_balancer_policy.fail4` (lines 39–48)
+- **Triggering lines:** 43–46  
+  ```terraform
+  policy_attribute {
+    name  = "Reference-Security-Policy"
+    value = "ELBSecurityPolicy-2015-05"
+  }
+  ```
+- **Why it fails:** `ELBSecurityPolicy-2015-05` is an outdated predefined policy that permits older, insecure protocols (e.g., TLS 1.0, SSLv3). The check rejects any policy that does not enforce modern secure protocols.
+
+---
+
+### 5. `aws_load_balancer_policy.fail5` (lines 50–59)
+- **Triggering lines:** 53–56  
+  ```terraform
+  policy_attribute {
+    name  = "Reference-Security-Policy"
+    value = "ELBSecurityPolicy-2015-03"
+  }
+  ```
+- **Why it fails:** Same issue as `fail4` – the `ELBSecurityPolicy-2015-03` is an older, insecure policy.
+
+---
+
+### 6. `aws_load_balancer_policy.fail6` (lines 61–70)
+- **Triggering lines:** 63–66  
+  ```terraform
+  policy_attribute {
+    name  = "Reference-Security-Policy"
+    value = "ELBSecurityPolicy-2015-02"
+  }
+  ```
+- **Why it fails:** `ELBSecurityPolicy-2015-02` is another outdated policy that does not enforce only secure protocols.
+
+---
+
+### What the check expects (based on the passing examples in the same file)
+The file also contains resources that pass the check, showing acceptable configurations:
+- **`pass` (lines 72–81):** Only `Protocol-TLSv1.2` is enabled; no insecure protocols are turned on.
+- **`pass2` (lines 83–92):** `Protocol-TLSv1` is explicitly set to `false`, so it is disabled.
+- **`pass3` (lines 94–103):** Uses a modern reference policy `TLS-1-2-2017-01` (likely a shortened name for `ELBSecurityPolicy-TLS-1-2-2017-01`), which enforces only TLS 1.2.
+
+Thus, the check CKV_AWS_213 flags any ELB policy that:
+- Enables an insecure protocol (like TLSv1) via a `Protocol-*` attribute set to `true`, or
+- References a predefined security policy that is not restricted to secure protocols (e.g., policies older than `ELBSecurityPolicy-TLS-1-2-*`).
+
+### What to do
+To fix the flagged resources, you must ensure that the policy only allows secure protocols. Depending on the resource, you can either:
+- Remove any `policy_attribute` that enables an insecure protocol (e.g., delete the `Protocol-TLSv1` block in `fail`), or
+- Replace the `Reference-Security-Policy` value with a secure policy such as `ELBSecurityPolicy-TLS-1-2-2017-01` (or a later TLS 1.2‑only policy), as shown in `pass3`.
+
+No other attack scenarios or impacts are asserted beyond what the check and the file directly show: the flagged policies are configured to accept insecure protocols, which violates the security requirement.

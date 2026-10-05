@@ -1,0 +1,85 @@
+The scanner flagged several security misconfigurations across your three EMR security configuration resources. Let’s break down what each check means, why each resource is failing, and how to fix them.
+
+---
+
+### 1. CKV_AWS_351 – Ensure EMR Cluster security configuration encrypts InTransit
+
+**What it checks:**  
+The security configuration must enable encryption for data in transit between EMR cluster nodes.
+
+**Why it fails:**  
+All three resources (`pass`, `fail`, `fail2`) have `"EnableInTransitEncryption": false` in their JSON configuration.
+
+**How to fix:**  
+Set `"EnableInTransitEncryption": true` inside the `EncryptionConfiguration` block. You can also optionally define an `InTransitEncryptionConfiguration` to specify TLS certificate provider types, but the minimum requirement is to enable it.
+
+---
+
+### 2. CKV_AWS_171 – Ensure Cluster security configuration encryption is using SSE-KMS
+
+**What it checks:**  
+When Amazon S3 is used as a data store, the encryption mode for S3 must be `SSE-KMS` (Server-Side Encryption with AWS Key Management Service), not `SSE-S3`.
+
+**Why it fails:**  
+- In `pass` and `fail`, the S3 encryption mode is set to `"SSE-S3"`.  
+- In `fail2`, there is no S3 encryption configuration at all because `EnableAtRestEncryption` is `false`.  
+All three violate the requirement to use KMS-managed keys for S3.
+
+**How to fix:**  
+Change the S3 encryption mode to `"SSE-KMS"` and provide a KMS key ARN if you want to use a customer-managed key. Example:
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-KMS",
+  "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+}
+```
+If you omit the key ARN, EMR will use the default AWS-managed KMS key for S3.
+
+---
+
+### 3. CKV_AWS_350 – Ensure EMR Cluster security configuration encrypts ebs disks
+
+**What it checks:**  
+EBS volumes attached to cluster nodes must be encrypted.
+
+**Why it fails:**  
+- `fail` resource: The `AtRestEncryptionConfiguration` does **not** include a `LocalDiskEncryptionConfiguration` block at all.  
+- `fail2` resource: `EnableAtRestEncryption` is `false`, so no disk encryption is configured.  
+- `pass` resource: **Passes** because it includes `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption: true` and a KMS key.
+
+**How to fix:**  
+Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` with `EnableEbsEncryption` set to `true` and a valid KMS key ARN. Example:
+```json
+"LocalDiskEncryptionConfiguration": {
+  "EnableEbsEncryption": true,
+  "EncryptionKeyProviderType": "AwsKms",
+  "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+}
+```
+
+---
+
+### 4. CKV_AWS_349 – Ensure EMR Cluster security configuration encrypts local disks
+
+**What it checks:**  
+Local instance store disks (ephemeral drives) must be encrypted.
+
+**Why it fails:**  
+Same as CKV_AWS_350 – the `LocalDiskEncryptionConfiguration` block is missing in `fail` and `fail2`. The `pass` resource already includes it, so it passes this check.
+
+**How to fix:**  
+The same `LocalDiskEncryptionConfiguration` block that enables EBS encryption also enables local disk encryption. Adding it resolves both CKV_AWS_349 and CKV_AWS_350.
+
+---
+
+### Summary of required changes
+
+| Resource | InTransit (351) | S3 SSE-KMS (171) | EBS encryption (350) | Local disk encryption (349) |
+|----------|----------------|------------------|----------------------|-----------------------------|
+| `pass`   | ❌ false → true | ❌ SSE-S3 → SSE-KMS | ✅ already set | ✅ already set |
+| `fail`   | ❌ false → true | ❌ SSE-S3 → SSE-KMS | ❌ missing block | ❌ missing block |
+| `fail2`  | ❌ false → true | ❌ no at-rest encryption → add S3 config with SSE-KMS | ❌ no at-rest encryption → add LocalDiskEncryptionConfiguration | ❌ no at-rest encryption → add LocalDiskEncryptionConfiguration |
+
+For `fail2`, you must also set `EnableAtRestEncryption` to `true` and provide the full at-rest encryption configuration (S3 + local disk) to satisfy CKV_AWS_171, 350, and 349.
+
+Once you apply these changes, all three resources will pass the scanner checks.

@@ -1,0 +1,84 @@
+The Checkov findings identify three missing ECR hardening settings on all `aws_ecr_repository` resources, plus two overly permissive repository policies.
+
+## 1. Missing image scanning on push (`CKV_AWS_163`)
+
+**Misconfiguration**  
+None of the `aws_ecr_repository` resources define `image_scanning_configuration` with `scan_on_push = true`. The default is `false`.
+
+**Why it matters**  
+Images pushed to these repositories are not automatically scanned for known vulnerabilities. You can still run manual scans, but without automatic scanning, vulnerable images can be pulled and deployed before anyone reviews them.
+
+**Fix**  
+Add to each repository:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+
+---
+
+## 2. Repository encryption not using KMS (`CKV_AWS_136`)
+
+**Misconfiguration**  
+No repository specifies `encryption_configuration`. ECR still encrypts images at rest by default, but it uses S3-managed encryption rather than a KMS key under your control.
+
+**Why it matters**  
+Without a customer-managed KMS key, you lose fine-grained control over key rotation, access auditing, and key policy. This can be a compliance or security governance issue.
+
+**Fix**  
+Add an `encryption_configuration` block using KMS. You can use the AWS-managed ECR key or a customer-managed key:
+
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  kms_key         = aws_kms_key.ecr.arn   # optional; omit to use aws/ecr
+}
+```
+
+---
+
+## 3. Mutable image tags (`CKV_AWS_51`)
+
+**Misconfiguration**  
+All repositories use the default `image_tag_mutability = "MUTABLE"`.
+
+**Why it matters**  
+Mutable tags allow the same tag (e.g. `latest`) to be overwritten with a different image. This breaks traceability and enables supply-chain attacks if an attacker or compromised pipeline can push a malicious image under an expected tag.
+
+**Fix**  
+Set immutability on each repository:
+
+```hcl
+image_tag_mutability = "IMMUTABLE"
+```
+
+---
+
+## 4. Public ECR repository policies (`CKV_AWS_32`)
+
+**Misconfiguration**  
+Two policies are flagged as public:
+
+- `aws_ecr_repository_policy.fail` – `Principal: "*"` with no condition, granting broad permissions to any AWS principal.
+- `aws_ecr_repository_policy.fail_conditional` – `Principal: "*"` with a `Condition` using `aws:username`. This is not a strong account or organization boundary and does not sufficiently restrict access.
+
+The actions include highly privileged operations such as `ecr:PutImage`, `ecr:DeleteRepository`, `ecr:SetRepositoryPolicy`, and `ecr:DeleteRepositoryPolicy`.
+
+**Why it matters**  
+Any AWS principal in any account can perform the listed actions on the affected repositories. That includes pushing malicious images, deleting images or the entire repository, and modifying the repository policy to lock you out. The blast radius is full compromise or destruction of those repositories.
+
+**Fix**  
+Restrict the policy to explicit, trusted principals and least-privilege actions. For example, use the same approach as the `pass` policy in the file:
+
+```hcl
+Principal = {
+  AWS = [
+    "arn:aws:iam::123456789012:user/pull-user-1",
+    "arn:aws:iam::123456789012:user/pull-user-2"
+  ]
+}
+```
+
+If broad cross-account access is required, constrain it with a strong condition such as `aws:PrincipalOrgID` or specific source ARNs, and avoid granting destructive or policy-modifying actions unless absolutely necessary.

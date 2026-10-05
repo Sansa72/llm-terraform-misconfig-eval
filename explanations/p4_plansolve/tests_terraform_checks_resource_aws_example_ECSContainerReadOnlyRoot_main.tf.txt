@@ -1,0 +1,37 @@
+The following issues were identified in the Terraform file. Each is explained with the required fix.
+
+---
+
+### Resource: `aws_ecs_task_definition.fail`
+**Check CKV_AWS_336 – Read-only root filesystem**
+
+- **What’s wrong:** The second container definition (named `"second"`) is missing the `readonlyRootFilesystem` attribute. The first container already has it set to `true`, but the check requires that **every** container in the task definition enforces a read-only root filesystem.
+- **Why it matters:** Without a read-only root filesystem, a compromised container can write to its filesystem, potentially allowing an attacker to modify binaries, drop malware, or tamper with configuration. Enforcing read-only access reduces the attack surface and aligns with the principle of least privilege.
+- **Fix:** Add `readonlyRootFilesystem = true` to the second container definition inside the `container_definitions` JSON for `aws_ecs_task_definition.fail`.
+
+---
+
+### Resource: `aws_ecs_task_definition.fail2`
+**Check CKV_AWS_336 – Read-only root filesystem**
+
+- **What’s wrong:** Both container definitions (`"first"` and `"second"`) have `readonlyRootFilesystem` explicitly set to `false`.
+- **Why it matters:** Same as above – writable root filesystems increase the risk of persistent compromise and unauthorized changes.
+- **Fix:** Change `readonlyRootFilesystem` from `false` to `true` in both container definitions.
+
+---
+
+**Check CKV_AWS_334 – Non-privileged containers**
+
+- **What’s wrong:** The second container definition (`"second"`) has `privilege = true`. This grants the container elevated privileges, effectively giving it almost all the capabilities of the host.
+- **Why it matters:** Privileged containers can access host devices, modify kernel parameters, and escape the container isolation. This significantly increases the blast radius if the container is compromised. Containers should run with the minimum privileges necessary.
+- **Fix:** Remove the `privilege = true` line from the second container definition, or explicitly set it to `false`. The default is `false`, so simply deleting the line is sufficient.
+
+---
+
+**Check CKV_AWS_335 – Do not share the host’s process namespace**
+
+- **What’s wrong:** The second container definition includes `pidMode = "host"`. This is not a valid container-level parameter in ECS; the `pidMode` setting belongs at the **task definition** level. However, its presence here indicates an attempt to share the host’s process namespace, which is what the check prohibits.
+- **Why it matters:** Sharing the host’s PID namespace allows a container to see and potentially interact with all processes on the host, including those of other containers. This breaks process isolation and can lead to information disclosure or privilege escalation.
+- **Fix:** Remove the `pidMode = "host"` line from the container definition. If you intended to set the task-level `pid_mode`, do not use `"host"`; the default `"task"` mode provides proper isolation. The task definition should not have a `pid_mode = "host"` setting.
+
+Apply these changes to make the `fail` and `fail2` task definitions compliant with the flagged checks.

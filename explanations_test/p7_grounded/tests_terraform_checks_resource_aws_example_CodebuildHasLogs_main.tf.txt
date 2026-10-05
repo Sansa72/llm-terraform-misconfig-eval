@@ -1,0 +1,20 @@
+The scanner flagged two issues on the `aws_codebuild_project.fail` resource defined at **lines 29–44**.
+
+### 1. CKV_AWS_314: Missing logging configuration
+- **What the check requires:** CodeBuild project environments must have a logging configuration.
+- **What the file shows:** The `fail` resource (lines 29–44) has no `logs_config` block.  
+  Compare with the `pass` resource (lines 20–24), which includes:
+  ```terraform
+  logs_config {
+    s3_logs {
+    }
+  }
+  ```
+  Because the `fail` resource omits this block entirely, the check fails.
+
+### 2. CKV_AWS_147: Missing encryption with a customer-managed key (CMK)
+- **What the check requires:** CodeBuild projects must be encrypted using a customer-managed KMS key.
+- **What the file shows:** The `fail` resource (lines 29–44) does not set the `encryption_key` argument.  
+  The `pass` resource (line 7) sets `encryption_key = "aws_kms_key.scanner_key.id"`, satisfying the check. The absence of this argument in the `fail` resource triggers the finding.
+
+Both findings are based solely on the configuration of the `fail` resource. No other resources or attack scenarios are evidenced in the provided file.

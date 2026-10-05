@@ -1,0 +1,37 @@
+**Remediation Briefing: CKV_AWS_275 – Disallow use of AWS AdministratorAccess policy**
+
+The scanner has flagged two data sources that reference the AWS managed policy `AdministratorAccess`. This policy grants unrestricted access to all AWS services and resources. Using it violates the principle of least privilege and increases the blast radius if the associated principal is compromised.
+
+---
+
+### Finding 1
+- **Check ID:** CKV_AWS_275  
+- **Resource:** `data.aws_iam_policy.fail1`  
+- **Triggering lines:** 3–5  
+  ```terraform
+  data "aws_iam_policy" "fail1" {
+    name = "AdministratorAccess"
+  }
+  ```
+- **What is wrong:** The data source is fetching the AWS managed policy named `AdministratorAccess`, which provides full administrative privileges.  
+- **Why it matters:** Referencing this policy indicates an intent to attach it to an IAM principal (user, group, or role). Doing so would grant that principal unrestricted control over the AWS account, bypassing all permission boundaries.  
+- **How to fix:** Replace the `name` argument with the name of a managed policy that grants only the permissions required for the workload (e.g., `"AmazonS3ReadOnlyAccess"`). If no suitable managed policy exists, create a customer-managed policy with the minimum necessary actions and resources, and reference that instead.
+
+---
+
+### Finding 2
+- **Check ID:** CKV_AWS_275  
+- **Resource:** `data.aws_iam_policy.fail2`  
+- **Triggering lines:** 7–9  
+  ```terraform
+  data "aws_iam_policy" "fail2" {
+    arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  }
+  ```
+- **What is wrong:** The data source is fetching the `AdministratorAccess` policy by its ARN, which is functionally identical to referencing it by name.  
+- **Why it matters:** The ARN explicitly identifies the full‑admin policy. Any principal that receives this policy will have complete control over the account, making it a severe security risk.  
+- **How to fix:** Change the `arn` argument to point to a policy that grants only the specific permissions needed (e.g., `arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess`). If no appropriate AWS‑managed policy exists, author a customer‑managed policy with the least privilege required and reference its ARN.
+
+---
+
+**General guidance:** The passing examples in the file (`pass1`, `pass2`) demonstrate the correct pattern—using narrowly scoped policies like `AmazonS3ReadOnlyAccess`. Apply the same approach to the failing data sources.

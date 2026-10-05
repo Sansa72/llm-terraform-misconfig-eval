@@ -1,0 +1,55 @@
+The actionable misconfiguration is in `aws_connect_instance_storage_config.fail`.
+
+## What is misconfigured
+
+For the `fail` resource, the Kinesis Video Stream storage config declares KMS encryption but omits `key_id`:
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+}
+```
+
+This means the Connect instance will not use a customer-managed key (CMK).  
+The `pass` resource already sets `key_id = aws_kms_key.test.arn`, so it is correctly configured for Kinesis Video Stream encryption.
+
+## Why it matters
+
+Without `key_id`, AWS uses an AWS-owned/AWS-managed KMS key instead of a CMK. You lose the ability to:
+
+- control the key policy
+- audit key usage with CMK-level CloudTrail
+- rotate or delete the key on your own schedule
+- revoke access independently of the AWS service
+
+For `MEDIA_STREAMS`, this can affect recorded audio/video data, which may be sensitive or compliance-relevant.
+
+## How to fix it safely
+
+Set `key_id` to the ARN of an existing KMS CMK:
+
+```hcl
+resource "aws_connect_instance_storage_config" "fail" {
+  instance_id   = aws_connect_instance.fail.id
+  resource_type = "MEDIA_STREAMS"
+
+  storage_config {
+    kinesis_video_stream_config {
+      prefix                 = "fail"
+      retention_period_hours = 3
+
+      encryption_config {
+        encryption_type = "KMS"
+        key_id          = aws_kms_key.test.arn
+      }
+    }
+    storage_type = "KINESIS_VIDEO_STREAM"
+  }
+}
+```
+
+Also ensure the KMS key policy grants the Connect service permission to use the key for this storage configuration.
+
+## Note on CKV_AWS_270
+
+The CKV_AWS_270 findings on both `pass` and `fail` are for S3 storage configs using a CMK. However, neither resource in this file declares an S3 storage config—both use `storage_type = "KINESIS_VIDEO_STREAM"`. These S3 findings are not supported by the Terraform shown and are likely false positives or check-version mismatches.

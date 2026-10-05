@@ -1,0 +1,48 @@
+Below is the remediation briefing for each failing check, in the order reported by the scanner.
+
+---
+
+### 1. CKV_AWS_323 on `aws_elasticache_cluster.enabled` (lines 3‑11)
+**What is wrong:** The cluster does not specify a custom subnet group, so it falls back to the default VPC subnet group.  
+**Why it matters:** Default subnet groups are often not designed for production workloads – they may lack proper network segmentation, may not span multiple Availability Zones for high availability, and can lead to unintended exposure or suboptimal routing.  
+**Change needed:** Create an `aws_elasticache_subnet_group` resource that defines a set of subnets in your desired VPC (ideally private subnets across at least two AZs). Then add the argument `subnet_group_name = aws_elasticache_subnet_group.<name>.name` to this cluster resource, replacing `<name>` with the logical name of your new subnet group.
+
+---
+
+### 2. CKV_AWS_134 on `aws_elasticache_cluster.default` (lines 15‑21)
+**What is wrong:** The Redis cluster has no `snapshot_retention_limit` set, meaning automatic backups are disabled.  
+**Why it matters:** Without automatic backups, you lose the ability to recover data after a failure or accidental deletion. Redis persistence alone does not protect against cluster loss; snapshots are essential for point‑in‑time recovery.  
+**Change needed:** Add `snapshot_retention_limit = 5` (or any positive integer) to enable daily automatic snapshots. Optionally, also set `snapshot_window` to control the backup time window (e.g., `"05:00-07:00"`). This will satisfy the backup requirement.
+
+---
+
+### 3. CKV_AWS_323 on `aws_elasticache_cluster.default` (lines 15‑21)
+**What is wrong:** The cluster does not reference a custom subnet group, so it uses the default.  
+**Why it matters:** Same as finding #1 – default subnet groups lack the explicit network design needed for security and resilience.  
+**Change needed:** Assign the same custom subnet group you create for the other clusters by adding `subnet_group_name = aws_elasticache_subnet_group.<name>.name` to this resource. (You can reuse a single subnet group across multiple clusters if they share the same VPC and subnet requirements.)
+
+---
+
+### 4. CKV_AWS_134 on `aws_elasticache_cluster.disabled` (lines 23‑31)
+**What is wrong:** The cluster has `snapshot_retention_limit = 0`, which explicitly disables automatic backups.  
+**Why it matters:** Even though the parameter is present, a value of `0` means no snapshots are taken, leaving the cluster without a backup mechanism.  
+**Change needed:** Set `snapshot_retention_limit` to a positive integer (e.g., `5`). If you also want to define a backup window, add `snapshot_window`. This will enable automatic daily snapshots and pass the check.
+
+---
+
+### 5. CKV_AWS_323 on `aws_elasticache_cluster.disabled` (lines 23‑31)
+**What is wrong:** The cluster does not specify a custom subnet group, relying on the default.  
+**Why it matters:** Same as the previous subnet group findings – default subnet groups bypass your network segmentation and high‑availability design.  
+**Change needed:** Add `subnet_group_name` referencing the same custom subnet group used for the other clusters, ensuring consistent network placement.
+
+---
+
+### 6. CKV_AWS_323 on `aws_elasticache_cluster.memcached` (lines 35‑41)
+**What is wrong:** The Memcached cluster is not assigned a custom subnet group.  
+**Why it matters:** Even though Memcached does not support snapshots, it still requires proper network isolation. Using the default subnet group can expose the cluster to unintended network paths.  
+**Change needed:** Add `subnet_group_name` pointing to the same custom subnet group resource. The subnet group definition is engine‑agnostic, so you can reuse the one created for the Redis clusters.
+
+---
+
+### Interactions and shared fix
+All four resources share the same subnet group requirement. You can create a single `aws_elasticache_subnet_group` (e.g., named `"main"`) that lists the private subnets of your VPC, and then reference it in every cluster via `subnet_group_name = aws_elasticache_subnet_group.main.name`. This resolves all five `CKV_AWS_323` findings at once. The backup fixes for the two Redis clusters are independent; each must have a positive `snapshot_retention_limit`. The `memcached` cluster does not need a backup change because the check is not applicable to Memcached.

@@ -1,0 +1,59 @@
+The scanner flagged five misconfigurations across three EFS access point resources. Here’s what each finding means, based on the check IDs and the Terraform code.
+
+---
+
+### Check CKV_AWS_329 – “EFS access points should enforce a root directory”
+
+This check requires that the access point define a **root directory** with a path that restricts access to a specific subdirectory of the EFS file system. A root directory path of `"/"` (the file system root) is considered non-enforcing, and omitting the `root_directory` block entirely also fails the check.
+
+**Finding 1: `CKV_AWS_329` on `aws_efs_access_point.fail` (lines 13–18)**
+```terraform
+resource "aws_efs_access_point" "fail" {
+  file_system_id = aws_efs_file_system.sharedstore.id
+  root_directory {
+    path="/"
+  }
+}
+```
+The resource defines a `root_directory` block, but the `path` is set to `"/"`. This does not enforce a restricted root directory; it effectively allows access to the entire file system. The check therefore flags it as non‑compliant.
+
+**Finding 2: `CKV_AWS_329` on `aws_efs_access_point.fail2` (lines 21–23)**
+```terraform
+resource "aws_efs_access_point" "fail2" {
+  file_system_id = aws_efs_file_system.sharedstore.id
+}
+```
+This resource has no `root_directory` block at all, so it fails the check.
+
+---
+
+### Check CKV_AWS_330 – “EFS access points should enforce a user identity”
+
+This check requires that the access point define a POSIX user identity (a `posix_user` block with `uid` and `gid`) so that all file system operations through the access point use that identity.
+
+**Finding 3: `CKV_AWS_330` on `aws_efs_access_point.pass` (lines 1–6)**
+```terraform
+resource "aws_efs_access_point" "pass" {
+  file_system_id = aws_efs_file_system.sharedstore.id
+  root_directory {
+    path=var.root_path
+  }
+}
+```
+This resource enforces a root directory (the path is a variable defaulting to `"/data"`), so it passes CKV_AWS_329. However, it does **not** include a `posix_user` block, so it fails CKV_AWS_330.
+
+**Finding 4: `CKV_AWS_330` on `aws_efs_access_point.fail` (lines 13–18)**
+The same resource that failed CKV_AWS_329 also lacks a `posix_user` block, so it fails CKV_AWS_330 as well.
+
+**Finding 5: `CKV_AWS_330` on `aws_efs_access_point.fail2` (lines 21–23)**
+This resource has neither a `root_directory` block nor a `posix_user` block, so it fails CKV_AWS_330.
+
+---
+
+### What needs to change
+
+- **`aws_efs_access_point.pass`** (lines 1–6): Add a `posix_user` block with a numeric `uid` and `gid` to enforce a user identity.  
+- **`aws_efs_access_point.fail`** (lines 13–18): Change the `root_directory` path from `"/"` to a specific subdirectory (e.g., `"/data"`), and add a `posix_user` block.  
+- **`aws_efs_access_point.fail2`** (lines 21–23): Add both a `root_directory` block with a specific path and a `posix_user` block.
+
+The resource named `pass` already satisfies CKV_AWS_329 because it has a root directory with a non‑root path. The scanner did not flag it for that check.

@@ -1,0 +1,27 @@
+**CKV2_AWS_61 – Lifecycle configuration missing**  
+The bucket has no lifecycle rules. Without lifecycle policies, objects can accumulate indefinitely, increasing storage costs and making it harder to manage data retention and compliance.  
+**Fix:** Add an `aws_s3_bucket_lifecycle_configuration` resource that references this bucket. Define at least one rule, for example a rule that transitions objects to a cheaper storage class after a number of days or expires them. The rule must have an `id`, a `status` of `Enabled`, and a filter (typically an empty prefix to apply to the whole bucket).
+
+**CKV_AWS_18 – Access logging not enabled**  
+Server access logging is not configured. Logging provides an audit trail of requests made to the bucket, which is essential for security investigations and compliance.  
+**Fix:** Create an `aws_s3_bucket_logging` resource attached to this bucket. You will need a target bucket to receive the logs (which must be in the same region and have appropriate ACL/policy). Specify the `target_bucket` and optionally a `target_prefix`. Ensure the target bucket exists and is properly secured.
+
+**CKV2_AWS_62 – Event notifications not enabled**  
+No event notifications are configured. Notifications allow you to trigger alerts or automated workflows when specific events occur (e.g., object creation, deletion), which is critical for security monitoring and data processing pipelines.  
+**Fix:** Add an `aws_s3_bucket_notification` resource. Define at least one `topic`, `queue`, or `lambda_function` configuration block with a set of `events` (e.g., `s3:ObjectCreated:*`) and a `filter_prefix`/`filter_suffix` if needed. The destination (SNS topic, SQS queue, Lambda) must exist and have the necessary permissions.
+
+**CKV2_AWS_6 – Public Access block missing**  
+The bucket does not have a public access block configuration. This leaves the bucket potentially open to public access if bucket policies or ACLs are misconfigured.  
+**Fix:** Add an `aws_s3_bucket_public_access_block` resource associated with this bucket. Set all four block flags to `true`: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`. This ensures no public access is granted, regardless of other settings.
+
+**CKV_AWS_145 – Encryption with KMS by default**  
+The bucket is not configured to encrypt objects with a KMS key by default. While S3 can use AES-256 (SSE-S3), using KMS (SSE-KMS) gives you finer-grained control over key permissions, rotation, and audit trails.  
+**Fix:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource. In the rule, set `apply_server_side_encryption_by_default` with `sse_algorithm = "aws:kms"`. Optionally specify a KMS key ARN; if omitted, the AWS-managed `aws/s3` key is used. Ensure the bucket’s policy and IAM roles have the necessary `kms:Decrypt` and `kms:GenerateDataKey` permissions.
+
+**CKV_AWS_144 – Cross-region replication not enabled**  
+No replication configuration exists. Cross-region replication (CRR) is a key disaster recovery and compliance control, ensuring data durability and availability in another region.  
+**Fix:** Add an `aws_s3_bucket_replication_configuration` resource. You must enable versioning on both the source and destination buckets. Define a `rule` with `status = "Enabled"`, a `destination` block specifying the target bucket ARN and storage class, and an IAM role that grants S3 permission to replicate. The destination bucket must exist and have versioning enabled.
+
+**CKV_AWS_21 – Versioning not enabled**  
+Versioning is not enabled on the bucket. Versioning protects against accidental overwrites and deletions, and is a prerequisite for replication and object lock.  
+**Fix:** Add an `aws_s3_bucket_versioning` resource for this bucket. Set `versioning_configuration { status = "Enabled" }`. Note that once enabled, versioning cannot be fully disabled, only suspended, so plan accordingly.

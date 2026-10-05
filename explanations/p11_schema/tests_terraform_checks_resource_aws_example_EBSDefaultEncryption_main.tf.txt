@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_106",
+      "resource": "aws_ebs_encryption_by_default.disabled",
+      "evidence": [
+        "resource \"aws_ebs_encryption_by_default\" \"disabled\" {\n  enabled = false\n}"
+      ],
+      "risk": "New EBS volumes will not be encrypted by default, potentially exposing data at rest.",
+      "remediation": "Set the enabled argument to true in the aws_ebs_encryption_by_default resource to enable default EBS encryption.",
+      "confidence": "high"
+    }
+  ]
+}

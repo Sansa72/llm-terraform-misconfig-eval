@@ -1,0 +1,8 @@
+file,condition,start_fails,attempts,final_fails,reached_zero,valid,outcome,trajectory,note
+tests_terraform_checks_data_aws_example_CloudSplainingCredentialsExposure_main.tf,A,7,5,7,False,False,not_fixed,7->None->None->None->None->None,no usable output produced
+tests_terraform_checks_data_aws_example_module_with_one_provider_example_main.tf,A,7,5,7,False,False,not_fixed,7->None->None->None->None->None,no usable output produced
+tests_terraform_checks_data_aws_example_provider_with_nested_module_assign_provider_example_example2_main.tf,A,7,5,7,False,False,not_fixed,7->None->None->None->None->None,no usable output produced
+tests_terraform_checks_data_aws_example_provider_without_module_main.tf,A,14,5,14,False,False,not_fixed,14->None->None->None->None->None,no usable output produced
+tests_terraform_checks_example_WildcardEntities_main.tf,A,9,5,9,False,False,not_fixed,9->None->None->None->None->None,no usable output produced
+tests_terraform_checks_resource_aws_example_APIGatewayCacheEnable_main.tf,A,11,5,11,False,False,not_fixed,11->None->None->None->None->None,no usable output produced
+tests_terraform_checks_resource_aws_example_APIGatewayCreateBeforeDestroy_main.tf,A,2,1,0,True,True,fixed,2->0,

@@ -1,0 +1,39 @@
+**Remediation Briefing: AppSync Security Misconfigurations**
+
+Below are the required fixes, ordered by the scanner findings. Each section explains the issue, its importance, and the change to implement.
+
+---
+
+### 1. CKV_AWS_194 – `aws_appsync_graphql_api.default` (lines 15-18)
+**Finding:** AppSync API does not have Field-Level Logging enabled.  
+**Why it matters:** Field-level logs capture resolver request/response details, which are critical for debugging, performance tuning, and detecting malicious data manipulation. Without them, you lose visibility into the data flowing through your GraphQL endpoints.  
+**Change required:** Add a `log_config` block to the `default` resource. Inside it, set `field_log_level` to at least `ERROR` (or `ALL` for maximum detail) and provide a valid `cloudwatch_logs_role_arn` (an IAM role that allows AppSync to write to CloudWatch Logs). This block is entirely missing in the current definition.
+
+---
+
+### 2. CKV_AWS_193 – `aws_appsync_graphql_api.default` (lines 15-18)
+**Finding:** AppSync API does not have logging enabled.  
+**Why it matters:** Without logging, you lose all request/response visibility, making it impossible to monitor API usage, detect anomalies, or meet compliance requirements.  
+**Change required:** The same `log_config` block that addresses CKV_AWS_194 will also resolve this check. Ensure the block includes a `cloudwatch_logs_role_arn` (an IAM role ARN that allows AppSync to write logs to CloudWatch) and a `field_log_level` (e.g., `ERROR` or `ALL`).  
+**Interaction:** Adding a single `log_config` block to the `default` resource will satisfy both CKV_AWS_193 and CKV_AWS_194.
+
+---
+
+### 3. CKV2_AWS_33 – `aws_appsync_graphql_api.enabled` (lines 3-11)
+**Finding:** The AppSync API is not associated with an AWS WAF Web ACL.  
+**Why it matters:** WAF protects your API from common web exploits like SQL injection and cross‑site scripting. Without it, the API is exposed to these attacks.  
+**Change required:** Create an AWS WAFv2 Web ACL (or use an existing one) and associate it with this AppSync API. Use an `aws_wafv2_web_acl_association` resource, setting `resource_arn` to the ARN of the `aws_appsync_graphql_api.enabled` resource and `web_acl_arn` to the ARN of your WAF Web ACL. The Web ACL must be in the same region as the AppSync API.
+
+---
+
+### 4. CKV2_AWS_33 – `aws_appsync_graphql_api.default` (lines 15-18)
+**Finding:** AppSync API is not protected by WAF.  
+**Why it matters:** Same as above – this API is also exposed to web‑based attacks without a WAF.  
+**Change required:** Associate a WAF Web ACL with this API as well. You can reuse the same Web ACL (if it covers both APIs) or create a separate one. Use another `aws_wafv2_web_acl_association` resource, pointing `resource_arn` to the ARN of the `default` AppSync API.  
+**Interaction:** Both AppSync APIs (`enabled` and `default`) need WAF associations. They can share a single Web ACL if it is appropriate for your security posture, but each requires its own association resource.
+
+---
+
+**Summary of actions:**
+- Add a `log_config` block to the `default` AppSync API resource (fixes CKV_AWS_193 and CKV_AWS_194).
+- Create (or reference) a WAFv2 Web ACL and associate it with both `aws_appsync_graphql_api.enabled` and `aws_appsync_graphql_api.default` (fixes both CKV2_AWS_33 findings).

@@ -1,0 +1,78 @@
+The `aws_s3_bucket` resource named `bucket` is missing several security and management configurations that the scanner expects. The Terraform file only declares the bucket name; it does not include any of the following required settings:
+
+- **Lifecycle configuration** – no rules to transition or expire objects.
+- **Access logging** – no logging target bucket defined.
+- **Event notifications** – no notification configurations for bucket events.
+- **Public access block** – no block to prevent public ACLs or policies.
+- **KMS encryption** – no server-side encryption using AWS KMS.
+- **Cross-region replication** – no replication configuration for disaster recovery.
+- **Versioning** – no versioning enabled to protect against accidental deletion.
+
+To fix these issues, add the corresponding Terraform configuration blocks to the `aws_s3_bucket` resource. For example:
+
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "module-bucket"
+
+  versioning {
+    enabled = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm     = "aws:kms"
+        kms_master_key_id = "your-kms-key-arn"
+      }
+    }
+  }
+
+  logging {
+    target_bucket = "your-log-bucket"
+    target_prefix = "log/"
+  }
+
+  lifecycle_rule {
+    id      = "expire-old-objects"
+    enabled = true
+    expiration {
+      days = 90
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_notification" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+
+  # Example notification; adjust to your needs
+  topic {
+    topic_arn = "your-sns-topic-arn"
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+
+resource "aws_s3_bucket_replication_configuration" "bucket" {
+  role   = "your-iam-role-arn"
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "replicate-everything"
+    status = "Enabled"
+    destination {
+      bucket        = "arn:aws:s3:::your-destination-bucket"
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+Adjust the target buckets, KMS key, IAM role, and notification details to match your environment.

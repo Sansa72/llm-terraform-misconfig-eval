@@ -1,0 +1,146 @@
+The scanner flagged multiple security misconfigurations across all RDS resources in the file. The resource names (`pass`, `pass2`, `fail`, etc.) are misleading—they do **not** reflect actual compliance. Every finding is triggered because the Terraform configuration omits required security attributes. Below is a breakdown per resource, referencing the exact check IDs and lines.
+
+---
+
+### `aws_rds_cluster.pass` (lines 1–3)
+**File content:**
+```terraform
+resource "aws_rds_cluster" "pass" {
+  backup_retention_period = 35
+}
+```
+**Findings:**
+- CKV_AWS_313 – copy tags to snapshots
+- CKV_AWS_96  – encryption at rest
+- CKV_AWS_162 – IAM authentication
+- CKV_AWS_326 – backtracking
+- CKV_AWS_327 – KMS CMK encryption
+- CKV_AWS_325 – audit logging (MySQL)
+- CKV_AWS_139 – deletion protection
+- CKV_AWS_324 – log capture
+- CKV2_AWS_8  – AWS Backup plan
+
+**Why they fire:**  
+The resource block contains **only** `backup_retention_period`. All the checks above look for specific attributes that are absent. For example:
+- `copy_tags_to_snapshot` is not set → CKV_AWS_313 fails.
+- `storage_encrypted` is not set → CKV_AWS_96 fails.
+- `iam_database_authentication_enabled` is not set → CKV_AWS_162 fails.
+- `backtrack_window` is not set (Aurora‑specific) → CKV_AWS_326 fails.
+- `kms_key_id` is not set → CKV_AWS_327 fails.
+- `enabled_cloudwatch_logs_exports` is not set → CKV_AWS_325, CKV_AWS_324 fail.
+- `deletion_protection` is not set → CKV_AWS_139 fails.
+- No AWS Backup plan is associated in the given code → CKV2_AWS_8 fails.
+
+**Note:** `backup_retention_period = 35` is valid, so CKV_AWS_133 (backup policy) is **not** raised here.
+
+---
+
+### `aws_rds_cluster.pass2` (lines 5–6)
+**File content:**
+```terraform
+resource "aws_rds_cluster" "pass2" {
+}
+```
+**Findings:** Identical set to `pass` (all eight cluster checks + CKV2_AWS_8).  
+**Why:** The resource has **no attributes at all**. Every security control is missing, so every check fails.
+
+---
+
+### `aws_rds_cluster.fail2` (lines 8–10)
+**File content:**
+```terraform
+resource "aws_rds_cluster" "fail2" {
+  backup_retention_period = 0
+}
+```
+**Findings:** Same eight cluster checks **plus** CKV_AWS_133 (backup policy).  
+**Why:**  
+- All the missing attributes from above still apply.  
+- `backup_retention_period = 0` disables automated backups, which violates CKV_AWS_133. The scanner flags this because a backup policy is effectively absent.
+
+---
+
+### `aws_rds_cluster.fail` (lines 13–15)
+**File content:**
+```terraform
+#this will fail in tf i dont know why we even bother?
+resource "aws_rds_cluster" "fail" {
+  backup_retention_period = 36
+}
+```
+**Findings:** Same eight cluster checks **plus** CKV_AWS_133.  
+**Why:**  
+- All security attributes are missing.  
+- `backup_retention_period = 36` is **invalid** (AWS allows 1–35 days). The comment acknowledges this will cause a Terraform apply error. The scanner still flags CKV_AWS_133 because the backup configuration is not valid.
+
+---
+
+### `aws_db_instance` resources (lines 17–35)
+The same pattern repeats for the instance resources. The file defines:
+- `aws_db_instance.pass` (lines 17–19) – only `backup_retention_period = 35`
+- `aws_db_instance.pass2` (lines 21–22) – empty block
+- `aws_db_instance.fail2` (lines 24–26) – `backup_retention_period = 0`
+- `aws_db_instance.fail` (lines 29–31) – `backup_retention_period = 36` (invalid)
+- `aws_db_instance.unknown` (lines 33–35) – `backup_retention_period = var.backup_retention_period`
+
+**Common findings across all instances:**
+- CKV_AWS_354 – Performance Insights KMS CMK
+- CKV_AWS_293 – deletion protection
+- CKV_AWS_353 – Performance Insights enabled
+- CKV_AWS_157 – Multi-AZ
+- CKV_AWS_129 – log exports enabled
+- CKV_AWS_226 – auto minor upgrades
+- CKV_AWS_118 – enhanced monitoring
+- CKV_AWS_16  – encryption at rest
+- CKV2_AWS_60 – copy tags to snapshots
+
+**Additional findings on `fail2` and `fail`:**
+- CKV_AWS_133 – backup policy (because `backup_retention_period` is 0 or invalid)
+
+**Why they fire:**  
+The resource blocks lack the corresponding attributes. For example:
+- `performance_insights_kms_key_id` is missing → CKV_AWS_354
+- `deletion_protection` is missing → CKV_AWS_293
+- `performance_insights_enabled` is missing → CKV_AWS_353
+- `multi_az` is missing → CKV_AWS_157
+- `enabled_cloudwatch_logs_exports` is missing → CKV_AWS_129
+- `auto_minor_version_upgrade` is missing → CKV_AWS_226
+- `monitoring_interval` / `monitoring_role_arn` are missing → CKV_AWS_118
+- `storage_encrypted` is missing → CKV_AWS_16
+- `copy_tags_to_snapshot` is missing → CKV2_AWS_60
+
+For `aws_db_instance.unknown`, the backup retention is a variable, so CKV_AWS_133 is **not** raised (the scanner cannot evaluate the value). All other checks still fire because the required attributes are absent.
+
+---
+
+### What the engineer must do
+For every resource, add the missing attributes to satisfy the checks. The exact values depend on your security policy, but the attributes that must be present are:
+
+**For `aws_rds_cluster`:**
+- `copy_tags_to_snapshot = true`
+- `storage_encrypted = true`
+- `iam_database_authentication_enabled = true`
+- `backtrack_window = <seconds>` (Aurora only)
+- `kms_key_id = <arn>` (or set to a KMS key)
+- `enabled_cloudwatch_logs_exports = ["audit", "error", ...]`
+- `deletion_protection = true`
+- Associate the cluster with an AWS Backup plan (or define one in Terraform).
+
+**For `aws_db_instance`:**
+- `copy_tags_to_snapshot = true`
+- `storage_encrypted = true`
+- `deletion_protection = true`
+- `performance_insights_enabled = true`
+- `performance_insights_kms_key_id = <arn>`
+- `multi_az = true`
+- `enabled_cloudwatch_logs_exports = ["audit", "error", ...]`
+- `auto_minor_version_upgrade = true`
+- `monitoring_interval = <non‑zero>` and `monitoring_role_arn`
+
+**Fix invalid backup retention:**
+- `fail` resources: change `backup_retention_period` to a value between 1 and 35.
+- `fail2` resources: set a positive retention period (e.g., 7) to enable backups.
+
+The resource named `unknown` uses a variable; ensure that variable’s value is valid and add all the missing security attributes.
+
+All findings are grounded in the absence of these attributes in the provided file. No other assumptions are needed.

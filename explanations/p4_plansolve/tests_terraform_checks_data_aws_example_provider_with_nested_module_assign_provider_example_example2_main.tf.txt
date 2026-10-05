@@ -1,0 +1,35 @@
+The scanner flagged seven security misconfigurations in the `aws_s3_bucket` resource named `bucket`. Below is a description of each finding, why it matters, and the change needed to resolve it.
+
+---
+
+**CKV2_AWS_61 – Missing lifecycle configuration**  
+Lifecycle rules help manage storage costs and enforce data retention policies by automatically transitioning objects to cheaper storage classes or expiring them.  
+*Fix:* Add a `lifecycle_rule` block inside the `aws_s3_bucket` resource (or use a separate `aws_s3_bucket_lifecycle_configuration` resource). At minimum, define a rule with an `id`, `enabled = true`, and an action such as `expiration` or `transition`. For example, a rule that expires objects after 90 days would satisfy the check.
+
+**CKV_AWS_18 – Access logging not enabled**  
+Server access logging provides an audit trail of requests made to the bucket, which is critical for security investigations and compliance.  
+*Fix:* Add a `logging` block to the bucket resource (or use `aws_s3_bucket_logging`). Specify a `target_bucket` (an existing bucket that will store the logs) and a `target_prefix` (e.g., `"logs/"`). Ensure the target bucket has the necessary permissions to receive logs.
+
+**CKV2_AWS_62 – Event notifications not enabled**  
+Event notifications allow you to trigger workflows (e.g., Lambda functions, SQS queues, SNS topics) when objects are created or deleted, enabling real-time security monitoring and automated response.  
+*Fix:* Create an `aws_s3_bucket_notification` resource that references this bucket. Define at least one `event` (e.g., `s3:ObjectCreated:*`) and a destination (Lambda function ARN, SNS topic ARN, or SQS queue ARN). The destination must exist and have the appropriate permissions.
+
+**CKV2_AWS_6 – Public Access block not configured**  
+Without a public access block, the bucket could accidentally be made publicly readable or writable, leading to data exposure.  
+*Fix:* Add an `aws_s3_bucket_public_access_block` resource that targets this bucket. Set all four block flags to `true`: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets`. This ensures no public access is possible regardless of other settings.
+
+**CKV_AWS_145 – Default encryption not using KMS**  
+Server-side encryption with KMS gives you control over key rotation, access policies, and audit trails via AWS CloudTrail. SSE-S3 (AES-256) is less auditable.  
+*Fix:* Add a `server_side_encryption_configuration` block to the bucket (or use `aws_s3_bucket_server_side_encryption_configuration`). Inside the `rule`, set `apply_server_side_encryption_by_default` with `sse_algorithm = "aws:kms"`. Optionally specify a `kms_master_key_id` if you want a custom KMS key; otherwise, the AWS-managed key (`aws/s3`) will be used.
+
+**CKV_AWS_144 – Cross-region replication not enabled**  
+Cross-region replication (CRR) provides geographic redundancy and can help meet disaster recovery and compliance requirements.  
+*Fix:* Set up replication using an `aws_s3_bucket_replication_configuration` resource. This requires a destination bucket in a different region, an IAM role with replication permissions, and a `rule` that defines which objects to replicate. The destination bucket must also have versioning enabled. This is a more involved change, but the check will pass once a replication rule is in place.
+
+**CKV_AWS_21 – Versioning not enabled**  
+Versioning preserves every version of an object, protecting against accidental deletion or overwrites and is a prerequisite for replication.  
+*Fix:* Add a `versioning` block to the bucket resource (or use `aws_s3_bucket_versioning`) with `enabled = true`. This is a simple, one-line change that also unblocks the replication requirement.
+
+---
+
+All of these changes can be applied to the existing `aws_s3_bucket` resource or through the newer standalone configuration resources, depending on your provider version. Ensure that any referenced resources (log target bucket, notification destinations, replication destination bucket, IAM role) are created and properly configured.

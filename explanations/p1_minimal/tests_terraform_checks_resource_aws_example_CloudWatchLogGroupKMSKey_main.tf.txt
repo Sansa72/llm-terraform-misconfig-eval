@@ -1,0 +1,64 @@
+The scanner flagged two issues in your Terraform configuration. Both relate to the `aws_cloudwatch_log_group` resources, but they are separate security concerns. Here’s what each finding means and how to resolve it.
+
+---
+
+### 1. CKV_AWS_338 – Log retention is too short (both resources)
+
+**What it checks**  
+CloudWatch Log Groups must retain log events for at least 365 days (1 year). This is a security best practice to ensure you have sufficient history for auditing, incident investigation, and compliance.
+
+**What’s wrong**  
+Both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail` have `retention_in_days = 1`. That means logs are automatically deleted after just one day, which is far below the required minimum.
+
+**How to fix**  
+Set `retention_in_days` to a value of at least `365`. Common choices are `365`, `400`, `731`, etc. For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass" {
+  name              = "pass"   # consider adding a name
+  retention_in_days = 365
+  kms_key_id        = "someKey"
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  name              = "fail"
+  retention_in_days = 365
+}
+```
+
+> **Note:** The resource named `pass` still fails this check despite its name – it only passes the encryption check below.
+
+---
+
+### 2. CKV_AWS_158 – Log group not encrypted with KMS (only `fail` resource)
+
+**What it checks**  
+CloudWatch Log Groups should be encrypted using a customer-managed KMS key (or at least the AWS-managed key, but the check specifically looks for a `kms_key_id`). Encryption protects log data at rest and helps meet regulatory requirements.
+
+**What’s wrong**  
+The `fail` resource does not specify a `kms_key_id`, so it uses the default CloudWatch encryption (which is still encrypted, but with an AWS-owned key that you do not control). The scanner flags this as a misconfiguration because it expects a customer-managed key for better control and auditability.
+
+**How to fix**  
+Add a `kms_key_id` attribute pointing to a valid KMS key ARN or alias. You can use the same key as the `pass` resource or a different one.
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  name              = "fail"
+  retention_in_days = 365
+  kms_key_id        = "arn:aws:kms:region:account:key/your-key-id"   # or use alias
+}
+```
+
+If you intend to use the default AWS-managed key and accept the risk, you can suppress the check with a comment, but the secure approach is to provide a KMS key.
+
+---
+
+### Summary of required changes
+
+| Resource          | Issue                                                                 | Fix                                                                 |
+|-------------------|-----------------------------------------------------------------------|---------------------------------------------------------------------|
+| `pass`            | `retention_in_days = 1` (CKV_AWS_338)                                 | Set `retention_in_days` to at least `365`                            |
+| `fail`            | `retention_in_days = 1` (CKV_AWS_338)                                 | Set `retention_in_days` to at least `365`                            |
+| `fail`            | Missing `kms_key_id` (CKV_AWS_158)                                    | Add `kms_key_id` with a valid KMS key ARN/alias                      |
+
+After applying these changes, both checks should pass.

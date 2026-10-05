@@ -1,0 +1,82 @@
+The scanner flagged multiple misconfigurations across five EKS cluster resources. Below is a breakdown of each finding, the exact resource and lines it applies to, and what the Terraform file shows (or fails to show) that triggers the check.
+
+---
+
+### CKV_AWS_58 – Ensure EKS Cluster has Secrets Encryption Enabled
+
+**Flagged on:**
+- `aws_eks_cluster.disabled` (lines 3‑12)
+- `aws_eks_cluster.restricted` (lines 14‑23)
+- `aws_eks_cluster.default` (lines 27‑34)
+- `aws_eks_cluster.empty` (lines 36‑45)
+- `aws_eks_cluster.open` (lines 47‑56)
+
+**What the check requires:**  
+The resource must include an `encryption_config` block with a provider that references a KMS key, enabling envelope encryption of Kubernetes secrets.
+
+**What the file shows:**  
+None of the five `aws_eks_cluster` resources contain an `encryption_config` block. The check is raised because the required configuration is completely absent from every cluster definition.
+
+---
+
+### CKV_AWS_37 – Ensure Amazon EKS control plane logging enabled for all log types
+
+**Flagged on:**
+- `aws_eks_cluster.disabled` (lines 3‑12)
+- `aws_eks_cluster.restricted` (lines 14‑23)
+- `aws_eks_cluster.default` (lines 27‑34)
+- `aws_eks_cluster.empty` (lines 36‑45)
+- `aws_eks_cluster.open` (lines 47‑56)
+
+**What the check requires:**  
+The resource should have an `enabled_cluster_log_types` argument listing all available log types (e.g., `api`, `audit`, `authenticator`, `controllerManager`, `scheduler`).
+
+**What the file shows:**  
+No `enabled_cluster_log_types` argument is present in any of the five resources. The check is raised because control plane logging is not configured at all.
+
+---
+
+### CKV_AWS_39 – Ensure Amazon EKS public endpoint is disabled
+
+**Flagged on:**
+- `aws_eks_cluster.restricted` (lines 14‑23)
+- `aws_eks_cluster.default` (lines 27‑34)
+- `aws_eks_cluster.empty` (lines 36‑45)
+- `aws_eks_cluster.open` (lines 47‑56)
+
+**What the check requires:**  
+The `vpc_config` block must have `endpoint_public_access` set to `false`.
+
+**What the file shows:**
+- `aws_eks_cluster.disabled` (lines 3‑12) is **not** flagged because line 9 explicitly sets `endpoint_public_access = False`.
+- `aws_eks_cluster.restricted` (lines 14‑23) does **not** set `endpoint_public_access`; it defaults to `true`, so it is flagged.
+- `aws_eks_cluster.default` (lines 27‑34) does **not** set `endpoint_public_access`; it defaults to `true`, so it is flagged.
+- `aws_eks_cluster.empty` (lines 36‑45) does **not** set `endpoint_public_access`; it defaults to `true`, so it is flagged.
+- `aws_eks_cluster.open` (lines 47‑56) does **not** set `endpoint_public_access`; it defaults to `true`, so it is flagged.
+
+---
+
+### CKV_AWS_38 – Ensure Amazon EKS public endpoint not accessible to 0.0.0.0/0
+
+**Flagged on:**
+- `aws_eks_cluster.default` (lines 27‑34)
+- `aws_eks_cluster.empty` (lines 36‑45)
+- `aws_eks_cluster.open` (lines 47‑56)
+
+**What the check requires:**  
+When the public endpoint is enabled, the `public_access_cidrs` list must not contain `"0.0.0.0/0"` (i.e., it must be restricted to specific CIDR ranges).
+
+**What the file shows:**
+- `aws_eks_cluster.disabled` (lines 3‑12) is **not** flagged because the public endpoint is disabled (`endpoint_public_access = False`), so `public_access_cidrs` is irrelevant.
+- `aws_eks_cluster.restricted` (lines 14‑23) is **not** flagged because `public_access_cidrs` is set to `["10.0.0.0/16"]`, which does not include `0.0.0.0/0`.
+- `aws_eks_cluster.default` (lines 27‑34) does **not** set `public_access_cidrs`; the AWS default is `["0.0.0.0/0"]`, so it is flagged.
+- `aws_eks_cluster.empty` (lines 36‑45) sets `public_access_cidrs = []`. The scanner treats this as a finding (the check is raised).
+- `aws_eks_cluster.open` (lines 47‑56) explicitly sets `public_access_cidrs = ["0.0.0.0/0"]`, so it is flagged.
+
+---
+
+**Summary of required fixes (based solely on the findings and the file):**
+- Add an `encryption_config` block to every cluster.
+- Add `enabled_cluster_log_types` with all log types to every cluster.
+- For `restricted`, `default`, `empty`, and `open`, set `endpoint_public_access = false` inside `vpc_config`, or if the public endpoint must remain enabled, ensure `public_access_cidrs` is restricted to specific, non‑`0.0.0.0/0` ranges and that the `CKV_AWS_39` check is addressed separately (the check requires the endpoint to be disabled).
+- For `default`, `empty`, and `open`, ensure `public_access_cidrs` does not contain `"0.0.0.0/0"` (and is not left as the default or empty if that is interpreted as open).

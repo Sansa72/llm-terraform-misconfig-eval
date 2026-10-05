@@ -1,0 +1,144 @@
+The scanner ran a set of checks against the Terraform file you provided. Each check ID corresponds to a specific security or operational best practice for RDS instances. Below, I’ve broken down the findings by resource, pointing to the exact lines and explaining what the check requires and what is missing from the configuration as shown.
+
+---
+
+### Resource: `aws_db_instance "postgres"` (lines 3–11)
+The file shows:
+```terraform
+resource "aws_db_instance" "postgres" {
+  allocated_storage = 5
+  engine            = "postgres"
+  instance_class    = "db.t3.small"
+  password          = "postgres"
+  username          = "postgres"
+
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+}
+```
+
+**Findings and missing attributes:**
+
+- **CKV_AWS_161 – IAM authentication not enabled**  
+  The resource does not set `iam_database_authentication_enabled = true`. This check requires IAM database authentication to be explicitly enabled.
+
+- **CKV_AWS_354 – Performance Insights not encrypted with KMS CMK**  
+  The resource does not include `performance_insights_kms_key_id`. Even if Performance Insights were enabled, the check requires a customer-managed KMS key to encrypt the data.
+
+- **CKV_AWS_293 – Deletion protection not enabled**  
+  The resource does not set `deletion_protection = true`.
+
+- **CKV_AWS_353 – Performance Insights not enabled**  
+  The resource does not set `performance_insights_enabled = true`.
+
+- **CKV_AWS_157 – Multi-AZ not enabled**  
+  The resource does not set `multi_az = true`.
+
+- **CKV_AWS_226 – Auto minor version upgrade not enabled**  
+  The resource does not set `auto_minor_version_upgrade = true`.
+
+- **CKV_AWS_118 – Enhanced monitoring not enabled**  
+  The resource does not set `monitoring_interval` to a value greater than `0`.
+
+- **CKV_AWS_16 – Storage encryption not enabled**  
+  The resource does not set `storage_encrypted = true`.
+
+- **CKV2_AWS_60 – Copy tags to snapshots not enabled**  
+  The resource does not set `copy_tags_to_snapshot = true`.
+
+- **CKV2_AWS_30 – Postgres Query Logging not enabled**  
+  This check requires that query logging is configured for the PostgreSQL instance. The current configuration only exports `postgresql` and `upgrade` logs to CloudWatch, but does not include a parameter group (e.g., via `parameter_group_name`) that enables query logging (such as setting `log_statement` or `log_min_duration_statement`). The file contains no parameter group configuration, so query logging is not evidenced.
+
+---
+
+### Resource: `aws_db_instance "mysql"` (lines 13–21)
+The file shows:
+```terraform
+resource "aws_db_instance" "mysql" {
+  allocated_storage = 5
+  engine            = "mysql"
+  instance_class    = "db.t3.small"
+  password          = "mysql"
+  username          = "mysql"
+
+  enabled_cloudwatch_logs_exports = ["general", "error", "slowquery"]
+}
+```
+
+**Findings and missing attributes:**
+The same set of checks (except the Postgres-specific CKV2_AWS_30) are raised. The resource is missing the following attributes, each required by the corresponding check:
+
+- `iam_database_authentication_enabled = true` (CKV_AWS_161)
+- `performance_insights_kms_key_id` (CKV_AWS_354)
+- `deletion_protection = true` (CKV_AWS_293)
+- `performance_insights_enabled = true` (CKV_AWS_353)
+- `multi_az = true` (CKV_AWS_157)
+- `auto_minor_version_upgrade = true` (CKV_AWS_226)
+- `monitoring_interval` > 0 (CKV_AWS_118)
+- `storage_encrypted = true` (CKV_AWS_16)
+- `copy_tags_to_snapshot = true` (CKV2_AWS_60)
+
+Note: The comment `# pass` above this resource does not change the fact that the scanner evaluates the actual configuration, which lacks these settings.
+
+---
+
+### Resource: `aws_db_instance "default"` (lines 25–31)
+The file shows:
+```terraform
+resource "aws_db_instance" "default" {
+  allocated_storage = 5
+  engine            = "mysql"
+  instance_class    = "db.t3.small"
+  password          = "mysql"
+  username          = "mysql"
+}
+```
+
+**Findings and missing attributes:**
+In addition to all the missing attributes listed for the `mysql` resource, this resource also fails:
+
+- **CKV_AWS_129 – Database logs not enabled**  
+  The resource does not include `enabled_cloudwatch_logs_exports`. The check requires that relevant logs (e.g., general, error, slowquery for MySQL) are exported to CloudWatch. Without the attribute, no logs are exported.
+
+All other checks (CKV_AWS_161, 354, 293, 353, 157, 226, 118, 16, CKV2_AWS_60) apply for the same reasons: the corresponding attributes are absent.
+
+---
+
+### Resource: `aws_db_instance "empty"` (lines 33–41)
+The file shows:
+```terraform
+resource "aws_db_instance" "empty" {
+  allocated_storage = 5
+  engine            = "mysql"
+  instance_class    = "db.t3.small"
+  password          = "mysql"
+  username          = "mysql"
+
+  enabled_cloudwatch_logs_exports = []
+}
+```
+
+**Findings and missing attributes:**
+This resource has the same set of findings as `default`, including CKV_AWS_129. Although `enabled_cloudwatch_logs_exports` is present, it is set to an empty list `[]`, meaning no logs are exported. The check requires at least the relevant log types to be listed.
+
+All other missing attributes (IAM auth, Performance Insights encryption, deletion protection, Performance Insights enabled, Multi-AZ, auto minor upgrade, enhanced monitoring, storage encryption, copy tags to snapshots) are absent, triggering the same checks.
+
+---
+
+### Summary of required fixes
+For every `aws_db_instance` resource, you need to add the following arguments (set to `true` or appropriate values) to satisfy the checks:
+
+| Check ID | Required attribute / setting |
+|----------|------------------------------|
+| CKV_AWS_161 | `iam_database_authentication_enabled = true` |
+| CKV_AWS_354 | `performance_insights_kms_key_id = <KMS_KEY_ARN>` (and `performance_insights_enabled = true`) |
+| CKV_AWS_293 | `deletion_protection = true` |
+| CKV_AWS_353 | `performance_insights_enabled = true` |
+| CKV_AWS_157 | `multi_az = true` |
+| CKV_AWS_226 | `auto_minor_version_upgrade = true` |
+| CKV_AWS_118 | `monitoring_interval` set to a value > 0 (e.g., `60`) |
+| CKV_AWS_16  | `storage_encrypted = true` |
+| CKV_AWS_129 | `enabled_cloudwatch_logs_exports` containing appropriate log types (e.g., `["general", "error", "slowquery"]` for MySQL) |
+| CKV2_AWS_60 | `copy_tags_to_snapshot = true` |
+| CKV2_AWS_30 | For Postgres: configure a parameter group that enables query logging (e.g., set `log_statement` or `log_min_duration_statement`) and attach it via `parameter_group_name`. |
+
+The file as it stands only defines basic connectivity and, for `postgres` and `mysql`, partial log exports. All other security and operational controls are missing, which is why the scanner flagged them.

@@ -1,0 +1,12 @@
+**Check ID:** CKV_AWS_330  
+**Resource:** `aws_efs_access_point.fail`  
+**Lines:** 1–6  
+
+**What is wrong**  
+The access point does not include a `posix_user` block, so it does not enforce a specific user identity.  
+
+**Why it matters**  
+Without an explicit POSIX user definition, the access point does not enforce a consistent user identity for file system operations. The scanner flags this as a misconfiguration because the access point should enforce a user identity.  
+
+**Remediation**  
+Add a `posix_user` block inside the `aws_efs_access_point.fail` resource, specifying the desired `uid` and `gid` (and optionally `secondary_gids`). The `pass` resource in the same file shows the required structure. Choose values that match the intended owner for files created through this access point.

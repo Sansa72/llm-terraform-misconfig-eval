@@ -1,0 +1,16 @@
+## Remediation Briefing
+
+### 1. CKV_AWS_225 – API Gateway method caching is disabled  
+**Resource:** `aws_api_gateway_method_settings.fail`  
+**What’s wrong:** The `caching_enabled` attribute is set to `false`.  
+**Why it matters:** Disabling caching forces the API to invoke the backend integration for every request, increasing latency, backend load, and cost. Enabling caching improves performance and reduces load on downstream services.  
+**Change required:** In the `settings` block of the `aws_api_gateway_method_settings.fail` resource, set `caching_enabled` to `true`. The `pass` resource in the same file already demonstrates the correct value.
+
+### 2. CKV_AWS_308 – API Gateway method cache is not encrypted  
+**Resource:** `aws_api_gateway_method_settings.fail`  
+**What’s wrong:** The `cache_data_encrypted` attribute is set to `false`.  
+**Why it matters:** When caching is enabled, cached responses may contain sensitive data. Without encryption, that data is stored in plaintext, increasing the risk of exposure if the underlying storage is compromised.  
+**Change required:** In the same `settings` block, set `cache_data_encrypted` to `true`. This setting only takes effect when caching is enabled, so it must be applied together with the fix for CKV_AWS_225. The `pass` resource already shows the correct combination.
+
+### Interaction note
+Both findings apply to the same `settings` block. Enabling caching (CKV_AWS_225) is a prerequisite for cache encryption (CKV_AWS_308) to be meaningful. The `pass` resource in the file provides a complete, compliant example: `caching_enabled = true` and `cache_data_encrypted = true`. Apply both changes simultaneously to the `fail` resource to resolve both checks.

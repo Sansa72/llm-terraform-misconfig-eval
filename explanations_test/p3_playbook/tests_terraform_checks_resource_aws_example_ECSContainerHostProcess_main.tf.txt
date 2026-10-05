@@ -1,0 +1,46 @@
+## Remediation Briefing
+
+Below are the failing checks, each with a one‑line summary, the security rationale, and a description of the change required.  
+All changes are to the `container_definitions` JSON inside the `jsonencode` call of the affected `aws_ecs_task_definition` resource.
+
+---
+
+### 1. CKV_AWS_336 on `aws_ecs_task_definition.pass` (lines 1‑41)
+**What is wrong:** Neither container definition sets `readonlyRootFilesystem` to `true`.  
+**Why it matters:** Without a read‑only root filesystem, a compromised container can write to system directories, modify binaries, or drop malware, increasing the blast radius of an attack.  
+**Change needed:** In both container definitions (`first` and `second`), add the attribute `"readonlyRootFilesystem": true`. This will mount the container’s root filesystem as read‑only, preventing writes except to explicitly mounted volumes.
+
+---
+
+### 2. CKV_AWS_336 on `aws_ecs_task_definition.pass2` (lines 43‑84)
+**What is wrong:** Neither container definition sets `readonlyRootFilesystem` to `true`.  
+**Why it matters:** Same as above – a writable root filesystem allows an attacker to tamper with the container’s operating environment.  
+**Change needed:** Add `"readonlyRootFilesystem": true` to both container definitions in this task. The first container already has a `pidMode` setting; the new attribute should be added alongside it.
+
+---
+
+### 3. CKV_AWS_336 on `aws_ecs_task_definition.fail` (lines 86‑128)
+**What is wrong:** Neither container definition sets `readonlyRootFilesystem` to `true`.  
+**Why it matters:** Same as above – a writable root filesystem weakens the container’s immutability and security posture.  
+**Change needed:** Add `"readonlyRootFilesystem": true` to both container definitions in this task. This change is independent of the other issues in the same resource.
+
+---
+
+### 4. CKV_AWS_334 on `aws_ecs_task_definition.fail` (lines 86‑128)
+**What is wrong:** The second container definition has `"privilege": true` (note: the correct attribute name is `"privileged"`).  
+**Why it matters:** Running a container in privileged mode grants it nearly all the same host‑level capabilities as the underlying EC2 instance. This breaks the container isolation model and exposes the host to significant risk if the container is compromised.  
+**Change needed:** Remove the `"privilege": true` line entirely, or replace it with `"privileged": false`. The default is `false`, so omitting the attribute is sufficient.
+
+---
+
+### 5. CKV_AWS_335 on `aws_ecs_task_definition.fail` (lines 86‑128)
+**What is wrong:** The second container definition sets `"pidMode": "host"`, which shares the host’s process namespace with the container.  
+**Why it matters:** Sharing the host’s PID namespace allows the container to see and potentially signal or interact with all host processes, including those of other containers. This breaks process isolation and increases the risk of information disclosure or privilege escalation.  
+**Change needed:** Remove the `"pidMode": "host"` line from the second container definition. To enforce process namespace isolation at the task level, also add the top‑level argument `pid_mode = "task"` to the `aws_ecs_task_definition.fail` resource. This ensures all containers in the task run in their own private PID namespace.
+
+---
+
+### Interactions between fixes
+- The three fixes for `aws_ecs_task_definition.fail` (CKV_AWS_336, CKV_AWS_334, CKV_AWS_335) all modify the same container definitions block. They can be applied together in a single edit: add `"readonlyRootFilesystem": true` to both containers, remove `"privilege": true` from the second container, and remove `"pidMode": "host"` from the second container.  
+- The top‑level `pid_mode = "task"` addition for CKV_AWS_335 is a separate line in the resource block and does not conflict with any other change.  
+- The fixes for `pass` and `pass2` are independent of each other and of the `fail` resource.

@@ -1,0 +1,27 @@
+The scanner flagged two `aws_api_gateway_rest_api` resources because they do not have `create_before_destroy = true` in their `lifecycle` block. This is a best practice for API Gateway REST APIs to prevent downtime during updates that force resource replacement.
+
+**What the rule requires**  
+CKV_AWS_237 checks that every `aws_api_gateway_rest_api` resource explicitly sets `lifecycle { create_before_destroy = true }`. The default Terraform behavior (when the block is absent or set to `false`) is to destroy the existing API before creating the replacement. For an API Gateway, that means the endpoint URL becomes unavailable between the destroy and the create, causing a hard outage for any clients.
+
+**What’s wrong in this file**
+
+1. **`aws_api_gateway_rest_api.fail` (lines 1–7)**  
+   The `lifecycle` block is commented out, so Terraform uses the default `create_before_destroy = false`.  
+   *Fix:* Uncomment the block and set the value to `true`:
+   ```hcl
+   lifecycle {
+     create_before_destroy = true
+   }
+   ```
+
+2. **`aws_api_gateway_rest_api.fail2` (lines 9–15)**  
+   The `lifecycle` block is present but explicitly sets `create_before_destroy = false`.  
+   *Fix:* Change `false` to `true`.
+
+The third resource (`pass`) already has the correct configuration and serves as a reference.
+
+**Why this matters for your configuration**  
+All three resources have the same `name = "example"`. If you later change the name (or any other attribute that forces recreation, such as `api_key_source` or `endpoint_configuration`), Terraform will replace the resource. Without `create_before_destroy`, the old API is deleted first, and the new one is created afterward. During that gap, any request to the API’s invoke URL will fail. With `create_before_destroy = true`, the new API is provisioned and ready before the old one is removed, so clients can continue to function (though you may need to handle a brief period where both exist, which is generally acceptable).
+
+**Action**  
+Update both `fail` and `fail2` to use `create_before_destroy = true`. After the change, run `terraform plan` to confirm no unintended side effects, then apply.

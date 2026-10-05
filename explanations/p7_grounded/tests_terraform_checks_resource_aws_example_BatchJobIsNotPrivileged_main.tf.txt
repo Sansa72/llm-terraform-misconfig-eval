@@ -1,0 +1,17 @@
+The scanner flagged resource `aws_batch_job_definition.fail` (lines 8–46) with check **CKV_AWS_210**. The check’s requirement is that an AWS Batch job definition must **not** define a privileged container. The finding message “Batch job does not define a privileged container” is the policy statement; the violation is that this resource *does* define one.
+
+**Evidence in the file**
+
+- The resource `aws_batch_job_definition.fail` starts at line 8.
+- Its `container_properties` (lines 12–45) is a JSON string containing the key-value pair `"privileged": true` on **line 17**.
+
+This explicit setting of `privileged` to `true` is what triggers the check. A privileged container runs with elevated access to the host, which increases the risk of container escape and host compromise.
+
+**How to fix**
+
+Change the value to `false` or remove the `"privileged"` line entirely (the default is `false`). The file already contains examples of passing configurations:
+
+- `aws_batch_job_definition.pass` (lines 48–82) sets `"privileged": false`.
+- `aws_batch_job_definition.pass2` (lines 90–124) and `aws_batch_job_definition.pass3` (lines 126–155) omit the `privileged` field altogether.
+
+No other resources in the file are flagged by this check.

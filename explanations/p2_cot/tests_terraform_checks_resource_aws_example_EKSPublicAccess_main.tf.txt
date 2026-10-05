@@ -1,0 +1,78 @@
+The scanner flagged three EKS cluster resources (`disabled`, `default`, `enabled`) for missing security controls. Here’s what each finding means and how to fix it.
+
+## Issues found
+
+### 1. Secrets encryption not enabled (CKV_AWS_58)
+**Affected resources:** all three clusters (`disabled`, `default`, `enabled`)
+
+Kubernetes stores Secret objects in etcd. By default, EKS does not encrypt them at the application level. Without envelope encryption using a KMS key, anyone with access to the underlying etcd storage (e.g., via a snapshot or compromised host) could read sensitive data like tokens, passwords, or TLS keys. The check requires an `encryption_config` block referencing a KMS key.
+
+### 2. Control plane logging not enabled for all log types (CKV_AWS_37)
+**Affected resources:** all three clusters
+
+EKS can send control plane logs (API server, audit, authenticator, controller manager, scheduler) to CloudWatch. Without full logging, you lose visibility into cluster operations, making it difficult to detect malicious activity, troubleshoot issues, or meet compliance requirements. The check requires enabling all five log types.
+
+### 3. Public endpoint enabled (CKV_AWS_39) and accessible to 0.0.0.0/0 (CKV_AWS_38)
+**Affected resources:** `default` and `enabled` clusters only
+
+- The `disabled` cluster already has `endpoint_public_access = false`, so it passes both checks.
+- The `default` cluster omits the setting, which defaults to `true` and allows access from any IP (`0.0.0.0/0`).
+- The `enabled` cluster explicitly sets `endpoint_public_access = true` without restricting source IPs.
+
+A publicly accessible API endpoint exposed to the entire internet increases the attack surface. Even with authentication, it’s exposed to network-based attacks, brute‑force attempts, and vulnerability scanning. CKV_AWS_39 demands the endpoint be disabled entirely (private cluster). CKV_AWS_38 demands that if the endpoint is public, it must not be open to `0.0.0.0/0` (i.e., restrict to specific CIDRs).
+
+## How to fix
+
+Apply the following changes to each resource. The `disabled` cluster only needs encryption and logging; the other two also need the public endpoint addressed.
+
+### For `aws_eks_cluster.disabled`
+Add encryption and logging:
+
+```hcl
+resource "aws_eks_cluster" "disabled" {
+  name     = "example"
+  role_arn = "aws_iam_role.arn"
+
+  vpc_config {
+    subnet_ids             = ["subnet-12345"]
+    endpoint_public_access = false
+  }
+
+  # Enable secrets encryption
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+    resources = ["secrets"]
+  }
+
+  # Enable all control plane log types
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+```
+
+You must also define the KMS key (e.g., `aws_kms_key.eks`) with an appropriate policy that allows EKS to use it.
+
+### For `aws_eks_cluster.default` and `aws_eks_cluster.enabled`
+Add the same encryption and logging blocks. For the public endpoint, you have two options:
+
+**Option A – Disable public access (recommended to pass CKV_AWS_39):**
+```hcl
+vpc_config {
+  subnet_ids             = ["subnet-12345"]
+  endpoint_public_access = false
+}
+```
+
+**Option B – Keep public access but restrict source IPs (passes CKV_AWS_38, but still fails CKV_AWS_39):**
+```hcl
+vpc_config {
+  subnet_ids             = ["subnet-12345"]
+  endpoint_public_access = true
+  public_access_cidrs    = ["203.0.113.0/24"]  # replace with your egress IPs
+}
+```
+
+If you choose Option B, the cluster will still fail CKV_AWS_39 because the public endpoint remains enabled. To satisfy all checks, use Option A.
+
+After making these changes, all three resources will have secrets encryption, full control plane logging, and no public endpoint (or a restricted one), resolving the scanner findings.

@@ -1,0 +1,10 @@
+The finding flags `aws_ebs_encryption_by_default.disabled` because it explicitly sets `enabled = false`, which disables default EBS encryption for the account/region.
+
+**Why this matters**  
+The `aws_ebs_encryption_by_default` resource controls whether every newly created EBS volume is automatically encrypted at rest, using either the AWS-managed key or a customer-managed KMS key. When default encryption is disabled, any volume created without an explicit encryption flag will be unencrypted. This means data on those volumes—and any snapshots taken from them—is stored in plaintext, exposing it to unauthorised access if a volume is detached, a snapshot is shared, or the underlying physical storage is compromised.
+
+**What the file does**  
+The resource `aws_ebs_encryption_by_default.disabled` (lines 16–18) contains only `enabled = false`. This explicitly turns off the account-level default encryption, overriding any other configuration. Even though the same file also defines an `"enabled"` resource with `enabled = true`, Terraform will attempt to manage both, and the last one applied will determine the actual state. The presence of a resource that deliberately sets `enabled = false` is a direct violation of the requirement to keep default encryption enabled.
+
+**How to fix**  
+Change the `disabled` resource to set `enabled = true`, or remove the `disabled` resource entirely and rely on the `"enabled"` resource (or a single resource) to enforce the desired state. The account should never have a resource that explicitly disables default EBS encryption.

@@ -1,0 +1,17 @@
+**Remediation Briefing: CKV_AWS_330 – EFS Access Point User Identity Enforcement**
+
+---
+
+### 1. CKV_AWS_330 on `aws_efs_access_point.fail` (lines 1–6)
+
+**What is wrong**  
+The access point does not include a `posix_user` block, so it does not enforce a specific user identity for NFS operations.
+
+**Why it matters**  
+When no POSIX user is defined, the access point passes through the client’s own user identity (including root). This can allow any client that mounts the access point to read, write, or delete files with the client’s full privileges, potentially leading to unintended data exposure, privilege escalation, or compliance violations. Enforcing a user identity ensures that all file system interactions through this access point are performed as a known, restricted user, aligning with the principle of least privilege.
+
+**Change needed**  
+Add a `posix_user` block inside the `aws_efs_access_point.fail` resource, specifying a `uid` and `gid` that correspond to the intended application or service account. For example, if the access point is meant for a non‑root application, use a dedicated UID/GID (e.g., `uid = 1000`, `gid = 1000`). This will cause the access point to override the client’s identity with the defined POSIX user, ensuring consistent and restricted access. The existing `aws_efs_access_point.pass` resource in the same file already demonstrates the required syntax; the `fail` resource should be updated in the same manner, but with values appropriate to its specific use case (avoiding `0/0` unless root is explicitly required and justified).
+
+**Interactions with other fixes**  
+None. Only the `fail` resource is flagged; the `pass` resource already satisfies the check and requires no changes.

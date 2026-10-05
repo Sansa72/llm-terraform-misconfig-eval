@@ -1,0 +1,59 @@
+The scanner flagged four issues. I’ll break down each one by contrasting the current configuration with a compliant configuration, then give a concise fix summary.
+
+---
+
+### 1. CKV_AWS_196 on `aws_elasticache_security_group.exists`
+**What the file currently does**  
+It defines an `aws_elasticache_security_group` resource. This is a legacy resource type for ElastiCache clusters running in EC2‑Classic (non‑VPC) mode. AWS has deprecated this in favour of VPC security groups.
+
+**What a compliant configuration would do**  
+Remove the `aws_elasticache_security_group` resource entirely. The ElastiCache cluster itself would reference one or more VPC security groups directly via its `vpc_security_group_ids` argument.
+
+**Precise difference**  
+The legacy resource is deleted. The ElastiCache cluster’s security group membership is moved to a standard `aws_security_group` (like `bar`) and attached through the cluster’s `vpc_security_group_ids`. This matters because the legacy resource type is no longer supported for new deployments and bypasses VPC security controls.
+
+---
+
+### 2. CKV_AWS_23 on `aws_elasticache_security_group.exists`
+**What the file currently does**  
+The legacy `aws_elasticache_security_group` has no rules of its own (it only references another security group by name). There are no rule descriptions to satisfy the check.
+
+**What a compliant configuration would do**  
+After removing the legacy resource, the VPC security group that replaces it will contain `ingress`/`egress` blocks, each with a `description` attribute.
+
+**Precise difference**  
+The legacy resource disappears. The replacement VPC security group gains rules that all carry a `description`. The check is satisfied because every rule now has a human‑readable explanation of its purpose, aiding audits and troubleshooting.
+
+---
+
+### 3. CKV_AWS_23 on `aws_security_group.bar`
+**What the file currently does**  
+`aws_security_group.bar` is defined with no `ingress` or `egress` blocks. There are no rules, so there are no descriptions.
+
+**What a compliant configuration would do**  
+Add the necessary inbound/outbound rules (e.g., allowing traffic from the application tier on the Redis port) and include a `description` in each rule block.
+
+**Precise difference**  
+The security group gains one or more `ingress`/`egress` blocks, each containing a `description` string. The check passes because every rule now has a description, making the security group’s intent explicit and auditable.
+
+---
+
+### 4. CKV2_AWS_5 on `aws_security_group.bar`
+**What the file currently does**  
+`aws_security_group.bar` is not attached to any resource. It is only referenced by the deprecated `aws_elasticache_security_group`, which does not count as a valid attachment for this check. The security group is effectively orphaned.
+
+**What a compliant configuration would do**  
+Attach the security group to a real resource. For example, an `aws_elasticache_cluster` would include `bar.id` in its `vpc_security_group_ids`, or an EC2 instance would reference it in `vpc_security_group_ids`.
+
+**Precise difference**  
+The security group becomes referenced in the `vpc_security_group_ids` argument of a resource that actually uses it. This ensures the group is actively protecting something, eliminating the risk of an unused, misconfigurable security group lingering in the account.
+
+---
+
+### What the engineer must change (summary)
+
+- **Remove** the entire `aws_elasticache_security_group` resource. It is deprecated and triggers CKV_AWS_196.
+- **Attach** `aws_security_group.bar` to a real resource (e.g., an ElastiCache cluster) by placing its ID in that resource’s `vpc_security_group_ids`. This resolves CKV2_AWS_5.
+- **Add** at least one `ingress`/`egress` rule to `aws_security_group.bar` that reflects the required network access, and give **every rule a `description`**. This satisfies both CKV_AWS_23 findings.
+
+All changes are at the configuration property level: delete the legacy resource, add a `vpc_security_group_ids` reference, and populate `ingress`/`egress` blocks with `description` strings.

@@ -1,0 +1,49 @@
+The scanner flagged two types of misconfiguration across the CloudWatch Log Group resources in this file. Here’s what each check means and how to fix the specific violations.
+
+---
+
+### CKV_AWS_158 – Ensure that CloudWatch Log Group is encrypted by KMS
+
+**Step back (general principle):**  
+This check enforces **encryption at rest using customer-managed keys**. While CloudWatch Logs are always encrypted by default with AWS-managed keys, using a customer-managed KMS key gives you control over key rotation, access policies, and auditing. It ensures that sensitive log data is protected with keys that your organization manages, meeting stricter compliance and security requirements.
+
+**Apply to this file:**  
+All four log groups (`pass_365`, `pass_0`, `fail`, `unknown`) are missing the `kms_key_id` argument. Without it, they rely on the default AWS-managed encryption, which the check considers insufficient. The finding applies to every resource because none specifies a KMS key.
+
+**Why it matters here:**  
+Log groups may contain sensitive operational, application, or security data. Without a customer-managed KMS key, you cannot enforce key rotation, restrict decryption permissions to specific IAM roles, or prove that encryption is under your control for audits.
+
+**Fix:**  
+Add a `kms_key_id` argument to each log group, referencing a KMS key ARN (e.g., from an `aws_kms_key` resource). Example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass_365" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.log_key.arn
+}
+```
+
+Apply the same change to `pass_0`, `fail`, and `unknown`.
+
+---
+
+### CKV_AWS_338 – Ensure CloudWatch log groups retains logs for at least 1 year
+
+**Step back (general principle):**  
+This check enforces **adequate log retention for security investigations and compliance**. Logs are critical for detecting, analyzing, and recovering from security incidents. A retention period of at least 365 days ensures that historical log data is available for forensic analysis, auditing, and meeting regulatory requirements.
+
+**Apply to this file:**  
+The resource `aws_cloudwatch_log_group.fail` has `retention_in_days = 5`, which is far below the required 365 days. The other resources are not flagged: `pass_365` already uses 365 days, `pass_0` uses 0 (meaning logs never expire, which satisfies the “at least 1 year” requirement), and `unknown` uses a variable (not evaluated here, so no finding).
+
+**Why it matters here:**  
+With only 5 days of retention, logs are deleted almost immediately. Any security incident, operational issue, or compliance audit that requires older logs will be impossible to investigate. This directly undermines incident response and violates retention policies.
+
+**Fix:**  
+Change the `retention_in_days` value for the `fail` log group to at least 365:
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.log_key.arn   # also fix CKV_AWS_158
+}
+```

@@ -1,0 +1,61 @@
+## CKV_AWS_340: Ensure Elastic Beanstalk managed platform updates are enabled
+
+**General principle**  
+Elastic Beanstalk environments run on platform stacks (OS, runtime, middleware) that receive regular security and maintenance updates. Enabling managed platform updates ensures these updates are applied automatically during a defined maintenance window, reducing the window of exposure to known vulnerabilities and preventing configuration drift. Without it, the environment remains on a potentially outdated and vulnerable platform version indefinitely.
+
+**Application to the flagged resources**
+
+All six environments (`fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`) are missing the `aws:elasticbeanstalk:managedactions` setting that enables managed platform updates. The scanner correctly flags this absence in every resource. The `pass` and `pass2` resources already satisfy the enhanced health reporting check, but they still lack the managed updates configuration.
+
+**Why it matters**  
+Without managed updates, the underlying platform components (e.g., Amazon Linux AMI, language runtime) will not receive security patches automatically. An attacker could exploit known vulnerabilities in an outdated stack, and the operations team would need to manually trigger platform upgrades—a process that is often delayed or forgotten.
+
+**Required change**  
+Add a `setting` block to each environment resource to enable managed platform updates. The minimal configuration is:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+Optionally, you can also define a preferred maintenance window and update level, but the above is sufficient to pass the check.
+
+---
+
+## CKV_AWS_312: Ensure Elastic Beanstalk environments have enhanced health reporting enabled
+
+**General principle**  
+Enhanced health reporting provides granular, near‑real‑time metrics about the environment’s health (e.g., instance status, application metrics, request latency). This visibility is critical for rapid detection of security incidents, performance degradation, or misconfigurations. Basic health reporting only offers a coarse “green/yellow/red” status, which can delay incident response and hide subtle signs of compromise.
+
+**Application to the flagged resources**
+
+- **fail** (lines 1‑10): No health reporting settings are present. The environment defaults to basic health reporting, violating the requirement.
+- **fail2** (lines 12‑26): Explicitly sets `SystemType` to `basic` in the `aws:elasticbeanstalk:healthreporting:system` namespace, directly contradicting the enhanced health requirement.
+- **fail3** (lines 28‑48): Contains two settings:
+  - `HealthStreamingEnabled` set to `False` – this disables health streaming, but the check targets the `SystemType` value.  
+  - A `SystemType` setting in a non‑existent namespace `guff` – this has no effect.  
+  The environment therefore falls back to the default basic health reporting.
+- **fail4** (lines 50‑65): Sets `HealthStreamingEnabled` to an empty string, which is not a valid `true` value. No `SystemType` is configured, so basic health reporting remains in effect.
+
+**Why it matters**  
+Basic health reporting provides only a high‑level status and lacks detailed metrics. In a security incident, you would miss early warning signs such as increased error rates, abnormal latency, or instance resource exhaustion. Enhanced reporting enables proactive monitoring and faster incident response.
+
+**Required change**  
+For each failing environment, add or correct the `setting` block to enable enhanced health reporting. The correct configuration is:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "SystemType"
+  value     = "enhanced"
+}
+```
+
+- In `fail2`, change the existing `value` from `"basic"` to `"enhanced"`.
+- In `fail3`, remove the ineffective `guff` namespace block and ensure the correct `SystemType` is set to `"enhanced"`. The `HealthStreamingEnabled` setting is not required for this check, but if present it should be `true`.
+- In `fail4`, replace the empty `HealthStreamingEnabled` block with the `SystemType` block above, or add it alongside a corrected `HealthStreamingEnabled = "true"`.
+
+The `pass` and `pass2` resources already satisfy this check via `HealthStreamingEnabled = true` (the scanner did not flag them for CKV_AWS_312), so no change is needed for those.

@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_184",
+      "resource": "aws_efs_file_system.fail",
+      "evidence": [
+        "resource \"aws_efs_file_system\" \"fail\" {\n  encrypted = true\n}"
+      ],
+      "risk": "The EFS file system is encrypted but does not specify a customer managed KMS key, so it uses the default AWS-managed key, which may not meet organizational requirements for key management, rotation, and access control.",
+      "remediation": "Add a kms_key_id attribute set to the ARN of a customer managed KMS key to ensure encryption uses a key that you control.",
+      "confidence": "high"
+    }
+  ]
+}

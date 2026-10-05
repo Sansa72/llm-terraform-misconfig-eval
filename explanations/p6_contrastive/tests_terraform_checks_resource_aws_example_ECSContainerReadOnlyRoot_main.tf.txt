@@ -1,0 +1,70 @@
+The scanner flagged three separate issues across two ECS task definitions. Below, each check is explained by contrasting the current insecure configuration with the secure configuration that would satisfy the check, focusing on the exact property that must change and why that change matters.
+
+---
+
+### 1. CKV_AWS_336 – Ensure ECS containers are limited to read-only access to root filesystems
+
+**Applies to:**  
+- `aws_ecs_task_definition.fail` (second container)  
+- `aws_ecs_task_definition.fail2` (both containers)
+
+**Current configuration (fail):**  
+- In `aws_ecs_task_definition.fail`, the first container has `readonlyRootFilesystem = true`, but the second container **omits** this property entirely. The default value is `false`, so the second container’s root filesystem is writable.  
+- In `aws_ecs_task_definition.fail2`, both containers explicitly set `readonlyRootFilesystem = false`.
+
+**Satisfying configuration:**  
+Every container definition must have `readonlyRootFilesystem` set to `true`. This makes the root filesystem read-only, preventing any process inside the container from writing to it.
+
+**Precise difference:**  
+For the failing containers, the property `readonlyRootFilesystem` must be changed from `false` (or absent) to `true`. No other changes are required.
+
+**Why it matters:**  
+A writable root filesystem allows a compromised container to modify binaries, drop malware, or tamper with configuration files. Enforcing read-only access limits the attacker’s ability to persist or escalate an attack, aligning with the principle of immutable infrastructure.
+
+---
+
+### 2. CKV_AWS_334 – Ensure ECS containers run as non-privileged
+
+**Applies to:**  
+- `aws_ecs_task_definition.fail2` (second container)
+
+**Current configuration (fail):**  
+The second container definition includes `"privilege": true` (a typo for the correct property `privileged`). This enables privileged mode, granting the container all Linux capabilities and access to host devices.
+
+**Satisfying configuration:**  
+The container must not run in privileged mode. The property `privileged` should either be omitted (defaults to `false`) or explicitly set to `false`.
+
+**Precise difference:**  
+Remove the `"privilege": true` line (or replace it with `"privileged": false`). The rest of the container definition stays identical.
+
+**Why it matters:**  
+Privileged containers have near-root access to the underlying host. If an attacker escapes the container, they gain immediate control over the host. Disabling privileged mode drastically reduces the blast radius of a container compromise.
+
+---
+
+### 3. CKV_AWS_335 – Ensure ECS task definitions do not share the host’s process namespace
+
+**Applies to:**  
+- `aws_ecs_task_definition.fail2`
+
+**Current configuration (fail):**  
+The second container definition erroneously includes `"pidMode": "host"`. Although `pidMode` is a task-level property (not a container-level one), the scanner interprets this as the task sharing the host’s process namespace. The task definition itself does not set the top-level `pid_mode` argument, but the presence of `"pidMode": "host"` inside the container definition triggers the check.
+
+**Satisfying configuration:**  
+The task must not share the host’s process namespace. This means the top-level `pid_mode` must not be set to `"host"`, and no container definition should contain a `pidMode` property. The default (no `pid_mode`) isolates the task’s process namespace.
+
+**Precise difference:**  
+Delete the `"pidMode": "host"` line from the second container definition. No other changes are needed; the task-level `pid_mode` remains unset (or can be explicitly set to `"task"` if desired).
+
+**Why it matters:**  
+Sharing the host’s process namespace allows a container to see and potentially interact with all processes on the host, including those of other containers. This breaks process isolation and makes it easier for an attacker to move laterally or interfere with host services.
+
+---
+
+### Summary for the engineer
+
+- **`readonlyRootFilesystem`** – In `fail`, add `readonlyRootFilesystem = true` to the second container. In `fail2`, change `readonlyRootFilesystem` from `false` to `true` in both containers. This makes root filesystems read-only.
+- **Privileged mode** – In `fail2`, remove the `"privilege": true` line from the second container (or correct it to `"privileged": false`). This prevents the container from running with elevated host privileges.
+- **Process namespace** – In `fail2`, delete the `"pidMode": "host"` line from the second container definition. This ensures the task does not share the host’s process namespace.
+
+All other configuration (CPU, memory, port mappings, volumes, placement constraints) can remain unchanged.

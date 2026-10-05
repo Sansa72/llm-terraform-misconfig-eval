@@ -1,0 +1,97 @@
+**Remediation Briefing**
+
+Below are the failing checks in the order reported, with a concise explanation of the issue, its importance, and the required change. No complete Terraform blocks are given; only the necessary modifications are described.
+
+---
+
+### 1. CKV_AWS_150 on `aws_lb.pass` (lines 3-10)
+**What is wrong:** Deletion protection is not enabled on this Application Load Balancer.  
+**Why it matters:** Without deletion protection, the load balancer can be accidentally deleted via API or console, causing an outage.  
+**Change needed:** Add the attribute `enable_deletion_protection = true` to the `aws_lb` resource block.
+
+### 2. CKV_AWS_91 on `aws_lb.pass` (lines 3-10)
+**What is wrong:** Access logging is not configured for this load balancer.  
+**Why it matters:** Access logs are essential for security analysis, troubleshooting, and meeting compliance requirements.  
+**Change needed:** Add an `access_logs` block inside the resource, specifying an S3 bucket name, and optionally a prefix and a boolean `enabled = true`. Ensure the S3 bucket exists and the load balancer has the necessary permissions to write to it.
+
+### 3. CKV_AWS_150 on `aws_alb.pass` (lines 12-18)
+**What is wrong:** Deletion protection is not enabled on this Application Load Balancer (legacy `aws_alb` resource).  
+**Why it matters:** Same risk as above – accidental deletion can cause service disruption.  
+**Change needed:** Add `enable_deletion_protection = true` to the `aws_alb` resource block.
+
+### 4. CKV_AWS_91 on `aws_alb.pass` (lines 12-18)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** Missing logs hinder incident investigation and compliance.  
+**Change needed:** Add an `access_logs` block with `enabled = true` and a valid S3 bucket reference, just as for the `aws_lb` resource.
+
+### 5. CKV_AWS_127 on `aws_elb.pass` (lines 19-61)
+**What is wrong:** The HTTPS listener uses an IAM server certificate (`arn:aws:iam::...:server-certificate/...`) instead of an AWS Certificate Manager (ACM) certificate.  
+**Why it matters:** ACM provides automatic renewal and easier management. Using IAM server certificates is a legacy approach that increases operational overhead and the risk of expired certificates.  
+**Change needed:** Replace the value of `ssl_certificate_id` in the HTTPS listener with the ARN of an ACM certificate (format `arn:aws:acm:region:account:certificate/...`). If the certificate does not yet exist in ACM, request or import it, then reference its ARN.
+
+### 6. CKV_AWS_127 on `aws_elb.fail` (lines 64-106)
+**What is wrong:** Same issue – the HTTPS listener uses an IAM server certificate instead of an ACM certificate.  
+**Why it matters:** Identical risk to the previous finding.  
+**Change needed:** Replace the `ssl_certificate_id` with an ACM certificate ARN, as described above.
+
+### 7. CKV_AWS_328 on `aws_elb.fail` (lines 64-106)
+**What is wrong:** The resource is a classic ELB (`aws_elb`), which does not support the `desync_mitigation_mode` attribute. The check expects an Application Load Balancer, but this is a different resource type.  
+**Why it matters:** The attribute is invalid for a classic ELB and will cause a Terraform plan/apply error. The scanner flagged it because it assumes the resource should be an ALB.  
+**Change needed:** Remove the line `desync_mitigation_mode = "monitor"` from the `aws_elb` block. If desync mitigation is required, migrate this load balancer to an Application Load Balancer (`aws_lb` with `load_balancer_type = "application"`) and set the mode to `"defensive"` or `"strictest"`. The check will then no longer apply to the classic ELB.
+
+### 8. CKV_AWS_150 on `aws_lb.fail` (lines 108-115)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Accidental deletion risk.  
+**Change needed:** Add `enable_deletion_protection = true` to the resource.
+
+### 9. CKV_AWS_328 on `aws_lb.fail` (lines 108-115)
+**What is wrong:** The desync mitigation mode is set to `"monitor"`, which is the least strict option.  
+**Why it matters:** Monitor mode only logs potential desync attacks but does not block them. A defensive or strictest mode actively mitigates HTTP desync vulnerabilities.  
+**Change needed:** Change the value of `desync_mitigation_mode` from `"monitor"` to `"defensive"` or `"strictest"`. `"defensive"` is a good balance; `"strictest"` provides maximum protection but may affect some legitimate traffic.
+
+### 10. CKV_AWS_91 on `aws_lb.fail` (lines 108-115)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** Missing logs impede security monitoring and compliance.  
+**Change needed:** Add an `access_logs` block with `enabled = true` and a valid S3 bucket.
+
+### 11. CKV_AWS_150 on `aws_alb.fail` (lines 117-124)
+**What is wrong:** Deletion protection is not enabled.  
+**Why it matters:** Same accidental deletion risk.  
+**Change needed:** Add `enable_deletion_protection = true`.
+
+### 12. CKV_AWS_328 on `aws_alb.fail` (lines 117-124)
+**What is wrong:** Desync mitigation mode is `"monitor"`.  
+**Why it matters:** Ineffective against desync attacks.  
+**Change needed:** Change `desync_mitigation_mode` to `"defensive"` or `"strictest"`.
+
+### 13. CKV_AWS_91 on `aws_alb.fail` (lines 117-124)
+**What is wrong:** Access logging is not configured.  
+**Why it matters:** Lack of visibility into traffic.  
+**Change needed:** Add an `access_logs` block with `enabled = true` and a valid S3 bucket.
+
+### 14. CKV2_AWS_28 on `aws_lb.pass` (lines 3-10)
+**What is wrong:** This public-facing Application Load Balancer is not associated with a WAF Web ACL.  
+**Why it matters:** Without a WAF, the application is exposed to common web exploits like SQL injection and cross-site scripting.  
+**Change needed:** Create an `aws_wafv2_web_acl` (or `aws_wafregional_web_acl`) and an `aws_wafv2_web_acl_association` (or regional equivalent) that links the Web ACL’s ARN to the load balancer’s ARN. The association resource must reference this ALB.
+
+### 15. CKV2_AWS_28 on `aws_alb.pass` (lines 12-18)
+**What is wrong:** This public-facing ALB (legacy resource) is not protected by a WAF.  
+**Why it matters:** Same exposure to web attacks.  
+**Change needed:** Associate the same (or a separate) WAF Web ACL with this load balancer using an `aws_wafv2_web_acl_association` that points to the `aws_alb` ARN.
+
+### 16. CKV2_AWS_28 on `aws_lb.fail` (lines 108-115)
+**What is wrong:** No WAF association on this public ALB.  
+**Why it matters:** Unprotected web application.  
+**Change needed:** Add a WAF association resource linking this ALB to a Web ACL.
+
+### 17. CKV2_AWS_28 on `aws_alb.fail` (lines 117-124)
+**What is wrong:** No WAF association on this public ALB.  
+**Why it matters:** Same risk.  
+**Change needed:** Add a WAF association resource for this load balancer.
+
+---
+
+**Interactions and notes:**
+- The fixes for deletion protection, access logging, and WAF association are independent and can be applied to each resource individually. However, you may reuse the same S3 bucket for access logs and the same WAF Web ACL across multiple load balancers, provided each ALB gets its own association resource.
+- The `aws_alb` resources are functionally identical to `aws_lb` with `load_balancer_type = "application"`. The same attribute names (`enable_deletion_protection`, `access_logs`, `desync_mitigation_mode`) apply to both.
+- For the classic ELB (`aws_elb.fail`), removing the invalid `desync_mitigation_mode` line is mandatory to avoid a Terraform error. If you later convert it to an ALB, the desync mitigation and other ALB-specific checks will become relevant.

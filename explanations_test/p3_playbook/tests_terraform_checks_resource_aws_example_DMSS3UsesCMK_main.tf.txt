@@ -1,0 +1,11 @@
+**Check:** CKV_AWS_298 on resource `aws_dms_s3_endpoint.fail`  
+**What’s wrong:** The endpoint does not define a `kms_key_arn`, so it will use the default AWS-managed key for S3 encryption.  
+**Why it matters:** Without a customer-managed key (CMK), you lack control over key rotation, access policies, and auditing. This can lead to non-compliance with data protection standards and makes it harder to enforce least privilege or revoke access to the data that DMS writes to S3.  
+**Change needed:** Add the `kms_key_arn` argument and set it to the ARN of a KMS key that you manage. The key must exist in the same region as the endpoint. You can reference an existing key directly (as in the `pass` example) or use a resource attribute like `aws_kms_key.pike.arn` (as in `pass2`). Do not leave the argument unset or empty.
+
+**Check:** CKV_AWS_298 on resource `aws_dms_s3_endpoint.fail2`  
+**What’s wrong:** The `kms_key_arn` is set to an empty string, which is equivalent to not specifying a key and results in the use of the default AWS-managed key.  
+**Why it matters:** Same as above – you lose the governance, security, and compliance benefits of a customer-managed key. An empty string is not a valid key identifier and will not satisfy the requirement.  
+**Change needed:** Replace the empty string with a valid KMS key ARN. Use the same approach as for the first resource: either a hardcoded ARN or a reference to a KMS key resource/data source. Ensure the key is a symmetric CMK in the same region as the DMS endpoint.
+
+**Interactions:** Both resources suffer from the same misconfiguration and can be fixed independently. No dependency between them requires a specific order of change.

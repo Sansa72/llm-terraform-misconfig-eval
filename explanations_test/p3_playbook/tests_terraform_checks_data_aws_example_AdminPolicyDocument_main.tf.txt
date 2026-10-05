@@ -1,0 +1,154 @@
+**Remediation Briefing**
+
+Below are the findings, grouped by the Terraform resource they affect, in the order presented by the scanner. Each entry names the check and resource, states the problem in one line, explains why it matters, and describes the change needed to pass the check.
+
+---
+
+### 1. CKV_AWS_356 on `aws_iam_policy_document.pass` (lines 3–15)
+
+**What is wrong:** The policy statement uses `"*"` as the resource for an action that is resource‑restrictable.  
+**Why it matters:** Granting a resource‑restrictable action (like `s3:Describe*`) on all resources (`"*"`) violates the principle of least privilege. If the associated role is compromised, the attacker can describe any S3 resource in the account, potentially mapping the entire storage footprint.  
+**Change needed:** Replace the wildcard resource with the specific ARN(s) of the S3 bucket(s) that the policy is intended to cover. For example, if the policy should only allow describing a particular bucket, set `resources = ["arn:aws:s3:::my-bucket"]`. If the action truly does not support resource‑level permissions (e.g., `s3:DescribeJob` is a resource‑level action, but some `s3:Describe*` actions might not be), verify the action’s resource type in the IAM documentation and scope the resource accordingly. If the action is not resource‑level, the resource must remain `"*"`; in that case, consider adding a `Condition` block to restrict access by source IP, VPC, or tags to reduce the effective scope.
+
+---
+
+### 2. CKV_AWS_108 on `aws_iam_policy_document.fail` (lines 43–55) – Data exfiltration
+
+**What is wrong:** The policy allows `"*"` actions on `"*"` resources, which includes actions that can exfiltrate data (e.g., `s3:GetObject`, `rds:Describe*` with download capabilities).  
+**Why it matters:** An identity with this policy can read and copy sensitive data from any service, leading to a data breach.  
+**Change needed:** Replace the wildcard action with a tightly scoped list of specific actions that are necessary for the intended workload. Explicitly exclude data‑read actions that are not required. Similarly, restrict the resource element to the exact ARNs of the resources the identity needs to access.
+
+---
+
+### 3. CKV_AWS_111 on `aws_iam_policy_document.fail` (lines 43–55) – Write access without constraints
+
+**What is wrong:** The policy grants unrestricted write access (`"*"` actions on `"*"` resources).  
+**Why it matters:** Unconstrained write permissions allow an attacker to modify, delete, or corrupt data, create resources, or inject malicious configurations.  
+**Change needed:** Replace the wildcard action with a minimal set of write actions that are absolutely required. For each allowed write action, scope the resource to the specific ARNs that need to be modified. Add conditions (e.g., `aws:RequestedRegion`, `s3:x-amz-acl`) to further limit write operations.
+
+---
+
+### 4. CKV_AWS_49 on `aws_iam_policy_document.fail` (lines 43–55) – No wildcard actions
+
+**What is wrong:** The statement uses `"*"` as the action, granting permission to perform any action in AWS.  
+**Why it matters:** This is the most dangerous IAM misconfiguration; it effectively gives the principal full administrative rights over all resources in the account.  
+**Change needed:** Replace `"*"` with a specific, limited list of allowed actions. Follow the principle of least privilege: only include the exact actions required for the workload.
+
+---
+
+### 5. CKV_AWS_107 on `aws_iam_policy_document.fail` (lines 43–55) – Credentials exposure
+
+**What is wrong:** The wildcard action includes IAM actions that can expose or create access keys, passwords, and other credentials.  
+**Why it matters:** An attacker could create new access keys, retrieve existing ones, or generate service‑specific credentials, leading to persistent unauthorised access.  
+**Change needed:** Remove any IAM actions that manage credentials (e.g., `iam:CreateAccessKey`, `iam:UpdateLoginProfile`) from the allowed actions. If credential management is required, restrict it to specific IAM users/roles using resource ARNs and conditions.
+
+---
+
+### 6. CKV_AWS_356 on `aws_iam_policy_document.fail` (lines 43–55) – Resource wildcard for restrictable actions
+
+**What is wrong:** The policy uses `"*"` as the resource for actions that support resource‑level permissions.  
+**Why it matters:** Even if the action list is later scoped, leaving the resource as `"*"` for restrictable actions still grants access to all resources of that type, which is overly permissive.  
+**Change needed:** After narrowing the actions, set the resource element to the specific ARNs of the resources that the principal needs to access. For any action that does not support resource‑level permissions, the resource must remain `"*"`, but those actions should be isolated in a separate statement with appropriate conditions.
+
+---
+
+### 7. CKV_AWS_109 on `aws_iam_policy_document.fail` (lines 43–55) – Permissions management without constraints
+
+**What is wrong:** The policy allows IAM actions (implied by `"*"`) that can create, modify, or delete IAM users, roles, and policies.  
+**Why it matters:** Unrestricted permissions management enables privilege escalation and can lead to full account takeover.  
+**Change needed:** Remove all IAM management actions unless absolutely necessary. If IAM management is required, restrict it to specific roles/users and use conditions (e.g., `iam:PassedToService`) to limit the scope. Never grant `iam:*` or `"*"` that includes IAM write actions.
+
+---
+
+### 8. CKV_AWS_1 on `aws_iam_policy_document.fail` (lines 43–55) – Full administrative privileges
+
+**What is wrong:** The policy allows `"*"` actions on `"*"` resources, which is equivalent to full `*-*` administrative access.  
+**Why it matters:** This grants unrestricted control over the entire AWS account, violating the security principle of least privilege and making the account extremely vulnerable.  
+**Change needed:** Completely remove the wildcard action and resource. Design the policy to grant only the specific permissions required for the intended function, using separate statements for different services if needed.
+
+---
+
+### 9. CKV_AWS_110 on `aws_iam_policy_document.fail` (lines 43–55) – Privilege escalation
+
+**What is wrong:** The wildcard action includes IAM actions that can be used to escalate privileges (e.g., `iam:CreatePolicyVersion`, `iam:AttachRolePolicy`, `lambda:UpdateFunctionCode`).  
+**Why it matters:** An attacker with these permissions can grant themselves additional rights, bypassing security controls.  
+**Change needed:** Explicitly deny or omit any action that could be used for privilege escalation. Review the list of allowed actions and ensure none allow modifying IAM entities, Lambda functions, or other resources that could be leveraged to gain higher privileges.
+
+---
+
+### 10. CKV_AWS_108 on `aws_iam_policy_document.no_effect` (lines 57–68) – Data exfiltration
+
+**What is wrong:** The statement (which lacks an explicit `effect`, defaulting to `"Allow"`) uses `"*"` actions and `"*"` resources, enabling data exfiltration.  
+**Why it matters:** Same risk as finding #2 – unrestricted read access to all data.  
+**Change needed:** Apply the same remediation as for the `fail` document: replace the wildcard action with a minimal set of read‑only actions (if read is needed) and scope the resource to the exact ARNs. Also, explicitly set `effect = "Allow"` to make the intent clear.
+
+---
+
+### 11. CKV_AWS_111 on `aws_iam_policy_document.no_effect` (lines 57–68) – Write access without constraints
+
+**What is wrong:** The wildcard action includes write operations on all resources.  
+**Why it matters:** Same as finding #3 – risk of data destruction, resource manipulation, and cost abuse.  
+**Change needed:** Restrict actions to only the necessary write operations, and limit resources to the specific ARNs that require modification. Add conditions where possible.
+
+---
+
+### 12. CKV_AWS_49 on `aws_iam_policy_document.no_effect` (lines 57–68) – Wildcard action
+
+**What is wrong:** The statement uses `"*"` as the action.  
+**Why it matters:** Same as finding #4 – grants permission to perform any AWS action.  
+**Change needed:** Replace `"*"` with a precise list of allowed actions.
+
+---
+
+### 13. CKV_AWS_107 on `aws_iam_policy_document.no_effect` (lines 57–68) – Credentials exposure
+
+**What is wrong:** The wildcard action includes credential‑management actions.  
+**Why it matters:** Same as finding #5 – risk of persistent unauthorised access.  
+**Change needed:** Remove all IAM actions that handle credentials, or tightly scope them to specific resources and conditions.
+
+---
+
+### 14. CKV_AWS_356 on `aws_iam_policy_document.no_effect` (lines 57–68) – Resource wildcard for restrictable actions
+
+**What is wrong:** The policy uses `"*"` as the resource for actions that support resource‑level permissions.  
+**Why it matters:** Same as finding #6 – overly broad resource access.  
+**Change needed:** After narrowing the actions, set the resource to the specific ARNs required.
+
+---
+
+### 15. CKV_AWS_109 on `aws_iam_policy_document.no_effect` (lines 57–68) – Permissions management without constraints
+
+**What is wrong:** The wildcard action includes IAM management capabilities.  
+**Why it matters:** Same as finding #7 – risk of privilege escalation and account takeover.  
+**Change needed:** Eliminate IAM write actions or restrict them with resource ARNs and conditions.
+
+---
+
+### 16. CKV_AWS_1 on `aws_iam_policy_document.no_effect` (lines 57–68) – Full administrative privileges
+
+**What is wrong:** The policy effectively grants `*-*` access.  
+**Why it matters:** Same as finding #8 – complete account compromise.  
+**Change needed:** Replace the wildcard action and resource with least‑privilege permissions.
+
+---
+
+### 17. CKV_AWS_110 on `aws_iam_policy_document.no_effect` (lines 57–68) – Privilege escalation
+
+**What is wrong:** The wildcard action includes actions that can be used to escalate privileges.  
+**Why it matters:** Same as finding #9 – attacker can gain higher privileges.  
+**Change needed:** Remove any action that could be used for privilege escalation, and ensure the remaining actions do not allow modifying IAM or execution roles.
+
+---
+
+### 18. CKV2_AWS_40 on `aws_iam_policy_document.fail` (lines 43–55) – Full IAM privileges
+
+**What is wrong:** The policy allows full IAM privileges (implied by `"*"` actions on `"*"` resources).  
+**Why it matters:** Full IAM access allows an attacker to create, modify, or delete any IAM entity, leading to complete account compromise.  
+**Change needed:** Remove all IAM actions from the policy unless absolutely necessary. If IAM actions are required, restrict them to specific resources (e.g., a particular role ARN) and use conditions to limit the scope. Never grant `iam:*` or a wildcard that covers IAM.
+
+---
+
+### Interactions between fixes
+
+- The `fail` and `no_effect` documents are independent but share the same root cause: a single statement with `"*"` for both actions and resources. All findings on these two resources are resolved by the same fundamental change—replacing the wildcards with specific, least‑privilege actions and resources. There is no interaction between the `pass` document and the other two; its fix is isolated.
+- When scoping down the `fail` and `no_effect` policies, ensure that any new statements you create do not inadvertently reintroduce wildcards that would trigger the same checks. Each statement should be evaluated against all the listed checks.

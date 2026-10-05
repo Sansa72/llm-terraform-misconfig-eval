@@ -1,0 +1,251 @@
+The scanner flagged several security misconfigurations across both CloudFront distributions. I’ll walk through each check, explain why it matters, and show exactly what needs to change in your Terraform code.
+
+---
+
+### 1. CKV_AWS_34 – ViewerProtocolPolicy must enforce HTTPS
+**Problem:**  
+Both distributions have `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior`. This means clients can connect over plain HTTP, exposing traffic to interception and downgrade attacks. The ordered cache behaviors already use `redirect-to-https`, but the default behavior is the fallback for all requests that don’t match a path pattern.
+
+**Fix:**  
+Change the default cache behavior’s `viewer_protocol_policy` to `"redirect-to-https"` (or `"https-only"` if you never want to accept HTTP at all).
+
+```hcl
+default_cache_behavior {
+  # ... other settings ...
+  viewer_protocol_policy = "redirect-to-https"
+}
+```
+
+---
+
+### 2. CKV_AWS_174 – Minimum TLS version must be 1.2
+**Problem:**  
+Both distributions use the default CloudFront certificate (`cloudfront_default_certificate = true`) without setting `minimum_protocol_version`. The default minimum protocol is TLSv1.0, which is obsolete and insecure.
+
+**Fix:**  
+Add `minimum_protocol_version = "TLSv1.2_2021"` (or a similar TLSv1.2 variant) inside the `viewer_certificate` block. If you later switch to a custom certificate (see CKV2_AWS_42), keep this setting.
+
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version       = "TLSv1.2_2021"
+}
+```
+
+---
+
+### 3. CKV_AWS_68 – CloudFront must have WAF enabled
+**Problem:**  
+Neither distribution has a `web_acl_id` set, leaving them unprotected against common web exploits like SQL injection, XSS, and bot traffic.
+
+**Fix:**  
+Create an AWS WAFv2 Web ACL (in the `us-east-1` region for CloudFront) and attach it to the distribution. The Web ACL should include at least the AWS managed core rule set.
+
+```hcl
+resource "aws_wafv2_web_acl" "cloudfront" {
+  name        = "cloudfront-web-acl"
+  description = "WAF for CloudFront distributions"
+  scope       = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesCommonRuleSet"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "cloudfront-web-acl"
+    sampled_requests_enabled   = true
+  }
+}
+```
+
+Then reference it in both distributions:
+
+```hcl
+resource "aws_cloudfront_distribution" "pass" {
+  # ...
+  web_acl_id = aws_wafv2_web_acl.cloudfront.arn
+  # ...
+}
+```
+
+---
+
+### 4. CKV_AWS_310 – Origin failover must be configured
+**Problem:**  
+Both distributions define only a single origin. If that origin becomes unavailable, the entire distribution will fail.
+
+**Fix:**  
+Add a second origin (e.g., a backup S3 bucket in another region) and create an origin group that uses the primary origin with a failover to the secondary. Then point the cache behaviors to the origin group.
+
+```hcl
+# Secondary origin
+origin {
+  domain_name = aws_s3_bucket.backup.bucket_regional_domain_name
+  origin_id   = "S3-backup"
+  # ... access control ...
+}
+
+# Origin group
+origin_group {
+  origin_id = "S3-origin-group"
+
+  failover_criteria {
+    status_codes = [500, 502, 503, 504]
+  }
+
+  member {
+    origin_id = local.s3_origin_id   # primary
+  }
+
+  member {
+    origin_id = "S3-backup"          # secondary
+  }
+}
+```
+
+Then update `target_origin_id` in every cache behavior to `"S3-origin-group"`.
+
+---
+
+### 5. CKV_AWS_305 – Default root object must be set (fail distribution only)
+**Problem:**  
+The `fail` distribution is missing `default_root_object`. Without it, requests to the root path (`/`) may not return the intended index document.
+
+**Fix:**  
+Add the same line present in the `pass` distribution:
+
+```hcl
+default_root_object = "index.html"
+```
+
+---
+
+### 6. CKV2_AWS_42 – Custom SSL certificate must be used
+**Problem:**  
+Both distributions use the default CloudFront certificate (`cloudfront_default_certificate = true`) but also define `aliases` for custom domains. The default certificate only covers `*.cloudfront.net`; custom domains require an ACM certificate in `us-east-1`.
+
+**Fix:**  
+Request or import an ACM certificate that covers all aliases (`mysite.example.com`, `yoursite.example.com`), then update the `viewer_certificate` block:
+
+```hcl
+viewer_certificate {
+  acm_certificate_arn            = aws_acm_certificate.example.arn
+  cloudfront_default_certificate = false
+  minimum_protocol_version      = "TLSv1.2_2021"
+  ssl_support_method             = "sni-only"
+}
+```
+
+---
+
+### 7. CKV2_AWS_32 – Response headers policy must be attached
+**Problem:**  
+Neither distribution attaches a response headers policy. This means security headers like `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, etc., are not added to responses.
+
+**Fix:**  
+Create a response headers policy with the desired security headers and attach it to every cache behavior.
+
+```hcl
+resource "aws_cloudfront_response_headers_policy" "security_headers" {
+  name = "security-headers-policy"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    # ... add others as needed ...
+  }
+}
+```
+
+Then in each cache behavior:
+
+```hcl
+default_cache_behavior {
+  # ...
+  response_headers_policy_id = aws_cloudfront_response_headers_policy.security_headers.id
+}
+```
+
+---
+
+### 8. CKV2_AWS_47 – WAF WebACL must include Log4j vulnerability managed rule
+**Problem:**  
+Even after attaching a WAF WebACL (CKV_AWS_68), the scanner requires that the WebACL contains the AWS Managed Rules for the Log4j vulnerability (CVE-2021-44228). This is part of the `AWSManagedRulesKnownBadInputsRuleSet`.
+
+**Fix:**  
+Add a rule to your WAFv2 WebACL that includes the `AWSManagedRulesKnownBadInputsRuleSet` managed rule group. The Log4j rule is automatically included in that set.
+
+```hcl
+rule {
+  name     = "AWSManagedRulesKnownBadInputsRuleSet"
+  priority = 2
+
+  override_action {
+    none {}
+  }
+
+  statement {
+    managed_rule_group_statement {
+      name        = "AWSManagedRulesKnownBadInputsRuleSet"
+      vendor_name = "AWS"
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "AWSManagedRulesKnownBadInputsRuleSet"
+    sampled_requests_enabled   = true
+  }
+}
+```
+
+---
+
+### Summary of required changes per distribution
+
+| Check ID      | `pass` distribution fix | `fail` distribution fix |
+|---------------|--------------------------|--------------------------|
+| CKV_AWS_34    | Set `viewer_protocol_policy = "redirect-to-https"` in default cache behavior | Same |
+| CKV_AWS_174   | Add `minimum_protocol_version = "TLSv1.2_2021"` in `viewer_certificate` | Same |
+| CKV_AWS_68    | Attach a WAFv2 WebACL via `web_acl_id` | Same |
+| CKV_AWS_310   | Add a second origin and an origin group; update `target_origin_id` | Same |
+| CKV_AWS_305   | Already set (`default_root_object = "index.html"`) | Add `default_root_object = "index.html"` |
+| CKV2_AWS_42   | Replace default cert with ACM custom cert | Same |
+| CKV2_AWS_32   | Attach a response headers policy to all cache behaviors | Same |
+| CKV2_AWS_47   | Ensure the attached WAF WebACL includes the `AWSManagedRulesKnownBadInputsRuleSet` | Same |
+
+Apply these changes to both resources, and the scanner findings will be resolved.

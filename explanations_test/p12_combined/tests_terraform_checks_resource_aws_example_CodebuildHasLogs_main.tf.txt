@@ -1,0 +1,21 @@
+**Remediation briefing: aws_codebuild_project.fail**
+
+The scanner found two failing checks against the resource `aws_codebuild_project.fail` (lines 29–44). Both are addressed below in the order they appear in the finding.
+
+---
+
+### 1. CKV_AWS_314 – Ensure CodeBuild project environments have a logging configuration
+
+- **Resource:** `aws_codebuild_project.fail` (lines 29–44)
+- **Triggering lines:** The entire resource block (29–44) lacks a `logs_config` block. Compare with the passing resource `aws_codebuild_project.pass` (lines 3–25), which includes a `logs_config` block at lines 20–24.
+- **What is wrong and why it matters:** The project has no logging configuration. Without it, build output logs are not captured, so you lose visibility into build execution, errors, and security-relevant events.
+- **Change needed:** Add a `logs_config` block inside the `aws_codebuild_project.fail` resource. The block must contain at least one log destination, such as `cloudwatch_logs` or `s3_logs`, with the required sub-arguments (e.g., `status` for CloudWatch, or `location` for S3). This will enable log capture and satisfy the check.
+
+---
+
+### 2. CKV_AWS_147 – Ensure that CodeBuild projects are encrypted using CMK
+
+- **Resource:** `aws_codebuild_project.fail` (lines 29–44)
+- **Triggering lines:** The resource block does not include an `encryption_key` argument. The passing resource `aws_codebuild_project.pass` sets `encryption_key = "aws_kms_key.scanner_key.id"` at line 7.
+- **What is wrong and why it matters:** The project is not configured to use a customer-managed key (CMK). It will default to an AWS-managed key, which does not provide the same level of control, access auditing, or ability to meet policies that require customer-managed encryption.
+- **Change needed:** Add an `encryption_key` argument to the `aws_codebuild_project.fail` resource, referencing the ARN or ID of a KMS customer-managed key. This ensures the project’s build artifacts and associated data are encrypted with a key you own and manage.

@@ -1,0 +1,31 @@
+The scanner identified two security misconfigurations across the Elastic Beanstalk environments defined in the Terraform file.
+
+**1. Managed platform updates are not enabled (CKV_AWS_340)**  
+Every environment—`fail`, `fail2`, `fail3`, `fail4`, `pass`, and `pass2`—is missing the required configuration to enable managed platform updates. Without this, the environment will not automatically apply minor and patch updates to the platform, leaving it potentially exposed to unpatched vulnerabilities. The fix is to add a `setting` block in the `aws:elasticbeanstalk:managedactions` namespace with `ManagedActionsEnabled` set to `true`.
+
+**2. Enhanced health reporting is not enabled (CKV_AWS_312)**  
+Environments `fail`, `fail2`, `fail3`, and `fail4` do not have enhanced health reporting enabled.  
+- `fail` has no health reporting settings at all.  
+- `fail2` explicitly sets the health system type to `basic`.  
+- `fail3` sets `HealthStreamingEnabled` to `False`.  
+- `fail4` sets `HealthStreamingEnabled` to an empty string.  
+Enhanced health reporting provides detailed environment and instance health metrics, which are essential for monitoring and troubleshooting. The fix is to add a `setting` block in the `aws:elasticbeanstalk:healthreporting:system` namespace with `HealthStreamingEnabled` set to `true`.
+
+**Required Terraform changes**  
+Add the following two `setting` blocks to every affected environment resource:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "HealthStreamingEnabled"
+  value     = "true"
+}
+```
+
+The environments `pass` and `pass2` already have the health reporting setting and only need the managed platform updates block. All other environments need both blocks.

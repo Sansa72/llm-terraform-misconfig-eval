@@ -1,0 +1,333 @@
+**Remediation Briefing**
+
+Below are all failing checks in the order reported by the scanner. For each, the issue, its security/operational importance, and the required change are described. Where multiple findings stem from the same resource, the fix is described once and referenced for subsequent identical findings.
+
+---
+
+1. **CKV_AWS_79 on aws_instance.default (lines 5-8)**  
+   *What’s wrong:* IMDSv1 is enabled by default because no `metadata_options` block is present.  
+   *Why it matters:* IMDSv1 is vulnerable to server-side request forgery (SSRF) attacks that can leak instance metadata, including IAM credentials.  
+   *Change needed:* Add a `metadata_options` block with `http_tokens = "required"` to enforce IMDSv2 and disable IMDSv1.
+
+2. **CKV_AWS_126 on aws_instance.default (lines 5-8)**  
+   *What’s wrong:* Detailed monitoring is not enabled (defaults to basic 5-minute granularity).  
+   *Why it matters:* Detailed monitoring provides 1-minute CloudWatch metrics, improving alerting accuracy and auto-scaling responsiveness.  
+   *Change needed:* Set `monitoring = true` in the instance resource.
+
+3. **CKV_AWS_135 on aws_instance.default (lines 5-8)**  
+   *What’s wrong:* EBS optimization is not enabled.  
+   *Why it matters:* EBS-optimized instances receive dedicated throughput for EBS volumes, reducing contention and improving storage performance consistency.  
+   *Change needed:* Add `ebs_optimized = true`.
+
+4. **CKV_AWS_8 on aws_instance.default (lines 5-8)**  
+   *What’s wrong:* The root EBS volume is not encrypted.  
+   *Why it matters:* Unencrypted data at rest can be exposed if physical storage is compromised. Encryption protects confidentiality.  
+   *Change needed:* Add a `root_block_device` block with `encrypted = true`. If a custom KMS key is required, also specify `kms_key_id`.
+
+5. **CKV_AWS_79 on aws_instance.private (lines 10-15)**  
+   *What’s wrong:* Same as #1 – IMDSv1 is enabled.  
+   *Why it matters:* Same SSRF risk.  
+   *Change needed:* Add `metadata_options { http_tokens = "required" }`.
+
+6. **CKV_AWS_126 on aws_instance.private (lines 10-15)**  
+   *What’s wrong:* Detailed monitoring not enabled.  
+   *Why it matters:* Same as #2.  
+   *Change needed:* Set `monitoring = true`.
+
+7. **CKV_AWS_135 on aws_instance.private (lines 10-15)**  
+   *What’s wrong:* EBS optimization not enabled.  
+   *Why it matters:* Same as #3.  
+   *Change needed:* Add `ebs_optimized = true`.
+
+8. **CKV_AWS_8 on aws_instance.private (lines 10-15)**  
+   *What’s wrong:* Root volume not encrypted.  
+   *Why it matters:* Same as #4.  
+   *Change needed:* Add `root_block_device { encrypted = true }`.
+
+9. **CKV_AWS_79 on aws_launch_template.default (lines 19-22)**  
+   *What’s wrong:* The launch template does not enforce IMDSv2.  
+   *Why it matters:* Instances launched from this template will inherit the IMDSv1 vulnerability.  
+   *Change needed:* Add a `metadata_options` block with `http_tokens = "required"` inside the launch template resource.
+
+10. **CKV_AWS_79 on aws_launch_template.private (lines 24-31)**  
+    *What’s wrong:* Same as #9 – IMDSv1 not disabled.  
+    *Why it matters:* Same risk.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }`.
+
+11. **CKV_AWS_79 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* IMDSv1 enabled by default.  
+    *Why it matters:* SSRF vulnerability.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }`.
+
+12. **CKV_AWS_88 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* The instance is configured with `associate_public_ip_address = true`, giving it a public IP.  
+    *Why it matters:* Direct internet exposure increases the attack surface. Instances should be placed behind a load balancer or NAT gateway.  
+    *Change needed:* Change `associate_public_ip_address` to `false`. If a public IP is absolutely required, ensure compensating controls (e.g., strict security groups, WAF) are in place, but the check expects it to be `false`.
+
+13. **CKV_AWS_126 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Set `monitoring = true`.
+
+14. **CKV_AWS_135 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Add `ebs_optimized = true`.
+
+15. **CKV_AWS_8 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Add `root_block_device { encrypted = true }`.
+
+16. **CKV_AWS_79 on aws_launch_template.public (lines 46-53)**  
+    *What’s wrong:* IMDSv1 not disabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }`.
+
+17. **CKV_AWS_88 on aws_launch_template.public (lines 46-53)**  
+    *What’s wrong:* The launch template sets `associate_public_ip_address = true` in its network interface.  
+    *Why it matters:* Launched instances will have public IPs, increasing exposure.  
+    *Change needed:* Change the `network_interfaces` block to set `associate_public_ip_address = false`.
+
+18. **CKV_AWS_79 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* IMDSv1 enabled by default.  
+    *Why it matters:* SSRF vulnerability.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }` to the `aws_instance.public_foreach` resource. This single change will fix the check for all instances created by this `for_each` (including “key2” later).
+
+19. **CKV_AWS_88 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* The instance receives a public IP because `each.value` is `true` for “key1”.  
+    *Why it matters:* Public IP exposure.  
+    *Change needed:* To satisfy the check, modify the variable `var.public` so that no key maps to `true`, or change the resource to always set `associate_public_ip_address = false` (ignoring `each.value`). If some instances genuinely need public IPs, consider architectural changes (e.g., a load balancer) or accept the risk with justification.
+
+20. **CKV_AWS_126 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Add `monitoring = true` to the resource (covers all instances in the loop).
+
+21. **CKV_AWS_135 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Add `ebs_optimized = true`.
+
+22. **CKV_AWS_8 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Add `root_block_device { encrypted = true }`.
+
+23. **CKV_AWS_79 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }` to the `aws_instance.public_foreach_loop` resource (covers “key3” and “key4”).
+
+24. **CKV_AWS_88 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* The instance gets a public IP because the `for_each` map sets all values to `true`.  
+    *Why it matters:* Public IP exposure.  
+    *Change needed:* Change the `for_each` expression to produce `false` (e.g., `for_each = { for val in var.public_loop : val.name => false }`) or hardcode `associate_public_ip_address = false` in the resource, ignoring `each.value`.
+
+25. **CKV_AWS_126 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Add `monitoring = true`.
+
+26. **CKV_AWS_135 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Add `ebs_optimized = true`.
+
+27. **CKV_AWS_8 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Add `root_block_device { encrypted = true }`.
+
+28. **CKV_AWS_79 on aws_instance.public_foreach_loop_list["k"] (lines 91-96)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }` to the `aws_instance.public_foreach_loop_list` resource (covers “k” and “v”).
+
+29. **CKV_AWS_126 on aws_instance.public_foreach_loop_list["k"] (lines 91-96)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Add `monitoring = true`.
+
+30. **CKV_AWS_135 on aws_instance.public_foreach_loop_list["k"] (lines 91-96)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Add `ebs_optimized = true`.
+
+31. **CKV_AWS_8 on aws_instance.public_foreach_loop_list["k"] (lines 91-96)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Add `root_block_device { encrypted = true }`.
+
+32. **CKV_AWS_79 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Add `metadata_options { http_tokens = "required" }` to the `aws_instance.public_foreach_loop_list_of_dicts` resource (covers both “public” and “private”).
+
+33. **CKV_AWS_88 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* The instance “public” gets a public IP because `public_ip` is `true` in the variable.  
+    *Why it matters:* Public IP exposure.  
+    *Change needed:* Change the variable default for the “public” entry to `public_ip = false`, or adjust the resource to always set `associate_public_ip_address = false` regardless of the variable. If a public IP is required, consider architectural changes.
+
+34. **CKV_AWS_126 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Add `monitoring = true`.
+
+35. **CKV_AWS_135 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Add `ebs_optimized = true`.
+
+36. **CKV_AWS_8 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Add `root_block_device { encrypted = true }`.
+
+37. **CKV_AWS_79 on aws_instance.public_foreach["key2"] (lines 62-68)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Same as #18 – the `metadata_options` block added to `aws_instance.public_foreach` will fix this.
+
+38. **CKV_AWS_126 on aws_instance.public_foreach["key2"] (lines 62-68)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Same as #20 – `monitoring = true` in the resource.
+
+39. **CKV_AWS_135 on aws_instance.public_foreach["key2"] (lines 62-68)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Same as #21 – `ebs_optimized = true`.
+
+40. **CKV_AWS_8 on aws_instance.public_foreach["key2"] (lines 62-68)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Same as #22 – `root_block_device { encrypted = true }`.
+
+41. **CKV_AWS_79 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Same as #23 – the `metadata_options` block added to `aws_instance.public_foreach_loop` will fix this.
+
+42. **CKV_AWS_88 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* Public IP assigned because the map value is `true`.  
+    *Why it matters:* Public IP exposure.  
+    *Change needed:* Same as #24 – change the `for_each` to produce `false` or hardcode `associate_public_ip_address = false`.
+
+43. **CKV_AWS_126 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Same as #25 – `monitoring = true`.
+
+44. **CKV_AWS_135 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Same as #26 – `ebs_optimized = true`.
+
+45. **CKV_AWS_8 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Same as #27 – `root_block_device { encrypted = true }`.
+
+46. **CKV_AWS_79 on aws_instance.public_foreach_loop_list["v"] (lines 91-96)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Same as #28 – the `metadata_options` block added to `aws_instance.public_foreach_loop_list` will fix this.
+
+47. **CKV_AWS_126 on aws_instance.public_foreach_loop_list["v"] (lines 91-96)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Same as #29 – `monitoring = true`.
+
+48. **CKV_AWS_135 on aws_instance.public_foreach_loop_list["v"] (lines 91-96)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Same as #30 – `ebs_optimized = true`.
+
+49. **CKV_AWS_8 on aws_instance.public_foreach_loop_list["v"] (lines 91-96)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Same as #31 – `root_block_device { encrypted = true }`.
+
+50. **CKV_AWS_79 on aws_instance.public_foreach_loop_list_of_dicts["private"] (lines 120-125)**  
+    *What’s wrong:* IMDSv1 enabled.  
+    *Why it matters:* SSRF risk.  
+    *Change needed:* Same as #32 – the `metadata_options` block added to `aws_instance.public_foreach_loop_list_of_dicts` will fix this.
+
+51. **CKV_AWS_126 on aws_instance.public_foreach_loop_list_of_dicts["private"] (lines 120-125)**  
+    *What’s wrong:* Detailed monitoring not enabled.  
+    *Why it matters:* Same as #2.  
+    *Change needed:* Same as #34 – `monitoring = true`.
+
+52. **CKV_AWS_135 on aws_instance.public_foreach_loop_list_of_dicts["private"] (lines 120-125)**  
+    *What’s wrong:* EBS optimization not enabled.  
+    *Why it matters:* Same as #3.  
+    *Change needed:* Same as #35 – `ebs_optimized = true`.
+
+53. **CKV_AWS_8 on aws_instance.public_foreach_loop_list_of_dicts["private"] (lines 120-125)**  
+    *What’s wrong:* Root volume not encrypted.  
+    *Why it matters:* Same as #4.  
+    *Change needed:* Same as #36 – `root_block_device { encrypted = true }`.
+
+54. **CKV2_AWS_41 on aws_instance.default (lines 5-8)**  
+    *What’s wrong:* No IAM instance profile is attached to the instance.  
+    *Why it matters:* Without an IAM role, the instance cannot securely access AWS services; it would require hardcoded credentials, which is a security risk.  
+    *Change needed:* Add `iam_instance_profile = "<profile-name-or-arn>"` referencing an existing IAM instance profile. You must create an IAM role and instance profile if one does not already exist.
+
+55. **CKV2_AWS_41 on aws_instance.private (lines 10-15)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile` with a valid instance profile.
+
+56. **CKV2_AWS_41 on aws_instance.public (lines 37-42)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile`.
+
+57. **CKV2_AWS_41 on aws_instance.public_foreach["key1"] (lines 62-68)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile` to the `aws_instance.public_foreach` resource (covers all instances in the loop, including “key2”).
+
+58. **CKV2_AWS_41 on aws_instance.public_foreach_loop["key3"] (lines 83-89)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile` to the `aws_instance.public_foreach_loop` resource (covers “key3” and “key4”).
+
+59. **CKV2_AWS_41 on aws_instance.public_foreach_loop_list["k"] (lines 91-96)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile` to the `aws_instance.public_foreach_loop_list` resource (covers “k” and “v”).
+
+60. **CKV2_AWS_41 on aws_instance.public_foreach_loop_list_of_dicts["public"] (lines 120-125)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Add `iam_instance_profile` to the `aws_instance.public_foreach_loop_list_of_dicts` resource (covers both “public” and “private”).
+
+61. **CKV2_AWS_41 on aws_instance.public_foreach["key2"] (lines 62-68)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Same as #57 – the `iam_instance_profile` added to `aws_instance.public_foreach` will fix this.
+
+62. **CKV2_AWS_41 on aws_instance.public_foreach_loop["key4"] (lines 83-89)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Same as #58 – the `iam_instance_profile` added to `aws_instance.public_foreach_loop` will fix this.
+
+63. **CKV2_AWS_41 on aws_instance.public_foreach_loop_list["v"] (lines 91-96)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Same as #59 – the `iam_instance_profile` added to `aws_instance.public_foreach_loop_list` will fix this.
+
+64. **CKV2_AWS_41 on aws_instance.public_foreach_loop_list_of_dicts["private"] (lines 120-125)**  
+    *What’s wrong:* No IAM instance profile attached.  
+    *Why it matters:* Same as #54.  
+    *Change needed:* Same as #60 – the `iam_instance_profile` added to `aws_instance.public_foreach_loop_list_of_dicts` will fix this.
+
+---
+
+**Interactions and notes:**  
+- All instance-level fixes (`metadata_options`, `monitoring`, `ebs_optimized`, `root_block_device` encryption, `iam_instance_profile`) can be added to the same resource block without conflict.  
+- For `for_each` resources, a single change to the resource definition resolves the check for all instances created by that loop.  
+- The `CKV_AWS_88` (public IP) fixes may require changing variable defaults or logic. If a public IP is truly needed, you must document the exception and implement compensating controls, but the scanner expects `associate_public_ip_address = false`.  
+- Launch templates only had `CKV_AWS_79` and `CKV_AWS_88` flagged; other checks (monitoring, EBS optimization, encryption, IAM role) were not reported for launch templates in this scan, so no changes are required there beyond what is listed.

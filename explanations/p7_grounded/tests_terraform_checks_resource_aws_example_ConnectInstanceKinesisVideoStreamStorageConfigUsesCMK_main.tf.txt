@@ -1,0 +1,53 @@
+The scanner raised two findings against the Terraform file. Here’s what they mean, based strictly on the code and the check definitions.
+
+---
+
+### Finding 1: CKV_AWS_269 on `aws_connect_instance_storage_config.fail` (lines 20‑35)
+
+**Check description:** Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK.
+
+**What the code shows:**  
+The `fail` resource defines a `kinesis_video_stream_config` block with an `encryption_config` that sets `encryption_type = "KMS"` but **omits the `key_id` argument** (lines 30‑33).  
+Without `key_id`, the Kinesis Video Stream will be encrypted with an AWS-managed key, not a Customer Managed Key (CMK). The check requires a CMK.
+
+**Evidence in the file:**  
+- Lines 30‑33:  
+  ```hcl
+  encryption_config {
+    encryption_type = "KMS"
+  }
+  ```
+  No `key_id` is specified.
+
+**Contrast with the “pass” resource (lines 1‑17):**  
+The same block in the `pass` resource includes `key_id = aws_kms_key.test.arn` (line 13), which satisfies the CMK requirement. The scanner did **not** raise CKV_AWS_269 against the `pass` resource, confirming that the missing `key_id` is the trigger.
+
+**Action:** Add a `key_id` argument pointing to a valid KMS key ARN inside the `encryption_config` block of the `fail` resource.
+
+---
+
+### Finding 2: CKV_AWS_270 on both resources (lines 1‑17 and 20‑35)
+
+**Check description:** Ensure Connect Instance S3 Storage Config uses CMK.
+
+**What the code shows:**  
+Both resources have `resource_type = "MEDIA_STREAMS"` and contain a `kinesis_video_stream_config` block. There is **no** `s3_config` block in either resource. The check CKV_AWS_270 is specifically for S3 storage configurations, not for Kinesis Video Stream configurations.
+
+**Interpretation:**  
+Because the file does not define any S3 storage config, the finding is either a false positive or the scanner is misapplying the check to a resource type that does not match. The file provides no evidence of an S3 storage configuration that would need a CMK.
+
+**Action:**  
+- If the infrastructure does not require S3 storage, this finding can be suppressed or ignored.  
+- If the scanner is expected to only evaluate S3 storage configs, verify that the policy is scoped correctly to avoid flagging non‑S3 resources.
+
+---
+
+### Summary
+
+| Resource | Check ID | Issue | Lines |
+|----------|----------|-------|-------|
+| `aws_connect_instance_storage_config.fail` | CKV_AWS_269 | Missing `key_id` in Kinesis Video Stream encryption config | 30‑33 |
+| `aws_connect_instance_storage_config.pass` | CKV_AWS_270 | Check for S3 CMK applied to a MEDIA_STREAMS resource – no S3 config present | 1‑17 |
+| `aws_connect_instance_storage_config.fail` | CKV_AWS_270 | Same as above – no S3 config present | 20‑35 |
+
+The actionable fix is to add a `key_id` to the `fail` resource’s `encryption_config` block. The CKV_AWS_270 findings appear to be misapplied to these resources based on the given code.

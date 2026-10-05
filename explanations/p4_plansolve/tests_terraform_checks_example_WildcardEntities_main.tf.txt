@@ -1,0 +1,45 @@
+The scanner identified several missing security controls in the IAM password policy and the S3 bucket. Below is a breakdown of each finding, why it matters, and what needs to be added to resolve it.
+
+---
+
+### IAM Account Password Policy (`aws_iam_account_password_policy.password-policy`)
+
+**CKV_AWS_9 – Password expiration within 90 days**  
+The policy does not set a maximum password age. Without this, passwords never expire, increasing the risk of long‑term credential compromise.  
+**Fix:** Add the argument `max_password_age = 90` (or a lower value) to the `aws_iam_account_password_policy` resource.
+
+**CKV_AWS_13 – Prevent password reuse**  
+The policy does not define how many previous passwords are remembered. Users could cycle back to old, potentially compromised passwords.  
+**Fix:** Add the argument `password_reuse_prevention = 24` (or another number ≥ 1) to enforce a history of unique passwords.
+
+---
+
+### S3 Bucket (`aws_s3_bucket.template_bucket`)
+
+**CKV2_AWS_6 – Public Access Block**  
+The bucket has no public access block configuration, meaning it could be made publicly accessible through ACLs or bucket policies.  
+**Fix:** Create an `aws_s3_bucket_public_access_block` resource associated with this bucket, setting `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` all to `true`.
+
+**CKV_AWS_21 – Versioning enabled**  
+The bucket does not have versioning enabled. Without versioning, deleted or overwritten objects cannot be recovered, risking data loss.  
+**Fix:** Add a `versioning` block inside the `aws_s3_bucket` resource with `enabled = true`.
+
+**CKV_AWS_18 – Access logging enabled**  
+Server access logging is not configured. Logs are essential for auditing access and detecting suspicious activity.  
+**Fix:** Add a `logging` block to the bucket resource, specifying a `target_bucket` (and optionally `target_prefix`) where access logs will be delivered. The target bucket must already exist and have appropriate permissions.
+
+**CKV_AWS_145 – Default encryption with KMS**  
+The bucket does not enforce default encryption, and if it did, it would likely use SSE‑S3. The check requires SSE‑KMS for stronger key management and audit trails.  
+**Fix:** Add a `server_side_encryption_configuration` block with a `rule` that uses `apply_server_side_encryption_by_default` and sets `sse_algorithm = "aws:kms"`. Optionally specify a `kms_master_key_id`.
+
+**CKV2_AWS_61 – Lifecycle configuration**  
+No lifecycle rules are defined. Lifecycle policies help manage storage costs and ensure objects are transitioned or deleted according to retention requirements.  
+**Fix:** Add one or more `lifecycle_rule` blocks inside the bucket resource. At minimum, include a rule that defines an expiration or transition action (e.g., expire non‑current versions after a certain number of days).
+
+**CKV2_AWS_62 – Event notifications enabled**  
+The bucket has no event notification configuration. Notifications are important for triggering workflows (e.g., malware scanning, indexing) when objects are created or removed.  
+**Fix:** Create an `aws_s3_bucket_notification` resource that references this bucket and defines at least one notification destination (SQS queue, SNS topic, or Lambda function) for a relevant event type (e.g., `s3:ObjectCreated:*`).
+
+**CKV_AWS_144 – Cross‑region replication enabled**  
+The bucket does not have replication configured. Cross‑region replication (CRR) provides geographic redundancy and disaster recovery.  
+**Fix:** Add a `replication_configuration` block to the bucket resource, specifying an IAM role with replication permissions and at least one destination bucket in a different region. The destination bucket must also have versioning enabled.

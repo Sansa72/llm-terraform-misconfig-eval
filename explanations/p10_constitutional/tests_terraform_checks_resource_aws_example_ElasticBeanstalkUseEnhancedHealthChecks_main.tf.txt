@@ -1,0 +1,44 @@
+Explanation of findings:
+
+The scanner evaluated the Terraform configuration for `aws_elastic_beanstalk_environment` resources against two rules:
+
+- **CKV_AWS_340**: Ensure Elastic Beanstalk managed platform updates are enabled.
+- **CKV_AWS_312**: Ensure Elastic Beanstalk environments have enhanced health reporting enabled.
+
+**CKV_AWS_340 (managed platform updates)**  
+All six environments (`fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`) are missing the required setting. The rule expects a `setting` block with `namespace = "aws:elasticbeanstalk:managedactions"`, `name = "ManagedActionsEnabled"`, and `value = "true"`. No such block appears in any of the resources.
+
+**CKV_AWS_312 (enhanced health reporting)**  
+The environments `fail`, `fail2`, `fail3`, and `fail4` are flagged. The rule expects a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`. Here is how each flagged resource deviates:
+
+- **`fail` (lines 1–10)**: No health-related settings are present at all.
+- **`fail2` (lines 12–26)**: Contains a setting with the correct namespace and name, but the value is `"basic"` (line 24), not `"enhanced"`.
+- **`fail3` (lines 28–48)**: Contains two settings: one with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "HealthStreamingEnabled"`, `value = "False"` (lines 40–43); another with `namespace = "guff"`, `name = "SystemType"`, `value = "basic"` (lines 45–48). Neither provides the required `SystemType = "enhanced"` in the correct namespace.
+- **`fail4` (lines 50–65)**: Contains a setting with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "HealthStreamingEnabled"`, `resource = ""`, `value = ""` (lines 60–64). This does not set `SystemType` to `"enhanced"`.
+
+The environments `pass` (lines 68–82) and `pass2` (lines 84–98) were **not** flagged for CKV_AWS_312. They have a setting with `HealthStreamingEnabled` set to `true`, which the scanner appears to have accepted. However, the documented method for enabling enhanced health reporting is to set `SystemType` to `"enhanced"`. No change is required for CKV_AWS_312 on these two resources, but you may choose to align with the `SystemType` approach.
+
+**Remediation steps**
+
+*For CKV_AWS_340 on all resources (`fail`, `fail2`, `fail3`, `fail4`, `pass`, `pass2`)*  
+Add the following `setting` block inside each resource block:
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+*For CKV_AWS_312 on the flagged resources*
+- **`fail` (lines 1–10)**: Add the setting block:
+  ```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:healthreporting:system"
+    name      = "SystemType"
+    value     = "enhanced"
+  }
+  ```
+- **`fail2` (lines 12–26)**: Change the value of the existing setting on line 24 from `"basic"` to `"enhanced"`.
+- **`fail3` (lines 28–48)**: Add the correct setting block (as shown above) to the resource. The existing settings on lines 40–48 do not satisfy the requirement and can be removed or left in place; they will not affect the check once the correct setting is present.
+- **`fail4` (lines 50–65)**: Add the correct setting block (as shown above). The existing setting on lines 60–64 with `HealthStreamingEnabled` and empty values does not enable enhanced health reporting and can be removed or kept.

@@ -1,0 +1,61 @@
+The scanner flagged three security checks on your ECS task definitions. Below I explain each finding, why it matters, and exactly what to change in the Terraform to resolve them.
+
+---
+
+### CKV_AWS_336 – Ensure ECS containers are limited to read-only access to root filesystems
+
+**What it means**  
+A container’s root filesystem should be mounted read-only. This prevents an attacker who compromises the container from writing malicious binaries, modifying system configuration, or leaving persistence mechanisms on the writable layer. Any necessary write operations should be directed to mounted volumes.
+
+**Where it’s triggered in your code**
+
+- **`fail` task definition (lines 45‑87):** The first container correctly sets `readonlyRootFilesystem = true`, but the second container (`"name": "second"`) omits this setting entirely. In ECS, the default is `false`, so the second container runs with a writable root filesystem.
+- **`fail2` task definition (lines 89‑133):** Both containers explicitly set `readonlyRootFilesystem = false`.
+
+**How to fix**  
+Set `readonlyRootFilesystem = true` for every container in both task definitions. If a container genuinely needs to write to the filesystem, use the already-defined `service-storage` volume (or add additional volumes) and mount it at the required path. The `pass` resource in the same file shows the correct pattern.
+
+---
+
+### CKV_AWS_334 – Ensure ECS containers run as non-privileged
+
+**What it means**  
+Running a container with `privilege = true` gives it nearly all the capabilities of the host’s root user, including access to devices, the ability to modify kernel parameters, and the potential to escape the container. This drastically increases the blast radius of a compromise. Containers should run unprivileged unless there is an extremely specific, documented need.
+
+**Where it’s triggered in your code**
+
+- **`fail2` task definition, second container (line 113):** `privilege = true` is set explicitly.
+
+**How to fix**  
+Remove `privilege = true` from the container definition. If the application requires certain elevated capabilities (e.g., `NET_ADMIN`), add only those specific Linux capabilities via the `linuxParameters` block instead of granting full privileged mode. In most cases, no privilege is needed at all.
+
+---
+
+### CKV_AWS_335 – Ensure ECS task definitions do not share the host’s process namespace
+
+**What it means**  
+Sharing the host’s process namespace (`pidMode = "host"`) allows containers to see and interact with all processes running on the underlying EC2 instance, including those of other containers and the host operating system. This breaks process isolation and can be abused to snoop on or signal host processes, making container escape easier. The setting should be avoided.
+
+**Where it’s triggered in your code**
+
+- **`fail2` task definition, second container (line 114):** The container definition JSON includes `"pidMode": "host"`.  
+  *Note:* In ECS, `pidMode` is a **task-level** parameter, not a per-container setting. Placing it inside a container definition is invalid and will be ignored by ECS, but the scanner still flags the presence of the string `"host"` as a risk.  
+- Additionally, the `fail` task definition’s first container (line 55) contains `"pidMode": "task"`. While not flagged by this specific rule (which only triggers on `"host"`), it is equally misplaced and should be removed.
+
+**How to fix**  
+Remove the `pidMode` key from all container definitions. If you intended to set the task’s process namespace to `task` (the default, which gives each container its own isolated PID namespace), you do not need to specify anything – it’s the default. If you intended to use `host` mode, reconsider: it is almost never required and introduces significant risk. The correct way to set the task-level PID mode is via the Terraform resource argument `pid_mode` (e.g., `pid_mode = "task"`), but again, the default is already `task`.
+
+---
+
+### Summary of required changes
+
+| Resource | Container | Issue | Action |
+|----------|-----------|-------|--------|
+| `fail` | `second` | Missing `readonlyRootFilesystem` | Add `readonlyRootFilesystem = true` |
+| `fail` | `first` | Invalid `pidMode` in container definition | Remove `pidMode` line |
+| `fail2` | `first` | `readonlyRootFilesystem = false` | Change to `true` |
+| `fail2` | `second` | `readonlyRootFilesystem = false` | Change to `true` |
+| `fail2` | `second` | `privilege = true` | Remove the line |
+| `fail2` | `second` | `pidMode = "host"` in container definition | Remove the line |
+
+After applying these changes, both `fail` and `fail2` will match the secure configuration already demonstrated in the `pass` resource, and all three checks will pass.

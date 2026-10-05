@@ -1,0 +1,66 @@
+### 1. What the misconfiguration is
+
+Checkov found two Elastic Beanstalk settings are not configured securely in the `fail*` resources:
+
+- **CKV_AWS_340 – Managed platform updates are not enabled**  
+  None of the `aws_elastic_beanstalk_environment` resources define:
+  ```hcl
+  setting {
+    namespace = "aws:elasticbeanstalk:managedactions"
+    name      = "ManagedActionsEnabled"
+    value     = "true"
+  }
+  ```
+  This affects `fail`, `fail2`, `fail3`, `fail4`, and also `pass`/`pass2`.
+
+- **CKV_AWS_312 – Enhanced health reporting is not enabled**  
+  The failing resources either:
+  - have no health reporting setting (`fail`),
+  - explicitly set `SystemType = "basic"` (`fail2`),
+  - set `HealthStreamingEnabled = "False"` (`fail3`),
+  - set `HealthStreamingEnabled = ""` (`fail4`).
+
+  Only `pass` and `pass2` pass CKV_AWS_312 because they set `HealthStreamingEnabled = "true"`.
+
+### 2. Why it matters
+
+- **Managed platform updates disabled**  
+  Elastic Beanstalk will not automatically apply AWS-managed platform security patches, bug fixes, or runtime updates. The environment can remain on an outdated platform version, increasing exposure to known vulnerabilities in the OS, language runtime, or platform components.
+
+- **Enhanced health reporting disabled**  
+  Basic health reporting provides only coarse health status. Without enhanced health reporting, you lose detailed instance and application health metrics, slower failure detection, and reduced visibility into potentially compromised or degraded instances. This can delay incident response and remediation.
+
+### 3. How to fix it safely
+
+Add or correct the relevant `setting` blocks in every affected `aws_elastic_beanstalk_environment`.
+
+**Enable managed platform updates:**
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+**Enable enhanced health reporting:**
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "SystemType"
+  value     = "enhanced"
+}
+
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "HealthStreamingEnabled"
+  value     = "true"
+}
+```
+
+Also remove or correct invalid/conflicting settings such as:
+- `namespace = "guff"` in `fail3`
+- `SystemType = "basic"` in `fail2`
+- `HealthStreamingEnabled = "False"` or empty value in `fail3`/`fail4`
+
+Apply changes in a non-production environment first. Changing Elastic Beanstalk environment settings can trigger an update or rolling replacement, so plan for possible instance replacement and verify health before rolling out to production.

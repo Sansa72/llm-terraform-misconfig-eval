@@ -1,0 +1,21 @@
+The scanner identified that the Terraform configuration for both S3 buckets lacks several required security settings. Each finding is tied to a specific rule and to the resource blocks as defined in the file.
+
+**Findings and their relation to the configuration:**
+
+- **CKV2_AWS_61 (lifecycle configuration):** The resources `aws_s3_bucket.bucket` (lines 10-13) and `aws_s3_bucket.bucket_2` (lines 15-17) contain no `lifecycle_rule` blocks. Without a lifecycle configuration, there is no defined policy for transitioning or expiring objects, which can lead to unnecessary data retention and increased storage costs.
+
+- **CKV_AWS_18 (access logging):** Neither bucket resource includes a `logging` block. Server access logging is not enabled, so there will be no detailed records of requests made to the buckets for security auditing and analysis.
+
+- **CKV2_AWS_62 (event notifications):** The resources do not contain `event_notification` configurations. Without event notifications, no alerts can be triggered on bucket events (e.g., object creation, deletion), reducing the ability to monitor and respond to changes.
+
+- **CKV2_AWS_6 (public access block):** The bucket definitions lack a `public_access_block` configuration (either inline or via a separate `aws_s3_bucket_public_access_block` resource). This means public access settings are not explicitly blocked, increasing the risk of unintended public exposure.
+
+- **CKV_AWS_145 (KMS encryption):** The resources do not specify `server_side_encryption_configuration` with a KMS key. Default encryption may use AES-256 or no encryption, and the lack of KMS means you cannot use customer-managed keys for fine-grained access control and audit trails.
+
+- **CKV_AWS_144 (cross-region replication):** There is no `replication_configuration` block in either bucket resource, and no `aws_s3_bucket_replication_configuration` resource is present in the file. Cross-region replication is not configured, so data is not automatically replicated to another region for disaster recovery or compliance.
+
+- **CKV_AWS_21 (versioning):** The resources do not include a `versioning` block. Versioning is not enabled, which means object versions are not preserved; accidental overwrites or deletions cannot be easily recovered.
+
+All of these findings apply to both `aws_s3_bucket.bucket` (lines 10-13) and `aws_s3_bucket.bucket_2` (lines 15-17). The file as written will deploy S3 buckets without these controls, increasing the risk of data loss, unauthorized access, and non-compliance with security best practices.
+
+To resolve each finding, the missing configuration blocks must be added to the respective resource blocks: lines 10-13 for `bucket` and lines 15-17 for `bucket_2`.

@@ -1,0 +1,41 @@
+The scanner flagged a misconfiguration in your `aws_db_snapshot_copy` resource named `fail`. Although the check description mentions "App Flow connector profile," the underlying issue is that this RDS snapshot copy is not configured to use a Customer Managed Key (CMK) for encryption.
+
+## What’s the problem?
+
+When you copy an RDS snapshot, AWS encrypts the target snapshot. If you don’t explicitly specify a KMS key, the copy is encrypted with the **default AWS-managed key** for RDS. This key is automatically created and managed by AWS, but it has several limitations:
+
+- You cannot control its key policy, rotation, or lifecycle.
+- You cannot audit its usage with the same granularity as a CMK.
+- It may not meet compliance requirements that mandate customer-managed encryption keys.
+
+The scanner expects that all sensitive data (like database snapshots) be encrypted using a **Customer Managed Key (CMK)** that you own and control.
+
+## The problematic resource
+
+```terraform
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  # Missing: kms_key_id
+}
+```
+
+Because `kms_key_id` is not set, the copy will use the default AWS-managed key.
+
+## How to fix it
+
+Add the `kms_key_id` argument and point it to a valid KMS CMK (Customer Managed Key) ARN or ID. The `pass` resource in the same file shows the correct pattern:
+
+```terraform
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                   = aws_kms_key.example.arn   # or a key ID
+}
+```
+
+Make sure the KMS key exists and that the IAM role used by Terraform has the necessary permissions to use it (`kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, etc.).
+
+## Additional note on the scanner finding
+
+The check ID `CKV_AWS_266` is described as “Ensure App Flow connector profile uses CMK,” which doesn’t match the resource type `aws_db_snapshot_copy`. This is likely a scanner mislabeling or a bug in the policy mapping. The actual security concern is valid: the snapshot copy should be encrypted with a customer-managed key. You can safely ignore the misleading description and focus on adding the `kms_key_id` argument.

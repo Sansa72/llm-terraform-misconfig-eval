@@ -1,0 +1,40 @@
+The scanner flagged `aws_efs_file_system.fail` because it’s using the default AWS-managed key for encryption instead of a customer-managed KMS key (CMK). The rule **CKV_AWS_184** requires that EFS file systems be encrypted with a CMK, not just any encryption.
+
+## What’s happening in your file
+
+- **`aws_efs_file_system.pass`** (lines 1–4) does it right: `encrypted = true` **and** `kms_key_id` points to a CMK (`aws_kms_key.test.arn`).  
+- **`aws_efs_file_system.fail`** (lines 6–8) only sets `encrypted = true`. Without a `kms_key_id`, EFS automatically uses the AWS-managed key `aws/elasticfilesystem`. That key is managed by AWS, not by you, so it doesn’t satisfy the policy.
+
+## Why a customer-managed key matters
+
+The reference policy (CKV_AWS_184) is based on the principle that you should control the encryption keys for your data. With a CMK you can:
+
+- Define and rotate key policies (who can use the key, under what conditions).
+- Enable automatic key rotation on a schedule you choose.
+- Audit key usage through AWS CloudTrail.
+- Revoke access instantly if needed.
+
+The default AWS-managed key gives you none of that control. It’s still encrypted at rest, but you can’t manage the key lifecycle or access policies.
+
+## How to fix it
+
+Add a `kms_key_id` argument to the `aws_efs_file_system.fail` resource, referencing a CMK. For example:
+
+```hcl
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.my_key.arn   # or a data source / existing key ARN
+}
+```
+
+If you don’t already have a KMS key defined, create one:
+
+```hcl
+resource "aws_kms_key" "efs_key" {
+  description             = "CMK for EFS encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+```
+
+Then reference it: `kms_key_id = aws_kms_key.efs_key.arn`. The `encrypted` flag must remain `true` (it already is). After applying, the scanner will no longer flag the resource.

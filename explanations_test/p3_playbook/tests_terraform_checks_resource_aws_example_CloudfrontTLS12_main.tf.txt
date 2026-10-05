@@ -1,0 +1,203 @@
+**Remediation briefing for CloudFront security misconfigurations**
+
+Below each scanner finding is addressed in the order reported. For every check the resource, the problem, its security impact, and the required change are described. Where fixes interact, that is noted.
+
+---
+
+1. **CKV_AWS_34 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+   *What is wrong:* The default cache behavior allows HTTP (`viewer_protocol_policy = "allow-all"`).  
+   *Why it matters:* Unencrypted HTTP connections can be intercepted and modified, exposing sensitive data and enabling man-in-the-middle attacks.  
+   *Change needed:* In the `default_cache_behavior` block, change `viewer_protocol_policy` from `"allow-all"` to `"redirect-to-https"` (or `"https-only"` if you never want to serve HTTP). The two `ordered_cache_behavior` blocks already use `"redirect-to-https"`, so only the default behavior must be updated.
+
+2. **CKV_AWS_174 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+   *What is wrong:* The viewer certificate is the default CloudFront certificate, which uses an older TLS version (effectively TLSv1).  
+   *Why it matters:* Older TLS versions have known vulnerabilities and weaken the encryption between viewers and CloudFront.  
+   *Change needed:* In the `viewer_certificate` block, set `cloudfront_default_certificate = false` and provide a custom ACM certificate (`acm_certificate_arn`). Then set `minimum_protocol_version` to at least `"TLSv1.2_2018"`. This also addresses CKV2_AWS_42 (custom SSL certificate) for this resource.
+
+3. **CKV_AWS_68 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+   *What is wrong:* No WAF web ACL is associated with the distribution.  
+   *Why it matters:* Without a WAF, the distribution is unprotected against common web exploits like SQL injection, cross‑site scripting, and bot traffic.  
+   *Change needed:* Add a `web_acl_id` argument to the `aws_cloudfront_distribution` resource, referencing an existing WAFv2 web ACL (e.g., `aws_wafv2_web_acl.example.arn`). This will also help satisfy CKV2_AWS_47 once the web ACL includes the Log4j rule.
+
+4. **CKV_AWS_310 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+   *What is wrong:* Only one origin is defined; there is no origin group with failover.  
+   *Why it matters:* If the single origin becomes unavailable, the entire distribution stops serving content. Origin failover provides high availability.  
+   *Change needed:* Add a second origin (e.g., a backup S3 bucket in another region) and define an `origin_group` block that references both origins with a failover criteria (status codes like 500/502/503/504). Then update the cache behaviors’ `target_origin_id` to point to the origin group ID.
+
+5. **CKV_AWS_34 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+   *What is wrong:* Same as item 1 – the default cache behavior uses `viewer_protocol_policy = "allow-all"`.  
+   *Why it matters:* Same risk of unencrypted traffic.  
+   *Change needed:* Change `viewer_protocol_policy` to `"redirect-to-https"` in the `default_cache_behavior` block.
+
+6. **CKV_AWS_174 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+   *What is wrong:* The viewer certificate uses `minimum_protocol_version = "TLSv1"`, which is insecure.  
+   *Why it matters:* TLSv1 is obsolete and vulnerable to attacks like BEAST and POODLE.  
+   *Change needed:* In the `viewer_certificate` block, raise `minimum_protocol_version` to at least `"TLSv1.2_2018"`. The distribution already uses a custom certificate (`cloudfront_default_certificate = false`), so only the protocol version needs updating.
+
+7. **CKV_AWS_68 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+   *What is wrong:* No WAF web ACL is attached.  
+   *Why it matters:* Same lack of application‑layer protection.  
+   *Change needed:* Add a `web_acl_id` argument pointing to a WAFv2 web ACL. Ensure the web ACL includes the AWS Managed Rules for Log4j (see CKV2_AWS_47).
+
+8. **CKV_AWS_310 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+   *What is wrong:* Only a single origin, no failover configuration.  
+   *Why it matters:* Single point of failure.  
+   *Change needed:* Add a second origin and an origin group with failover criteria, then point the cache behaviors to the origin group.
+
+9. **CKV_AWS_34 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+   *What is wrong:* Default cache behavior allows HTTP (`viewer_protocol_policy = "allow-all"`).  
+   *Why it matters:* Unencrypted traffic risk.  
+   *Change needed:* Change `viewer_protocol_policy` to `"redirect-to-https"` in the `default_cache_behavior`.
+
+10. **CKV_AWS_174 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* The `minimum_protocol_version` is not set, so it defaults to TLSv1.  
+    *Why it matters:* Defaulting to TLSv1 exposes the distribution to legacy protocol vulnerabilities.  
+    *Change needed:* In the `viewer_certificate` block, explicitly set `minimum_protocol_version = "TLSv1.2_2018"` (or a higher TLSv1.2 variant). The block already has `cloudfront_default_certificate = false`; you must also provide a valid `acm_certificate_arn` to avoid a Terraform error.
+
+11. **CKV_AWS_68 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* No WAF web ACL is associated.  
+    *Why it matters:* Missing web application firewall.  
+    *Change needed:* Add `web_acl_id` referencing a WAFv2 web ACL.
+
+12. **CKV_AWS_310 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* Only one origin, no failover.  
+    *Why it matters:* No high availability.  
+    *Change needed:* Add a second origin and an origin group with failover, then update cache behaviors to use the group.
+
+13. **CKV_AWS_34 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* Default cache behavior uses `viewer_protocol_policy = "allow-all"`.  
+    *Why it matters:* Allows unencrypted HTTP.  
+    *Change needed:* Change to `"redirect-to-https"` in the `default_cache_behavior`.
+
+14. **CKV_AWS_68 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* No WAF web ACL attached.  
+    *Why it matters:* No application‑layer protection.  
+    *Change needed:* Add `web_acl_id` with a WAFv2 web ACL ARN.
+
+15. **CKV_AWS_310 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* Single origin, no failover.  
+    *Why it matters:* Single point of failure.  
+    *Change needed:* Add a second origin and an origin group with failover, then update cache behaviors.
+
+16. **CKV_AWS_34 on `aws_cloudfront_distribution.pass1` (lines 425‑530)**  
+    *What is wrong:* Default cache behavior allows HTTP (`viewer_protocol_policy = "allow-all"`).  
+    *Why it matters:* Unencrypted traffic.  
+    *Change needed:* Change to `"redirect-to-https"` in the `default_cache_behavior`.
+
+17. **CKV_AWS_68 on `aws_cloudfront_distribution.pass1` (lines 425‑530)**  
+    *What is wrong:* No WAF web ACL.  
+    *Why it matters:* Missing web application firewall.  
+    *Change needed:* Add `web_acl_id` referencing a WAFv2 web ACL.
+
+18. **CKV_AWS_310 on `aws_cloudfront_distribution.pass1` (lines 425‑530)**  
+    *What is wrong:* Only one origin, no failover.  
+    *Why it matters:* No high availability.  
+    *Change needed:* Add a second origin and an origin group with failover, then update cache behaviors.
+
+19. **CKV_AWS_86 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* The distribution has no `logging_config` block, so access logging is disabled.  
+    *Why it matters:* Without access logs you lose visibility into requests, which hinders security monitoring and incident investigation.  
+    *Change needed:* Add a `logging_config` block with a valid S3 bucket (e.g., `"mylogs.s3.amazonaws.com"`) and an optional prefix. Ensure the bucket policy allows CloudFront to write logs.
+
+20. **CKV_AWS_174 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* The viewer certificate uses `minimum_protocol_version = "TLSv1.3_2025"`. While TLSv1.3 is secure, the scanner expects an explicit TLSv1.2 version string.  
+    *Why it matters:* The check enforces a known‑good baseline; using a TLSv1.2‑named version ensures compliance with the policy.  
+    *Change needed:* Change `minimum_protocol_version` to `"TLSv1.2_2021"` (or another TLSv1.2 variant). If your organisation explicitly allows TLSv1.3, you may suppress the finding after risk acceptance, but for the check to pass, use a TLSv1.2 value.
+
+21. **CKV_AWS_68 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* No WAF web ACL is attached.  
+    *Why it matters:* Missing web application firewall.  
+    *Change needed:* Add `web_acl_id` with a WAFv2 web ACL ARN.
+
+22. **CKV_AWS_310 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* Only one origin, no failover.  
+    *Why it matters:* No high availability.  
+    *Change needed:* Add a second origin and an origin group with failover, then update the default cache behavior’s `target_origin_id`.
+
+23. **CKV2_AWS_42 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+    *What is wrong:* The distribution uses the default CloudFront certificate (`cloudfront_default_certificate = true`) instead of a custom SSL certificate.  
+    *Why it matters:* The default certificate does not match your custom domain aliases, causing browser warnings and weakening trust. A custom certificate also allows you to control the TLS version.  
+    *Change needed:* In the `viewer_certificate` block, set `cloudfront_default_certificate = false`, provide `acm_certificate_arn` (an ACM certificate in us‑east‑1 that covers the aliases), and set `ssl_support_method = "sni-only"`. This change also helps satisfy CKV_AWS_174.
+
+24. **CKV2_AWS_42 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+    *What is wrong:* The distribution already has `cloudfront_default_certificate = false` but no `acm_certificate_arn` is supplied (the block is incomplete).  
+    *Why it matters:* Without a certificate ARN the configuration is invalid; a custom certificate is required for the aliases.  
+    *Change needed:* Add `acm_certificate_arn` and `ssl_support_method = "sni-only"` to the `viewer_certificate` block.
+
+25. **CKV2_AWS_42 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* Same as fail2 – `cloudfront_default_certificate = false` but no `acm_certificate_arn`.  
+    *Why it matters:* Incomplete configuration; custom certificate missing.  
+    *Change needed:* Provide `acm_certificate_arn` and `ssl_support_method = "sni-only"`.
+
+26. **CKV2_AWS_42 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* `cloudfront_default_certificate = false` is set, but no `acm_certificate_arn` is given.  
+    *Why it matters:* The distribution cannot serve HTTPS for the aliases without a certificate.  
+    *Change needed:* Add `acm_certificate_arn` and `ssl_support_method = "sni-only"` to the `viewer_certificate` block.
+
+27. **CKV2_AWS_32 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+    *What is wrong:* No response headers policy is attached to any cache behavior.  
+    *Why it matters:* Without a response headers policy you cannot enforce security headers (e.g., HSTS, Content‑Security‑Policy, X‑Content‑Type‑Options), leaving clients more exposed to attacks.  
+    *Change needed:* Create an `aws_cloudfront_response_headers_policy` resource with the desired security headers, then add `response_headers_policy_id = aws_cloudfront_response_headers_policy.example.id` to the `default_cache_behavior` and each `ordered_cache_behavior` block.
+
+28. **CKV2_AWS_32 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+    *What is wrong:* Same – no response headers policy.  
+    *Why it matters:* Same missing security headers.  
+    *Change needed:* Attach a response headers policy to all cache behaviors.
+
+29. **CKV2_AWS_32 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* No response headers policy.  
+    *Why it matters:* Missing security headers.  
+    *Change needed:* Attach a response headers policy to all cache behaviors.
+
+30. **CKV2_AWS_32 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* No response headers policy.  
+    *Why it matters:* Missing security headers.  
+    *Change needed:* Attach a response headers policy to all cache behaviors.
+
+31. **CKV2_AWS_32 on `aws_cloudfront_distribution.pass1` (lines 425‑530)**  
+    *What is wrong:* No response headers policy.  
+    *Why it matters:* Missing security headers.  
+    *Change needed:* Attach a response headers policy to all cache behaviors.
+
+32. **CKV2_AWS_32 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* No response headers policy.  
+    *Why it matters:* Missing security headers.  
+    *Change needed:* Attach a response headers policy to the `default_cache_behavior` (and any ordered behaviors if added later).
+
+33. **CKV2_AWS_47 on `aws_cloudfront_distribution.fail` (lines 1‑104)**  
+    *What is wrong:* No WAFv2 web ACL is attached, so the Log4j vulnerability managed rule is not present.  
+    *Why it matters:* Without the AWS Managed Rules for Log4j (or the Known Bad Inputs rule set), the distribution is unprotected against Log4Shell and similar attacks.  
+    *Change needed:* After attaching a WAFv2 web ACL (CKV_AWS_68), ensure that web ACL includes a rule group statement for `AWSManagedRulesKnownBadInputsRuleSet` or the specific `AWSManagedRulesLog4jRuleSet`. This can be done by adding a `rule` block with a `statement` that references the managed rule group and setting `override_action` to `none`.
+
+34. **CKV2_AWS_47 on `aws_cloudfront_distribution.fail2` (lines 106‑210)**  
+    *What is wrong:* Same – no WAFv2 web ACL with Log4j rule.  
+    *Why it matters:* Same Log4j exposure.  
+    *Change needed:* When adding the WAF web ACL (CKV_AWS_68), include the Log4j managed rule group.
+
+35. **CKV2_AWS_47 on `aws_cloudfront_distribution.fail3` (lines 212‑317)**  
+    *What is wrong:* No WAFv2 web ACL with Log4j rule.  
+    *Why it matters:* Same vulnerability.  
+    *Change needed:* Include the Log4j managed rule group in the web ACL you attach for CKV_AWS_68.
+
+36. **CKV2_AWS_47 on `aws_cloudfront_distribution.pass` (lines 319‑423)**  
+    *What is wrong:* No WAFv2 web ACL, hence no Log4j rule.  
+    *Why it matters:* Unprotected against Log4j attacks.  
+    *Change needed:* When adding the WAF web ACL (CKV_AWS_68), include the Log4j managed rule group.
+
+37. **CKV2_AWS_47 on `aws_cloudfront_distribution.pass1` (lines 425‑530)**  
+    *What is wrong:* No WAFv2 web ACL with Log4j rule.  
+    *Why it matters:* Same exposure.  
+    *Change needed:* Include the Log4j managed rule group in the web ACL attached for CKV_AWS_68.
+
+38. **CKV2_AWS_47 on `aws_cloudfront_distribution.pass2` (lines 532‑570)**  
+    *What is wrong:* No WAFv2 web ACL with Log4j rule.  
+    *Why it matters:* Same vulnerability.  
+    *Change needed:* When adding the WAF web ACL (CKV_AWS_68), include the Log4j managed rule group.
+
+---
+
+**Key interactions to note:**
+
+- **CKV_AWS_68 and CKV2_AWS_47:** Enabling WAF (CKV_AWS_68) is a prerequisite for CKV2_AWS_47. When you create or select a WAFv2 web ACL to satisfy CKV_AWS_68, you must also ensure that web ACL contains the AWS Managed Rules for Log4j (or Known Bad Inputs) so that CKV2_AWS_47 passes simultaneously.
+- **CKV_AWS_174 and CKV2_AWS_42:** Both checks relate to the viewer certificate. Switching from the default certificate to a custom ACM certificate (CKV2_AWS_42) and setting a modern TLS version (CKV_AWS_174) are done in the same `viewer_certificate` block. For resources that already have `cloudfront_default_certificate = false` but are missing the ARN, adding the ARN and setting `minimum_protocol_version` to a TLSv1.2 value will resolve both.
+- **CKV_AWS_34 and CKV2_AWS_32:** These are independent but both affect cache behaviors. Changing `viewer_protocol_policy` and adding `response_headers_policy_id` can be done in the same edit of each cache behavior block.

@@ -1,0 +1,13 @@
+The `aws_db_snapshot_copy.fail` resource copies an RDS snapshot without specifying a customer-managed KMS key. As a result, the copied snapshot is encrypted using the default AWS-managed key, which does not provide the granular control, auditing, or key rotation capabilities that a customer-managed key (CMK) offers. This configuration fails the scanner’s requirement to use a CMK for encryption.
+
+To fix this, add a `kms_key_id` argument referencing a customer-managed KMS key, exactly as shown in the `pass` resource. The corrected resource should look like this:
+
+```hcl
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                   = aws_kms_key.example.id
+}
+```
+
+This ensures the snapshot copy is encrypted with a key you control, allowing you to manage access, rotation, and auditing in line with security best practices.

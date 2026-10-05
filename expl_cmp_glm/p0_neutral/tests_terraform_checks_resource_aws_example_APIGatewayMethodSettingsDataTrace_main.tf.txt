@@ -1,0 +1,25 @@
+### 1. What the misconfiguration is
+In the `aws_api_gateway_method_settings.fail` resource, the `settings` block has `data_trace_enabled` set to `true`. Additionally, the block omits caching settings (`caching_enabled` and `cache_data_encrypted`), which causes Checkov to flag the implicit defaults (both disabled/unencrypted). 
+
+### 2. Why it matters
+- **Data Trace Enabled**: Setting `data_trace_enabled = true` logs the full request and response payloads (including headers and body data) to CloudWatch. If your API handles sensitive data (PII, credentials, etc.), this data will be written to logs, expanding the blast radius to anyone with read access to that CloudWatch log group.
+- **Caching Disabled/Unencrypted**: While `caching_enabled = false` (the default) is not a direct data breach vector, Checkov enforces a baseline where API Gateway caching is expected to be active and, if active, encrypted at rest using AWS KMS. Without explicit encryption settings, any future cache enablement would default to unencrypted storage. 
+
+### 3. How to fix it safely
+Update the `settings` block in the `fail` resource to explicitly disable data tracing and enable encrypted caching. 
+
+```hcl
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled   = false
+    caching_enabled       = true
+    cache_data_encrypted  = true
+  }
+}
+```
+
+*Note: Enabling caching may incur additional AWS costs and may affect how stale data is served. Ensure your application logic can tolerate cached responses before applying this change to production.*

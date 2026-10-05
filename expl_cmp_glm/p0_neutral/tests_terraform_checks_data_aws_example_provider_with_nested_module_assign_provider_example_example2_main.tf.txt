@@ -1,0 +1,63 @@
+### 1. What the misconfiguration is
+The `aws_s3_bucket` resource is declared with only a bucket name (`module-bucket`). It lacks all associated security and operational configurations, resulting in Checkov findings for missing public access blocks, KMS encryption, access logging, versioning, lifecycle rules, cross-region replication, and event notifications.
+
+### 2. Why it matters
+The missing controls expose the bucket and its data to the following risks:
+*   **Unrestricted Public Access (CKV2_AWS_6):** Without a public access block, future bucket policies or ACLs could inadvertently expose the bucket's contents to the internet, leading to unauthorized data access.
+*   **No KMS Encryption (CKV_AWS_145):** Data at rest does not use a customer-managed KMS key, limiting cryptographic control and auditability over the data.
+*   **No Access Logging (CKV_AWS_18):** Read and write operations cannot be audited, creating a blind spot for investigations if data is modified or exfiltrated.
+*   **No Versioning (CKV_AWS_21):** There is no protection against object overwrites or deletions. If an object is deleted or corrupted, it is permanently lost.
+*   **No Event Notifications (CKV2_AWS_62):** No automated alerts are generated for object creation or deletion, meaning unauthorized modifications could go unnoticed.
+*   **No Replication (CKV_AWS_144):** Data exists only in a single AWS region, providing no geographic redundancy against regional outages or destruction.
+*   **No Lifecycle Configuration (CKV2_AWS_61):** No automated transition or expiration of objects, resulting in unbounded data accumulation and potential cost overruns.
+
+### 3. How to fix it safely
+Add the missing AWS provider resources to enforce the required controls. Do not destroy or recreate the existing bucket; apply these alongside the current resource. 
+
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "module-bucket"
+}
+
+# CKV2_AWS_6: Block public access
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket                  = aws_s3_bucket.bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# CKV_AWS_145: Enable KMS encryption
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "arn:aws:kms:REGION:ACCOUNT:key/KEY_ID" # Replace with your KMS key ARN
+    }
+  }
+}
+
+# CKV_AWS_21: Enable versioning
+resource "aws_s3_bucket_versioning" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# CKV_AWS_18: Enable access logging (Requires a separate target logging bucket)
+resource "aws_s3_bucket_logging" "bucket" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = aws_s3_bucket.log_bucket.id # Must reference an existing log bucket
+  target_prefix = "log/module-bucket/"
+}
+
+# Resolve remaining findings by adding:
+# - aws_s3_bucket_lifecycle_configuration (CKV2_AWS_61)
+# - aws_s3_bucket_replication_configuration (CKV_AWS_144)
+# - aws_s3_bucket_notification (CKV2_AWS_62)
+```
+
+**Note:** The `target_bucket` in the logging configuration and the `kms_master_key_id` in the encryption configuration require other resources (a separate S3 bucket for logs, and a KMS key) to exist in your Terraform state or AWS account. Ensure the IAM role applying this has permissions for `s3:PutEncryptionConfiguration`, `s3:PutBucketLogging`, `s3:PutBucketVersioning`, and `s3:PutPublicAccessBlock`.

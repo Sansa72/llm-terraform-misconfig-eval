@@ -1,0 +1,25 @@
+Here is the remediation briefing for the two failing checks.
+
+---
+
+### 1. CKV_AWS_237 on `aws_api_gateway_rest_api.fail` (lines 1–7)
+
+**What is wrong:** The resource does not have `create_before_destroy` enabled; the lifecycle block is commented out entirely.
+
+**Why it matters:** Without `create_before_destroy = true`, Terraform will destroy the existing API Gateway before creating the replacement when a change forces recreation (e.g., a name change). This causes downtime and can break clients that depend on the API’s endpoint. Enabling create-before-destroy ensures the new API is provisioned and ready before the old one is removed, avoiding an outage.
+
+**Change needed:** Uncomment the `lifecycle` block and set `create_before_destroy = true`. Remove the comment markers (`#`) and the line containing only `# }`, so that the block becomes active with the correct value. The resulting lifecycle block should look exactly like the one in the `pass` resource later in the file.
+
+---
+
+### 2. CKV_AWS_237 on `aws_api_gateway_rest_api.fail2` (lines 9–15)
+
+**What is wrong:** The resource has an active `lifecycle` block, but `create_before_destroy` is explicitly set to `false`.
+
+**Why it matters:** The same downtime risk applies. Setting `create_before_destroy = false` (or omitting it, which defaults to false) means Terraform will destroy first, then create. For API Gateway, this can cause a period where the API is unavailable and the endpoint may change, breaking integrations.
+
+**Change needed:** Modify the existing `lifecycle` block so that `create_before_destroy` is set to `true`. Simply change `false` to `true` on that line. No other structural changes are required.
+
+---
+
+**Interactions:** There are no dependencies between `aws_api_gateway_rest_api.fail` and `aws_api_gateway_rest_api.fail2` in the provided snippet, so the two fixes are independent and can be applied in any order. The `pass` resource already demonstrates the correct configuration.

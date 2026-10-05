@@ -1,0 +1,43 @@
+**Security Misconfigurations in Terraform Configuration**
+
+**1. IAM Account Password Policy (`aws_iam_account_password_policy.password-policy`, lines 28–35)**
+
+- **CKV_AWS_9 – Password expiration not enforced**  
+  The policy does not set `max_password_age`, so passwords never expire.  
+  **Fix:** Add `max_password_age = 90` (or a value ≤ 90) to enforce regular rotation.
+
+- **CKV_AWS_13 – Password reuse not prevented**  
+  The policy does not set `password_reuse_prevention`, allowing users to reuse previous passwords.  
+  **Fix:** Add `password_reuse_prevention = 24` (or a value ≥ 1) to block reuse of recent passwords.
+
+**2. S3 Bucket (`aws_s3_bucket.template_bucket`, lines 57–62)**
+
+- **CKV2_AWS_61 – No lifecycle configuration**  
+  The bucket lacks a `lifecycle_rule` block, which can lead to unnecessary data retention.  
+  **Fix:** Add a `lifecycle_rule` block to transition or expire objects.
+
+- **CKV_AWS_18 – Access logging not enabled**  
+  The bucket does not have a `logging` block, so access requests are not recorded.  
+  **Fix:** Add a `logging` block pointing to a target bucket for access logs.
+
+- **CKV2_AWS_62 – Event notifications not enabled**  
+  The bucket does not have `event_notification` configuration, missing alerts on object changes.  
+  **Fix:** Add `event_notification` blocks to send events to SNS, SQS, or Lambda.
+
+- **CKV2_AWS_6 – Public access block missing**  
+  The bucket does not have `block_public_access` settings, which could allow public access if the ACL permits.  
+  **Fix:** Add a `block_public_access` block with all options set to `true` to restrict public access.
+
+- **CKV_AWS_145 – Default encryption not using KMS**  
+  The bucket does not have `server_side_encryption_configuration` with KMS, so objects may be stored unencrypted or with SSE-S3.  
+  **Fix:** Add a `server_side_encryption_configuration` block with `sse_algorithm = "aws:kms"` and optionally a KMS key ARN.
+
+- **CKV_AWS_144 – Cross-region replication not enabled**  
+  The bucket does not have `replication_configuration`, missing disaster recovery capability.  
+  **Fix:** Add a `replication_configuration` block with a destination bucket in another region and an appropriate IAM role.
+
+- **CKV_AWS_21 – Versioning not enabled**  
+  The bucket does not have a `versioning` block, so object versions are not preserved.  
+  **Fix:** Add a `versioning` block with `enabled = true`.
+
+All these missing configurations represent security best practices that should be implemented to align with the scanner’s requirements.

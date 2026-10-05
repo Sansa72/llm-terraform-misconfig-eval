@@ -1,0 +1,16 @@
+The scanner flagged a misconfiguration in the `aws_ecs_service` resource named `"fail"` (lines 12–16). The check **CKV_AWS_332** requires that Fargate services use the latest platform version, but the resource explicitly sets `platform_version = "1.4.0"`.
+
+**Evidence in the file:**
+- The resource `aws_ecs_service "fail"` is defined on lines 12–16.
+- It has `launch_type = "FARGATE"` (line 14), confirming it runs on Fargate.
+- It sets `platform_version = "1.4.0"` (line 15), which is a specific, older version rather than `"LATEST"`.
+
+**Why this is flagged:**
+The check expects Fargate services to use `platform_version = "LATEST"` so they automatically receive the newest Fargate platform version, which includes security updates, bug fixes, and feature improvements. Hardcoding an older version like `1.4.0` means the service will not benefit from those updates.
+
+**What the file shows about the other resources:**
+- `aws_ecs_service.pass` (lines 1–5) explicitly sets `platform_version = "LATEST"` and is not flagged.
+- `aws_ecs_service.pass2` (lines 7–10) omits `platform_version` entirely; for Fargate services, AWS defaults to `LATEST` when no version is specified, so it is not flagged.
+- The `"unknown"` resources lack `launch_type = "FARGATE"`, so the check does not apply to them.
+
+**Fix:** Change line 15 in the `"fail"` resource from `platform_version = "1.4.0"` to `platform_version = "LATEST"`, or remove the `platform_version` argument entirely to rely on the default.

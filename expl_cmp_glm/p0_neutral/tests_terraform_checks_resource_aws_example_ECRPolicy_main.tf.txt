@@ -1,0 +1,25 @@
+### 1. What the misconfiguration is
+* **Missing repository hardening:** The `aws_ecr_repository` resources (`public`, `private`, `empty`, `conditional_ok`, and `conditional_bad`) omit three security configurations: `scan_on_push` (defaults to `false`), `image_tag_mutability` (defaults to `MUTABLE`), and `encryption_configuration` (defaults to AWS-managed AES-256 instead of KMS).
+* **Publicly exposed repository policies:** The `aws_ecr_repository_policy.fail` (lines 9-38) and `aws_ecr_repository_policy.fail_conditional` (lines 131-165) use `"Principal": "*"`. Both grant broad administrative and write actions (e.g., `ecr:PutImage`, `ecr:DeleteRepository`, `ecr:SetRepositoryPolicy`) to everyone. The `fail_conditional` policy attempts to restrict this access with a `Condition` checking `aws:username`, but this does not securely scope a wildcard principal. 
+
+### 2. Why it matters (concrete security risk / blast radius)
+* **Repository hardening:** Mutable tags allow existing image tags (like `latest`) to be overwritten, enabling supply chain attacks where a malicious image replaces a trusted one. Without `scan_on_push`, vulnerabilities in images are not automatically detected. Without KMS encryption, you lack customer-managed key control for cryptographic erasure and granular access auditing.
+* **Public policies:** Granting `Principal: "*"` with write and administrative permissions allows anyone on the internet to push arbitrary images, delete existing repositories, or alter the repository policy to lock you out. This represents a complete compromise of the registry's integrity, confidentiality, and availability.
+
+### 3. How to fix it safely
+* **Repositories:** Explicitly define the missing security arguments in your `aws_ecr_repository` blocks:
+  ```hcl
+  resource "aws_ecr_repository" "example" {
+    name                 = "example_repo"
+    scan_on_push         = true
+    image_tag_mutability = "IMMUTABLE"
+
+    encryption_configuration {
+      encryption_type = "KMS"
+      kms_key         = aws_kms_key.ecr_key.arn # Reference a customer-managed KMS key
+    }
+  }
+  ```
+* **Policies:** Remove `"Principal": "*"` from the `fail` and `fail_conditional` policies. 
+  * Replace the wildcard principal with specific IAM ARNs (as correctly done in the `pass` policy).
+  * If organization-wide access is required for read-only actions, use `"Principal": "*"` but strictly limit the `Action` list to read-only permissions, and enforce a `Condition` using `aws:PrincipalOrgID` (as correctly done in the `pass_conditional` policy). Never expose write or administrative actions publicly.

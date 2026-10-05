@@ -1,0 +1,19 @@
+**Remediation Briefing: EBS Volume Encryption with Customer-Managed KMS Key**
+
+---
+
+### Finding 1: CKV_AWS_189 on `aws_ebs_volume.fail` (lines 12–20)
+
+**What is wrong:**  
+The volume is encrypted but does not specify a customer-managed KMS key; it relies on the default AWS-managed key.
+
+**Why it matters:**  
+AWS-managed keys do not allow you to control key rotation, access policies, or auditing granularity. Using a customer-managed key (CMK) gives you full control over cryptographic operations, enables detailed CloudTrail logging of key usage, and supports compliance requirements that mandate separation of duties and key lifecycle management.
+
+**Change needed:**  
+Add the `kms_key_id` argument to the `aws_ebs_volume.fail` resource, referencing the ARN of a customer-managed KMS key. The same key already used by the `aws_ebs_volume.pass` resource (`aws_kms_key.test.arn`) is a suitable choice if the volumes share the same security and access requirements. If a different key is required, create a new `aws_kms_key` resource and reference its ARN. No other modifications are necessary; the `encrypted = true` attribute is already present and will remain.
+
+---
+
+**Interactions between fixes:**  
+Only one finding exists in the supplied file, so no cross-fix interactions apply. The `pass` resource already demonstrates the correct pattern and can serve as a reference.

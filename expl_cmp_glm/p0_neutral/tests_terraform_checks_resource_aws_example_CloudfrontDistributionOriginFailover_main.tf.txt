@@ -1,0 +1,35 @@
+**1. What the misconfiguration is**
+In the `aws_cloudfront_distribution.fail` resource (lines 46-81), Checkov flagged multiple security gaps:
+- **No Access Logging:** The resource lacks a `logging_config` block.
+- **No WAF Attached:** The resource omits the `web_acl_id` or `web_acl_arn` attribute. 
+- **No Enforced TLS 1.2:** The `viewer_certificate` block (lines 74-76) sets `cloudfront_default_certificate = true` but omits the `minimum_protocol_version` attribute.
+
+**2. Why it matters**
+- **Missing Logging (CKV_AWS_86):** CloudFront edge requests and error rates are not recorded. This destroys edge-level visibility, severely hindering monitoring, auditing, and incident response capabilities.
+- **Missing WAF (CKV_AWS_68):** Without an attached Web ACL, the distribution lacks Layer 7 filtering. This leaves the origin S3 bucket unprotected against common web exploits (e.g., XSS, SQLi) and malicious traffic patterns.
+- **Weak TLS (CKV_AWS_174):** Without explicitly defining the minimum protocol version, the distribution may permit clients to connect using deprecated, vulnerable protocols (TLS 1.0 or 1.1), exposing client traffic to cryptographic downgrade attacks.
+
+**3. How to fix it safely**
+Update the `aws_cloudfront_distribution.fail` resource to include the missing security controls:
+
+```hcl
+resource "aws_cloudfront_distribution" "fail" {
+  # ... existing configuration ...
+
+  # Fix 1: Enable access logging
+  logging_config {
+    bucket = "your-logging-bucket.s3.amazonaws.com"
+    prefix = "cloudfront/"
+  }
+
+  # Fix 2: Attach a WAFv2 Web ACL
+  web_acl_arn = aws_wafv2_web_acl.example.arn
+
+  # Fix 3: Enforce TLS 1.2
+  viewer_certificate {
+    cloudfront_default_certificate = true
+    minimum_protocol_version        = "TLSv1.2_2021"
+  }
+}
+```
+*Note: You must create the referenced `aws_wafv2_web_acl` and target S3 logging bucket resources within your Terraform configuration or reference existing ones.*

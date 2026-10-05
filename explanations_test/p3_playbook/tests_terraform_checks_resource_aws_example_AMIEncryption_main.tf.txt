@@ -1,0 +1,23 @@
+**Check CKV_AWS_204 on `aws_ami.fail` (lines 31–47)**  
+**What is wrong:** The AMI has two EBS block device mappings; one omits the `encrypted` attribute (defaulting to `false`) and the other explicitly sets `encrypted = false`.  
+**Why it matters:** Unencrypted AMI snapshots and volumes can be exposed if the AMI is shared or the underlying snapshot is inadvertently made public. Encryption at rest using KMS keys ensures that data cannot be read without the corresponding key, meeting regulatory and security best-practice requirements.  
+**Change needed:** Set `encrypted = true` on every `ebs_block_device` block. For the first block, simply add `encrypted = true` alongside the existing `snapshot_id` and `volume_size`. For the second block, change `encrypted = false` to `encrypted = true`. Be aware that if the snapshot referenced by `snapshot_id` is itself unencrypted, you cannot create an encrypted AMI from it directly; you must first copy the snapshot with encryption enabled, then reference the encrypted snapshot ID. The scanner will pass once all block devices have `encrypted = true`.
+
+---
+
+**Check CKV_AWS_204 on `aws_ami.fail2` (lines 49–59)**  
+**What is wrong:** The single EBS block device mapping has `encrypted = false`.  
+**Why it matters:** The AMI would be stored as an unencrypted snapshot, leaving the data unprotected at rest and non‑compliant with policies that mandate encryption.  
+**Change needed:** Change `encrypted = false` to `encrypted = true`. No other modifications are required for this resource.
+
+---
+
+**Check CKV_AWS_204 on `aws_ami.fail3` (lines 61–70)**  
+**What is wrong:** The EBS block device mapping does not include the `encrypted` attribute, so it defaults to `false`.  
+**Why it matters:** Without explicit encryption, the AMI’s backing snapshot is unencrypted, increasing the risk of data exposure.  
+**Change needed:** Add `encrypted = true` inside the `ebs_block_device` block. This is the only change needed for this resource.
+
+---
+
+**Additional note on interactions:**  
+None of the three failing resources depend on each other, so the fixes are independent. However, if you later decide to use a customer-managed KMS key (CMK) instead of the default AWS-managed key—which would fully align with the check’s intent—you can add a `kms_key_id` argument to each `ebs_block_device` block, pointing to a valid CMK ARN or alias. This is not required to make the scanner pass, but it is recommended for stronger key control and auditability.

@@ -1,0 +1,61 @@
+The scanner flagged three distinct misconfigurations across your four EKS cluster resources. Here is exactly what the findings and the file tell you, resource by resource.
+
+---
+
+### 1. CKV_AWS_39 – Ensure Amazon EKS public endpoint disabled
+
+**Flagged on:**
+- `aws_eks_cluster.fully_enabled` (lines 3‑14)
+- `aws_eks_cluster.fully_enabled_with_dynamic_block` (lines 16‑38)
+- `aws_eks_cluster.partially_enabled` (lines 42‑50)
+- `aws_eks_cluster.not_configured` (lines 52‑55)
+
+**What the file shows:**  
+None of these resources contain a `vpc_config` block. The Terraform AWS provider defaults `endpoint_public_access` to `true` when no `vpc_config` is specified. Because the file does not override that default, the public endpoint remains enabled on all four clusters.
+
+**What the check requires:**  
+The cluster’s Kubernetes API server must not be reachable from the public internet. To satisfy the check, you must explicitly disable the public endpoint by adding a `vpc_config` block with `endpoint_public_access = false` (and typically enable private access with `endpoint_private_access = true`).
+
+---
+
+### 2. CKV_AWS_58 – Ensure EKS Cluster has Secrets Encryption Enabled
+
+**Flagged on:**
+- `aws_eks_cluster.fully_enabled` (lines 3‑14)
+- `aws_eks_cluster.partially_enabled` (lines 42‑50)
+- `aws_eks_cluster.not_configured` (lines 52‑55)
+
+**What the file shows:**  
+These three resources have no `encryption_config` block. The resource `fully_enabled_with_dynamic_block` (lines 16‑38) *does* include a `dynamic "encryption_config"` block with a KMS key ARN and `resources = ["secrets"]`, which is why it is **not** flagged for this check.
+
+**What the check requires:**  
+Kubernetes secrets stored in etcd must be encrypted using a KMS key. You need to add an `encryption_config` block to each of the flagged resources, providing a KMS key ARN and specifying `resources = ["secrets"]`.
+
+---
+
+### 3. CKV_AWS_37 – Ensure Amazon EKS control plane logging enabled for all log types
+
+**Flagged on:**
+- `aws_eks_cluster.partially_enabled` (lines 42‑50)
+- `aws_eks_cluster.not_configured` (lines 52‑55)
+
+**What the file shows:**
+- `partially_enabled` (lines 42‑50) has `enabled_cluster_log_types` set to only `["api", "audit"]`. The required set of all five log types is `["api", "audit", "authenticator", "controllerManager", "scheduler"]`. The missing types are `authenticator`, `controllerManager`, and `scheduler`.
+- `not_configured` (lines 52‑55) has no `enabled_cluster_log_types` argument at all, meaning no control plane logs are enabled.
+- The resources `fully_enabled` and `fully_enabled_with_dynamic_block` already list all five log types, so they are not flagged.
+
+**What the check requires:**  
+All five control plane log types must be enabled. For the two flagged resources, you must ensure `enabled_cluster_log_types` contains the complete list of five strings.
+
+---
+
+### Summary of required changes
+
+| Resource (lines) | Missing configuration |
+|-----------------|----------------------|
+| `fully_enabled` (3‑14) | Add `vpc_config` with `endpoint_public_access = false`; add `encryption_config` for secrets. |
+| `fully_enabled_with_dynamic_block` (16‑38) | Add `vpc_config` with `endpoint_public_access = false`. |
+| `partially_enabled` (42‑50) | Add `vpc_config` with `endpoint_public_access = false`; add `encryption_config` for secrets; expand `enabled_cluster_log_types` to all five types. |
+| `not_configured` (52‑55) | Add `vpc_config` with `endpoint_public_access = false`; add `encryption_config` for secrets; add `enabled_cluster_log_types` with all five types. |
+
+No other misconfigurations are evidenced by the provided file and scanner output.

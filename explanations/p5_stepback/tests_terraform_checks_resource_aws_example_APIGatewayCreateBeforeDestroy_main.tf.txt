@@ -1,0 +1,10 @@
+The check `CKV_AWS_237` requires that API Gateway REST API resources use the lifecycle policy `create_before_destroy = true`. The underlying principle is **availability during resource replacement**. When Terraform must replace an API Gateway (for example, because of a name change that forces a new resource), the default behaviour is to destroy the existing API before creating the replacement. This causes downtime and risks losing the API endpoint until the new resource is provisioned. Setting `create_before_destroy = true` ensures the new API is created and ready before the old one is removed, preventing service interruption.
+
+In this file, two resources violate the rule:
+
+- **`aws_api_gateway_rest_api.fail`** (lines 1–7): The `lifecycle` block is entirely commented out, so Terraform uses the default `create_before_destroy = false`.  
+- **`aws_api_gateway_rest_api.fail2`** (lines 9–15): The `lifecycle` block explicitly sets `create_before_destroy = false`.
+
+Both configurations mean that if a replacement is triggered, the existing API Gateway will be destroyed first, causing an outage until the new one is created. The `pass` resource in the same file demonstrates the correct pattern: `lifecycle { create_before_destroy = true }`.
+
+**Fix:** Uncomment the `lifecycle` block in `fail` and change the value in `fail2` to `true`, so that both resources use `create_before_destroy = true`.

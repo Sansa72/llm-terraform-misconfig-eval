@@ -1,0 +1,92 @@
+The scanner flagged multiple security misconfigurations across all six CloudFront distributions defined in the file. Below is a resource-by-resource breakdown of each finding, the exact lines that trigger it, and what must be changed. Only evidence present in the file and the scanner output is used.
+
+---
+
+### **Resource: `aws_cloudfront_distribution.fail` (lines 1–104)**
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_34** | ViewerProtocolPolicy is not set to HTTPS | **Line 37** – `viewer_protocol_policy = "allow-all"` in the `default_cache_behavior` block. | Change `viewer_protocol_policy` to `"redirect-to-https"` or `"https-only"`. |
+| **CKV_AWS_174** | Viewer certificate is not using TLS v1.2 | **Lines 101–103** – `viewer_certificate` block sets `cloudfront_default_certificate = true` and does not specify `minimum_protocol_version`. The AWS default is TLSv1. | Set `minimum_protocol_version` to a TLSv1.2 policy (e.g., `"TLSv1.2_2018"`) and use a custom certificate (see CKV2_AWS_42). |
+| **CKV_AWS_68** | No WAF is enabled | The entire resource block (lines 1–104) lacks a `web_acl_id` argument. | Add `web_acl_id = aws_wafv2_web_acl.<name>.arn` to associate a WAF WebACL. |
+| **CKV_AWS_310** | No origin failover configured | **Lines 2–9** – only one `origin` block exists. No `origin_group` is defined. | Add a second origin and an `origin_group` block with failover criteria. |
+| **CKV2_AWS_42** | Not using a custom SSL certificate | **Lines 101–103** – `viewer_certificate` uses the default CloudFront certificate (`cloudfront_default_certificate = true`). | Provide `acm_certificate_arn` and `ssl_support_method` (e.g., `"sni-only"`), and set `cloudfront_default_certificate = false`. |
+| **CKV2_AWS_32** | No response headers policy attached | The `default_cache_behavior` (lines 24–41) and both `ordered_cache_behavior` blocks (lines 44–64, 67–86) do not include a `response_headers_policy_id`. | Add `response_headers_policy_id` referencing an `aws_cloudfront_response_headers_policy` resource. |
+| **CKV2_AWS_47** | Attached WAF (if any) must have AMR for Log4j | No `web_acl_id` is present, so no WAF is attached. The check requires a WAF with the Log4j managed rule. | Attach a WAF WebACL that includes the AWS managed rule group for Log4j (e.g., `AWSManagedRulesKnownBadInputsRuleSet`). |
+
+---
+
+### **Resource: `aws_cloudfront_distribution.fail2` (lines 106–210)**
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_34** | ViewerProtocolPolicy not HTTPS | **Line 142** – `viewer_protocol_policy = "allow-all"` in `default_cache_behavior`. | Same as `fail`. |
+| **CKV_AWS_174** | Viewer certificate not using TLS v1.2 | **Line 205** – `minimum_protocol_version = "TLSv1"` in `viewer_certificate`. | Change to a TLSv1.2 policy, e.g., `"TLSv1.2_2018"`. |
+| **CKV_AWS_68** | No WAF enabled | No `web_acl_id` in the resource (lines 106–210). | Add `web_acl_id`. |
+| **CKV_AWS_310** | No origin failover | Single `origin` block (lines 107–114). | Add a second origin and an origin group. |
+| **CKV2_AWS_42** | No custom SSL certificate | **Lines 203–206** – `viewer_certificate` has `cloudfront_default_certificate = false` but no `acm_certificate_arn`. | Provide `acm_certificate_arn` and `ssl_support_method`. |
+| **CKV2_AWS_32** | No response headers policy | `default_cache_behavior` and `ordered_cache_behavior` blocks lack `response_headers_policy_id`. | Add the policy ID. |
+| **CKV2_AWS_47** | WAF (if attached) must have Log4j AMR | No `web_acl_id` present. | Attach a WAF with the required managed rule. |
+
+---
+
+### **Resource: `aws_cloudfront_distribution.fail3` (lines 212–317)**
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_34** | ViewerProtocolPolicy not HTTPS | **Line 248** – `viewer_protocol_policy = "allow-all"` in `default_cache_behavior`. | Same as `fail`. |
+| **CKV_AWS_174** | Viewer certificate not using TLS v1.2 | **Lines 312–316** – `viewer_certificate` has `cloudfront_default_certificate = false` but `minimum_protocol_version` is commented out (line 315). The default is TLSv1. | Uncomment and set to a TLSv1.2 policy, e.g., `"TLSv1.2_2018"`. |
+| **CKV_AWS_68** | No WAF enabled | No `web_acl_id` in the resource (lines 212–317). | Add `web_acl_id`. |
+| **CKV_AWS_310** | No origin failover | Single `origin` block (lines 213–220). | Add a second origin and an origin group. |
+| **CKV2_AWS_42** | No custom SSL certificate | `viewer_certificate` lacks `acm_certificate_arn`. | Provide `acm_certificate_arn` and `ssl_support_method`. |
+| **CKV2_AWS_32** | No response headers policy | Cache behaviors missing `response_headers_policy_id`. | Add the policy ID. |
+| **CKV2_AWS_47** | WAF must have Log4j AMR | No `web_acl_id`. | Attach a WAF with the required managed rule. |
+
+---
+
+### **Resource: `aws_cloudfront_distribution.pass` (lines 319–423)**
+Despite the name, this resource still fails several checks.
+
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_34** | ViewerProtocolPolicy not HTTPS | **Line 355** – `viewer_protocol_policy = "allow-all"` in `default_cache_behavior`. | Change to `"redirect-to-https"` or `"https-only"`. |
+| **CKV_AWS_68** | No WAF enabled | No `web_acl_id` in the resource. | Add `web_acl_id`. |
+| **CKV_AWS_310** | No origin failover | Single `origin` block (lines 320–327). | Add a second origin and an origin group. |
+| **CKV2_AWS_42** | No custom SSL certificate | **Lines 420–423** – `viewer_certificate` sets `cloudfront_default_certificate = false` and `minimum_protocol_version = "TLSv1.2_2018"` but does not provide `acm_certificate_arn`. | Add `acm_certificate_arn` and `ssl_support_method`. |
+| **CKV2_AWS_32** | No response headers policy | Cache behaviors lack `response_headers_policy_id`. | Add the policy ID. |
+| **CKV2_AWS_47** | WAF must have Log4j AMR | No `web_acl_id`. | Attach a WAF with the required managed rule. |
+
+---
+
+### **Resource: `aws_cloudfront_distribution.pass1` (lines 425–530)**
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_34** | ViewerProtocolPolicy not HTTPS | **Line 461** – `viewer_protocol_policy = "allow-all"` in `default_cache_behavior`. | Change to `"redirect-to-https"` or `"https-only"`. |
+| **CKV_AWS_68** | No WAF enabled | No `web_acl_id`. | Add `web_acl_id`. |
+| **CKV_AWS_310** | No origin failover | Single `origin` block (lines 426–433). | Add a second origin and an origin group. |
+| **CKV2_AWS_32** | No response headers policy | Cache behaviors missing `response_headers_policy_id`. | Add the policy ID. |
+| **CKV2_AWS_47** | WAF must have Log4j AMR | No `web_acl_id`. | Attach a WAF with the required managed rule. |
+
+*(CKV_AWS_174 and CKV2_AWS_42 are not flagged here because `viewer_certificate` uses a custom certificate with TLSv1.2.)*
+
+---
+
+### **Resource: `aws_cloudfront_distribution.pass2` (lines 532–570)**
+| Check ID | Problem | Evidence in file | Required fix |
+|----------|---------|------------------|---------------|
+| **CKV_AWS_174** | Viewer certificate not using TLS v1.2 | **Line 566** – `minimum_protocol_version = "TLSv1.3_2025"`. The scanner flags this despite TLSv1.3 being a higher version. | Verify the scanner’s policy definition for CKV_AWS_174. It may require exactly a TLSv1.2 policy string. If so, change to `"TLSv1.2_2019"` or similar. |
+| **CKV_AWS_68** | No WAF enabled | No `web_acl_id`. | Add `web_acl_id`. |
+| **CKV_AWS_310** | No origin failover | Single `origin` block (lines 533–540). | Add a second origin and an origin group. |
+| **CKV2_AWS_32** | No response headers policy | `default_cache_behavior` (lines 546–557) lacks `response_headers_policy_id`. | Add the policy ID. |
+| **CKV2_AWS_47** | WAF must have Log4j AMR | No `web_acl_id`. | Attach a WAF with the required managed rule. |
+
+*(CKV_AWS_34 is not flagged because `viewer_protocol_policy` is `"redirect-to-https"`; CKV2_AWS_42 is not flagged because a custom ACM certificate is used.)*
+
+---
+
+### **Summary of common missing configurations across all distributions**
+- **WAF attachment** (`web_acl_id`) – missing in every resource.
+- **Origin failover** – every distribution has only one origin; none define an origin group.
+- **Response headers policy** – no cache behavior in any distribution references a response headers policy.
+- **ViewerProtocolPolicy** – all except `pass2` use `"allow-all"` in the default cache behavior.
+- **Custom SSL certificate** – `fail`, `fail2`, `fail3`, and `pass` lack a valid ACM certificate ARN.
+- **TLS version** – `fail`, `fail2`, and `fail3` do not enforce TLS v1.2 or higher in the viewer certificate.
+
+Address each finding in the corresponding resource block to resolve the scanner alerts.

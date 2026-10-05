@@ -1,0 +1,49 @@
+The scanner identified the following misconfigurations across both CloudFront distributions. Each finding is tied to a specific rule and the relevant configuration excerpt from the provided Terraform file.
+
+**Resource: `aws_cloudfront_distribution.pass` (lines 1–101)**
+
+1. **CKV_AWS_34 – ViewerProtocolPolicy not set to HTTPS**  
+   The `default_cache_behavior` block (line 33) sets `viewer_protocol_policy = "allow-all"`. This permits unencrypted HTTP connections, exposing traffic to interception.  
+   *Remediation:* In that block, change `viewer_protocol_policy` to `"redirect-to-https"` or `"https-only"`.
+
+2. **CKV_AWS_174 – Viewer certificate may not enforce TLS v1.2**  
+   The `viewer_certificate` block (line 97) uses `cloudfront_default_certificate = true` but does not specify a `minimum_protocol_version`. Without an explicit minimum, older TLS versions could be accepted.  
+   *Remediation:* Add `minimum_protocol_version = "TLSv1.2_2021"` (or a similarly strict value) inside the `viewer_certificate` block.
+
+3. **CKV_AWS_68 – No WAF enabled**  
+   The resource does not contain a `web_acl_id` attribute. The distribution is not associated with any WAF, leaving it unprotected against common web exploits.  
+   *Remediation:* Add `web_acl_id = aws_wafv2_web_acl.<name>.arn` (or the ID of an existing WAFv2 WebACL) to the distribution resource.
+
+4. **CKV_AWS_310 – Origin failover not configured**  
+   Only one `origin` block is present (line 3). There is no second origin or origin group, so the distribution has no failover capability if the single origin becomes unavailable.  
+   *Remediation:* Define a second `origin` and an `origin_group` block with failover criteria, then reference the origin group in the cache behaviors.
+
+5. **CKV2_AWS_42 – Custom SSL certificate not used**  
+   The `viewer_certificate` block (line 97) sets `cloudfront_default_certificate = true`. For distributions with custom domains (the `aliases` on line 15), a custom ACM certificate should be used to ensure proper domain validation.  
+   *Remediation:* Replace the `viewer_certificate` block with one that specifies `acm_certificate_arn` and `ssl_support_method = "sni-only"`.
+
+6. **CKV2_AWS_32 – No response headers policy attached**  
+   None of the cache behaviors (`default_cache_behavior` or `ordered_cache_behavior`) include a `response_headers_policy_id`. This means security-related HTTP headers (e.g., HSTS, Content-Security-Policy) are not added to responses.  
+   *Remediation:* Add `response_headers_policy_id` to each cache behavior, referencing an existing response headers policy.
+
+7. **CKV2_AWS_47 – WAFv2 WebACL with AMR for Log4j not present**  
+   No WAF is attached (see CKV_AWS_68). Consequently, there is no WAFv2 WebACL configured with AWS Managed Rules (AMR) for Log4j vulnerability protection.  
+   *Remediation:* Attach a WAFv2 WebACL that includes the `AWSManagedRulesKnownBadInputsRuleSet` or a specific Log4j rule set, and set the `web_acl_id` on the distribution.
+
+**Resource: `aws_cloudfront_distribution.fail` (lines 103–202)**
+
+All of the above findings apply identically to this resource, with the same configuration excerpts at corresponding locations:
+- `default_cache_behavior` `viewer_protocol_policy = "allow-all"` (line 133)
+- `viewer_certificate` with `cloudfront_default_certificate = true` and no `minimum_protocol_version` (line 197)
+- No `web_acl_id`
+- Single `origin` block (line 105)
+- No `response_headers_policy_id` in any cache behavior
+- `aliases` present (line 115) but no custom certificate
+
+Additionally, this resource triggers one extra check:
+
+8. **CKV_AWS_305 – Default root object not configured**  
+   The resource does not include a `default_root_object` attribute (compare with the `pass` resource, which has `default_root_object = "index.html"` on line 10). Requests to the root URL may not receive the intended default content.  
+   *Remediation:* Add `default_root_object = "index.html"` (or the appropriate object key) to the resource definition.
+
+All remediations refer directly to the attributes and blocks present (or absent) in the file. No assumptions are made beyond what the scanner findings and the Terraform configuration show.

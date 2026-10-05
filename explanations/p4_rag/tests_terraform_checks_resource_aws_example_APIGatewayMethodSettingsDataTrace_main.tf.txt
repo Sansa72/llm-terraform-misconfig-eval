@@ -1,0 +1,62 @@
+The scanner flagged three issues across your `aws_api_gateway_method_settings` resources. Here’s what’s wrong and how to fix it, grounded in the policy references.
+
+---
+
+### 1. CKV_AWS_276 – Data Trace Enabled (only `fail` resource)
+
+**What it means**  
+Enabling data trace (`data_trace_enabled = true`) causes API Gateway to log the full request and response payloads to CloudWatch. This can expose sensitive data (PII, credentials, tokens) in logs, violating the principle of least privilege and data protection requirements. The policy reference explicitly states that data trace should not be enabled.
+
+**In your file**  
+The `fail` resource has `data_trace_enabled = true`. The `pass_explicit` resource correctly sets it to `false`. The `pass_implicit` resource omits the setting, which defaults to `false` and is therefore safe.
+
+**Fix**  
+Set `data_trace_enabled = false` in the `fail` resource, or remove the line entirely (the default is `false`).
+
+---
+
+### 2. CKV_AWS_225 – API Gateway method caching not enabled (all three resources)
+
+**What it means**  
+API Gateway caching stores responses to reduce latency and backend load. The policy requires that caching be enabled for production stages to improve resilience and performance. While caching itself is a performance feature, leaving it disabled can lead to unnecessary backend exposure under load.
+
+**In your file**  
+None of the three resources (`fail`, `pass_explicit`, `pass_implicit`) have caching enabled. The `pass_*` resources are misnamed – they still fail this check because they don’t configure caching at all.
+
+**Fix**  
+Add a `settings` block (or extend the existing one) with `caching_enabled = true` in all three resources.
+
+---
+
+### 3. CKV_AWS_308 – API Gateway method caching not encrypted (all three resources)
+
+**What it means**  
+When caching is enabled, the cached data must be encrypted at rest. The policy requires `cache_data_encrypted = true` to ensure that sensitive response data stored in the cache is protected. Without encryption, cached data could be exposed if the underlying storage is compromised.
+
+**In your file**  
+Even after enabling caching, none of the resources set `cache_data_encrypted`. The scanner flags this because the default is `false` (unencrypted).
+
+**Fix**  
+In the same `settings` block where you enable caching, add `cache_data_encrypted = true`.
+
+---
+
+### Required Terraform changes
+
+Here’s how to update each resource:
+
+**`aws_api_gateway_method_settings.fail`**  
+- Set `data_trace_enabled = false` (or remove it).  
+- Add `caching_enabled = true` and `cache_data_encrypted = true`.
+
+**`aws_api_gateway_method_settings.pass_explicit`**  
+- Already has `data_trace_enabled = false` – good.  
+- Add `caching_enabled = true` and `cache_data_encrypted = true`.
+
+**`aws_api_gateway_method_settings.pass_implicit`**  
+- Currently has no `settings` block. Add one with:  
+  `caching_enabled = true`  
+  `cache_data_encrypted = true`  
+  (Optionally, explicitly set `data_trace_enabled = false` for clarity.)
+
+After these changes, all three resources will satisfy the three rules.

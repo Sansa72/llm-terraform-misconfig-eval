@@ -1,0 +1,53 @@
+The scanner flagged three findings in the provided Terraform file. Here is what each one means and where the problem lies.
+
+---
+
+### Finding 1: CKV_AWS_267 on `aws_comprehend_entity_recognizer.pass` (lines 2–29)
+
+**Check description:** Ensure that the Comprehend Entity Recognizer’s **model** is encrypted using a customer managed KMS key (CMK).
+
+**Evidence in the file:**  
+The resource `aws_comprehend_entity_recognizer` named `"pass"` (lines 2–29) includes a `volume_kms_key_id` argument (line 5), but it **does not** include a `model_kms_key_id` argument anywhere in the resource block. The scanner is flagging that the model encryption key is not explicitly set to a customer managed key.
+
+**What needs to be fixed:**  
+Add a `model_kms_key_id` argument to this resource, specifying a customer managed KMS key. For example, you could add:
+```hcl
+model_kms_key_id = aws_kms_key.test.id
+```
+(or another key ARN) inside the resource block.
+
+---
+
+### Finding 2: CKV_AWS_268 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**Check description:** Ensure that the Comprehend Entity Recognizer’s **volume** is encrypted using a customer managed KMS key (CMK).
+
+**Evidence in the file:**  
+The resource `aws_comprehend_entity_recognizer` named `"fail"` (lines 40–66) does **not** contain a `volume_kms_key_id` argument. The scanner therefore reports that the volume is not encrypted with a CMK.
+
+**What needs to be fixed:**  
+Add a `volume_kms_key_id` argument to this resource, referencing a customer managed KMS key.
+
+---
+
+### Finding 3: CKV_AWS_267 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**Check description:** Same as Finding 1 – the **model** is not encrypted with a CMK.
+
+**Evidence in the file:**  
+The `"fail"` resource (lines 40–66) has no `model_kms_key_id` argument. The scanner flags this as a missing customer managed key for model encryption.
+
+**What needs to be fixed:**  
+Add a `model_kms_key_id` argument to this resource, referencing a customer managed KMS key.
+
+---
+
+### Summary of required changes
+
+| Resource | Missing argument | Check ID |
+|----------|-----------------|----------|
+| `aws_comprehend_entity_recognizer.pass` | `model_kms_key_id` | CKV_AWS_267 |
+| `aws_comprehend_entity_recognizer.fail` | `volume_kms_key_id` | CKV_AWS_268 |
+| `aws_comprehend_entity_recognizer.fail` | `model_kms_key_id` | CKV_AWS_267 |
+
+The `pass` resource already has `volume_kms_key_id` set, so no volume encryption finding was raised for it. The `fail` resource is missing both encryption arguments, triggering both checks.

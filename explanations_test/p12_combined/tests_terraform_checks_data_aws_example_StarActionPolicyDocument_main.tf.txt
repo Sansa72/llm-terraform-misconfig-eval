@@ -1,0 +1,57 @@
+**Briefing: IAM Policy Misconfigurations**
+
+Below are the five failing checks, addressed in the order they appear in the scanner output. Each entry identifies the check, the resource, the offending lines, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_49 on `aws_iam_policy_document.fail` (lines 49–61)
+
+- **Check ID:** CKV_AWS_49  
+- **Resource:** `aws_iam_policy_document.fail`  
+- **Triggering lines:** 54–55 (`actions = ["*"]`)  
+- **What is wrong:** The policy statement uses a wildcard `"*"` for its `actions`, granting permission to perform any action on the specified resources. This violates the principle of least privilege.  
+- **Remediation:** Replace the wildcard `"*"` with an explicit list of the exact S3 actions that the policy needs to allow (for example, `"s3:GetObject"`, `"s3:PutObject"`). Do not use `"*"` unless the policy genuinely requires every possible action.
+
+---
+
+### 2. CKV_AWS_107 on `aws_iam_policy_document.fail` (lines 49–61)
+
+- **Check ID:** CKV_AWS_107  
+- **Resource:** `aws_iam_policy_document.fail`  
+- **Triggering lines:** 54–55 (`actions = ["*"]`)  
+- **What is wrong:** The wildcard `"*"` in the `actions` array could allow actions that expose or misuse credentials. Even though the resource is an S3 bucket, the scanner treats any wildcard action as a potential credential exposure risk.  
+- **Remediation:** Restrict the `actions` list to only the specific S3 actions required. Remove the wildcard entirely. If the policy needs to allow multiple S3 actions, enumerate them individually.
+
+---
+
+### 3. CKV_AWS_49 on `aws_iam_policy_document.no_effect` (lines 63–74)
+
+- **Check ID:** CKV_AWS_49  
+- **Resource:** `aws_iam_policy_document.no_effect`  
+- **Triggering lines:** 68–69 (`actions = ["*"]`)  
+- **What is wrong:** The statement contains `actions = ["*"]` (and no explicit `effect`, which defaults to `"Allow"`). This grants all actions on the bucket, violating the requirement to avoid wildcard actions.  
+- **Remediation:** Replace `"*"` with a specific list of S3 actions that the policy is intended to permit. If an `effect` is meant to be `"Deny"`, add `effect = "Deny"` and still avoid `"*"` unless absolutely necessary and justified.
+
+---
+
+### 4. CKV_AWS_107 on `aws_iam_policy_document.no_effect` (lines 63–74)
+
+- **Check ID:** CKV_AWS_107  
+- **Resource:** `aws_iam_policy_document.no_effect`  
+- **Triggering lines:** 68–69 (`actions = ["*"]`)  
+- **What is wrong:** The wildcard action `"*"` could allow credential‑exposing operations. The scanner flags any policy that uses `"*"` in `actions` as a credential exposure risk.  
+- **Remediation:** Replace the wildcard with a precise set of allowed S3 actions. Ensure that no action in the list can be abused to read, write, or assume IAM credentials (e.g., avoid `iam:*`, `sts:*` if the resource scope ever widens). For this S3‑only policy, simply removing `"*"` and listing the needed S3 actions will satisfy the check.
+
+---
+
+### 5. CKV2_AWS_40 on `aws_iam_policy_document.fail` (lines 49–61)
+
+- **Check ID:** CKV2_AWS_40  
+- **Resource:** `aws_iam_policy_document.fail`  
+- **Triggering lines:** 54–55 (`actions = ["*"]`)  
+- **What is wrong:** The policy grants full IAM privileges (`"*"` in `actions`) on the S3 bucket. The check interprets this as allowing full IAM administrative capabilities, which is overly permissive.  
+- **Remediation:** Narrow the `actions` to only the S3 permissions that are strictly necessary. Do not use `"*"`. If the intent is to grant full S3 access, use `"s3:*"` instead of a global `"*"`, but note that `"s3:*"` would still be flagged by CKV_AWS_49. The safest approach is to list the exact S3 actions required.
+
+---
+
+All five findings stem from the use of `"*"` in the `actions` field. The fix for every one is the same: replace the wildcard with a minimal, explicit list of actions. No other part of the file is implicated.

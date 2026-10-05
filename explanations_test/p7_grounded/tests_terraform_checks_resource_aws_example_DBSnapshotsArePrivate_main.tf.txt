@@ -1,0 +1,20 @@
+The finding is **CKV_AWS_302** ("Ensure DB Snapshots are not Public") and it is raised against the resource `aws_db_snapshot.fail`.
+
+The evidence is in the Terraform file at **lines 12–16**:
+
+```terraform
+resource "aws_db_snapshot" "fail" {
+  db_instance_identifier = aws_db_instance.bar.id
+  db_snapshot_identifier = "testsnapshot1234"
+  shared_accounts        = ["all"]
+}
+```
+
+The problem is on **line 15**: `shared_accounts = ["all"]`.  
+Setting the `shared_accounts` argument to `["all"]` makes the DB snapshot **publicly accessible** to any AWS account. The scanner flags this because the check requires that DB snapshots are not shared publicly.
+
+For comparison, the same file shows two safe configurations:
+- `aws_db_snapshot.pass` (lines 1–4) does not set `shared_accounts` at all, so the snapshot remains private.
+- `aws_db_snapshot.pass2` (lines 6–10) sets `shared_accounts` to a specific account ID (`"680235478471"`), which is an explicit, non-public sharing.
+
+To fix the finding, change the `shared_accounts` value from `["all"]` to either omit the argument entirely or list only the specific AWS account IDs that should have access.

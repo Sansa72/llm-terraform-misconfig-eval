@@ -1,0 +1,16 @@
+## Remediation Briefing
+
+### Finding: CKV_AWS_183 – EBS Snapshot Copy not encrypted with a Customer Managed Key (CMK)
+
+**Resource:** `aws_ebs_snapshot_copy.fail`  
+**Location:** Lines 12–20 of the provided Terraform file  
+**Trigger:** The resource sets `encrypted = true` (line 15) but does **not** include a `kms_key_id` argument.  
+
+**What is wrong:**  
+The snapshot copy is encrypted, but it relies on the default AWS-managed KMS key instead of a customer-managed key (CMK). This means you lack fine-grained control over key rotation, access policies, and auditing of key usage.
+
+**Why it matters:**  
+Without a CMK, you cannot enforce custom key policies, restrict usage to specific IAM principals, or gain detailed visibility into encryption/decryption operations via CloudTrail. The scanner requires a customer-managed key to meet governance and security best practices.
+
+**Remediation:**  
+Add a `kms_key_id` argument to the `aws_ebs_snapshot_copy` resource named `fail`, referencing the ARN of a customer-managed KMS key. The passing resource (`aws_ebs_snapshot_copy.pass`, line 5) already demonstrates the correct pattern: `kms_key_id = aws_kms_key.test.arn`. Use the same or a similar CMK reference in the failing resource to ensure the snapshot copy is encrypted with a key you control.

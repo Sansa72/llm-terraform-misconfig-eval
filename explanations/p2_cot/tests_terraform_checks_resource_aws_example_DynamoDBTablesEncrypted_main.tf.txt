@@ -1,0 +1,102 @@
+The scanner flagged three issues across your DynamoDB tables: missing point-in-time recovery (PITR), missing customer-managed KMS encryption, and missing auto scaling. Here’s what each means and how to fix them.
+
+---
+
+### 1. Point-in-time recovery (CKV_AWS_28)
+
+**What’s wrong:**  
+None of the four tables (`cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`) have point-in-time recovery enabled. This feature provides continuous backups, allowing you to restore the table to any point in the last 35 days.
+
+**Why it matters:**  
+Without PITR, you’re limited to on-demand backups (if any) and cannot recover from accidental writes, deletions, or corruption that occurred between backups. This increases the risk of permanent data loss.
+
+**How to fix:**  
+Add a `point_in_time_recovery` block to each table resource:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+---
+
+### 2. Customer-managed KMS encryption (CKV_AWS_119)
+
+**What’s wrong:**  
+Only the `cmk` table uses a customer-managed KMS key. The other three tables either:
+- `default` – no encryption block (defaults to AWS-owned key)
+- `encrypted_false` – explicitly disables server-side encryption
+- `encrypted_no_cmk` – enables encryption but uses the AWS-owned key (no `kms_key_arn`)
+
+**Why it matters:**  
+Customer-managed keys give you control over key rotation, access policies, and auditing. AWS-owned keys are shared across accounts and don’t allow granular permissions or key revocation. For sensitive data, using your own KMS key is a security best practice.
+
+**How to fix:**  
+Ensure every table has server-side encryption enabled with a customer-managed KMS key ARN:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
+}
+```
+
+Replace the ARN with your actual KMS key ARN. For the `encrypted_false` table, change `enabled = false` to `true` and add the key ARN. For the `default` table, add the entire block. For `encrypted_no_cmk`, just add the `kms_key_arn`.
+
+---
+
+### 3. Auto Scaling (CKV2_AWS_16)
+
+**What’s wrong:**  
+All four tables use provisioned capacity with fixed read/write units, but no auto scaling is configured. This means the table cannot automatically adjust capacity in response to traffic changes.
+
+**Why it matters:**  
+Without auto scaling, a sudden increase in traffic can cause throttling and degraded performance. Conversely, over-provisioning wastes money. Auto scaling ensures the table can handle load spikes while optimising cost.
+
+**How to fix:**  
+You have two options:
+
+- **Option A (recommended if workload is unpredictable):** Switch to on-demand capacity mode by setting `billing_mode = "PAY_PER_REQUEST"`. This eliminates the need for capacity planning and auto scaling, but may be more expensive for steady, high-throughput workloads.
+
+- **Option B (if you need provisioned mode):** Add auto scaling resources. For each table, define an `aws_appautoscaling_target` and two `aws_appautoscaling_policy` resources (one for read, one for write). Example for the `cmk` table:
+
+```hcl
+resource "aws_appautoscaling_target" "cmk_read" {
+  service_namespace  = "dynamodb"
+  resource_id       = "table/${aws_dynamodb_table.cmk.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  min_capacity      = 5
+  max_capacity      = 100
+}
+
+resource "aws_appautoscaling_policy" "cmk_read_policy" {
+  name               = "cmk-read-scaling"
+  service_namespace  = aws_appautoscaling_target.cmk_read.service_namespace
+  resource_id        = aws_appautoscaling_target.cmk_read.resource_id
+  scalable_dimension = aws_appautoscaling_target.cmk_read.scalable_dimension
+
+  policy_type = "TargetTrackingScaling"
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+```
+
+Repeat for write capacity (change `scalable_dimension` to `dynamodb:table:WriteCapacityUnits` and use the write predefined metric). Apply this pattern to all four tables.
+
+---
+
+**Summary of changes needed per table:**
+
+| Table            | PITR | Encryption (CMK) | Auto Scaling |
+|------------------|------|------------------|--------------|
+| `cmk`            | Add  | Already set      | Add          |
+| `default`        | Add  | Add CMK          | Add          |
+| `encrypted_false`| Add  | Enable + CMK     | Add          |
+| `encrypted_no_cmk`| Add  | Add CMK ARN      | Add          |
+
+After applying these changes, all checks will pass and your DynamoDB tables will follow security and resilience best practices.

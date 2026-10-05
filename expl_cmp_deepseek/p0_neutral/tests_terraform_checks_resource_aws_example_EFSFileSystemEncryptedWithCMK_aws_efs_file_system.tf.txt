@@ -1,0 +1,24 @@
+### 1. What the misconfiguration is
+The `aws_efs_file_system.fail` resource enables EFS encryption (`encrypted = true`) but does **not** specify `kms_key_id`. As a result, EFS will use the AWS-managed KMS key `aws/elasticfilesystem` instead of a customer-managed KMS key (CMK).
+
+Checkov rule `CKV_AWS_184` requires that EFS file systems be encrypted using a **customer-managed key**, not the default AWS-managed key.
+
+### 2. Why it matters
+With an AWS-managed key, you cannot:
+- Set or restrict key policies to enforce least-privilege access.
+- Control key rotation, deletion, or revocation.
+- Create granular audit trails tied to a key you own.
+
+If the EFS file system contains sensitive data, this reduces your ability to meet compliance requirements that mandate customer-managed encryption keys and limits your incident response options (e.g., you cannot revoke the key to cryptographically shred data). The blast radius is the entire EFS file system encrypted under that AWS-managed key.
+
+### 3. How to fix it safely
+Set `kms_key_id` to the ARN of a customer-managed KMS key, as shown in the `pass` resource:
+
+```hcl
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.test.arn
+}
+```
+
+Ensure the KMS key policy allows the EFS service (`elasticfilesystem.amazonaws.com`) to use the key for encryption/decryption in the relevant region and account. If you are using a pre-existing key, reference its ARN or ID explicitly.

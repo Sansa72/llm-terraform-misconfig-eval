@@ -1,0 +1,7 @@
+The Terraform configuration defines two CloudWatch log groups, both with `retention_in_days = 1`. This value is 1 day, which violates the requirement to retain logs for at least 1 year (365 days). The scanner flagged both resources for this misconfiguration (CKV_AWS_338).
+
+Additionally, the `aws_cloudwatch_log_group.fail` resource is missing a `kms_key_id` attribute, meaning its log data is not encrypted with a customer-managed KMS key. The scanner flagged this as CKV_AWS_158. The `aws_cloudwatch_log_group.pass` resource already includes `kms_key_id = "someKey"` and is not flagged for encryption.
+
+**To fix:**
+- Set `retention_in_days` to `365` or greater on both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail`.
+- Add a `kms_key_id` argument to `aws_cloudwatch_log_group.fail`, referencing a valid KMS key ARN or ID, to enable encryption at rest.

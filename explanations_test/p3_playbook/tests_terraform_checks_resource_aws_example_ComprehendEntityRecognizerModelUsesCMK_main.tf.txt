@@ -1,0 +1,46 @@
+## Remediation Briefing
+
+### Finding 1: CKV_AWS_268 on `aws_comprehend_entity_recognizer.pass` (lines 2–29)
+
+**What is wrong:**  
+The entity recognizer `pass` does not specify a KMS key for volume encryption.
+
+**Why it matters:**  
+Without a customer-managed KMS key, the underlying storage volumes used during training are encrypted with an AWS-owned key. Using a customer-managed key gives you control over key rotation, access policies, and auditing, which is often required for compliance and data protection standards.
+
+**Change needed:**  
+Add the `volume_kms_key_id` argument to the `aws_comprehend_entity_recognizer` resource named `pass`. Set it to the ARN of a customer-managed KMS key (for example, the same key already referenced in `model_kms_key_id`). This will ensure that both the model artifacts and the training volume are encrypted with a key you own and manage.
+
+---
+
+### Finding 2: CKV_AWS_268 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What is wrong:**  
+The entity recognizer `fail` does not specify a KMS key for volume encryption.
+
+**Why it matters:**  
+As above, omitting `volume_kms_key_id` means the training volume is encrypted with an AWS-owned key, reducing your control over key lifecycle, access, and auditability.
+
+**Change needed:**  
+Add the `volume_kms_key_id` argument to the `aws_comprehend_entity_recognizer` resource named `fail`, referencing a valid customer-managed KMS key ARN. This can be the same key used for the `pass` resource or a separate key, depending on your key management strategy.
+
+---
+
+### Finding 3: CKV_AWS_267 on `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What is wrong:**  
+The entity recognizer `fail` does not specify a KMS key for model encryption.
+
+**Why it matters:**  
+Without a customer-managed key, the trained model and its artifacts are encrypted with an AWS-owned key. Using a CMK gives you control over access, rotation, and auditing of the encryption key, which is critical for protecting sensitive or regulated data.
+
+**Change needed:**  
+Add the `model_kms_key_id` argument to the `aws_comprehend_entity_recognizer` resource named `fail`, referencing a valid customer-managed KMS key ARN. This can be the same key used for volume encryption or a different one, depending on your security requirements.
+
+---
+
+### Interactions between fixes
+
+- The `pass` resource already has `model_kms_key_id` set; it only needs `volume_kms_key_id` to satisfy CKV_AWS_268.  
+- The `fail` resource is missing both `model_kms_key_id` and `volume_kms_key_id`, so both arguments must be added.  
+- You may reuse the same KMS key (e.g., `aws_kms_key.test.id`) for all four settings across both resources, or define separate keys. The checks only require that a customer-managed key is referenced; they do not mandate unique keys. Ensure the IAM role used by each recognizer has `kms:Decrypt` and `kms:GenerateDataKey` permissions on the chosen key(s).

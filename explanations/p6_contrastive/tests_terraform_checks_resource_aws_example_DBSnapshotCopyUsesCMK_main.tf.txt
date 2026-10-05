@@ -1,0 +1,29 @@
+The scanner finding references a check name that appears mismatched (“App Flow connector profile”), but the underlying rule is about ensuring that RDS snapshot copies are encrypted with a customer-managed key (CMK). The resource in question is `aws_db_snapshot_copy.fail`.
+
+### What the current configuration does (failing)
+The `fail` resource copies a DB snapshot but does **not** provide a `kms_key_id`. As a result, the copied snapshot will be encrypted using the **default AWS-managed KMS key** for RDS in the target region. You have no control over that key’s policy, rotation schedule, or lifecycle.
+
+### What a passing configuration would do
+A passing configuration (like the `pass` resource in the same file) includes the `kms_key_id` argument, pointing to a **customer-managed KMS key** (CMK). The snapshot copy is then encrypted with that CMK, giving you full control over key permissions, automatic rotation, and auditing.
+
+### The precise difference
+The only difference between the two resources is the presence of the `kms_key_id` attribute. In the failing resource it is absent; in the passing resource it is set to `aws_kms_key.example.id`. Everything else—source snapshot, target identifier—remains identical.
+
+### Why that difference matters for security
+- **Control**: With a CMK you define the key policy, restricting which principals can use the key for decryption. The default AWS-managed key grants broad access to RDS and cannot be modified.
+- **Rotation**: You can enable automatic annual rotation on a CMK; AWS-managed keys rotate automatically but on a schedule you cannot adjust or verify.
+- **Auditability**: CloudTrail logs for CMK usage are more granular and can be tied to your own key alias, simplifying compliance reporting.
+- **Data recovery**: If the default key is lost (e.g., after a snapshot is deleted), recovery is impossible. A CMK can be retained and managed independently.
+
+### Engineer’s fix summary
+Add the `kms_key_id` argument to the `aws_db_snapshot_copy` resource, referencing a valid customer-managed KMS key. For example:
+
+```hcl
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier = "testsnapshot1234-copy"
+  kms_key_id                   = aws_kms_key.example.id   # <-- add this line
+}
+```
+
+This ensures the copied snapshot is encrypted with a key you own and manage, satisfying the security requirement.

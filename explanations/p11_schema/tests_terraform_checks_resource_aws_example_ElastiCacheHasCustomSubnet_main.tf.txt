@@ -1,0 +1,24 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_134",
+      "resource": "aws_elasticache_cluster.fail",
+      "evidence": [
+        "snapshot_retention_limit = 0"
+      ],
+      "risk": "Automatic backups are disabled (snapshot_retention_limit = 0), so no automated snapshots will be taken. If the cluster fails or data is corrupted, recovery may be impossible.",
+      "remediation": "Set snapshot_retention_limit to a value greater than 0 (e.g., 5) to enable automatic daily backups.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_323",
+      "resource": "aws_elasticache_cluster.fail",
+      "evidence": [
+        "resource \"aws_elasticache_cluster\" \"fail\" {\n  cluster_id           = \"cluster\"\n  engine               = \"redis\"\n  node_type            = \"cache.m5.large\"\n  num_cache_nodes      = 1\n  parameter_group_name = \"default.redis6.x\"\n  snapshot_retention_limit = 0\n}"
+      ],
+      "risk": "The cluster does not specify a subnet_group_name, so it will be placed in the default subnet group. This may result in unintended network exposure or lack of network isolation.",
+      "remediation": "Add a subnet_group_name argument referencing a custom subnet group (e.g., subnet_group_name = \"mysubnet\") to ensure the cluster is deployed in a controlled network environment.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+The scanner flagged several missing security controls on both S3 buckets defined in your Terraform file. Each finding corresponds to a best practice that helps protect data confidentiality, integrity, and availability. Below I explain each issue, why it matters, and how to fix it with Terraform code.
+
+---
+
+### 1. CKV2_AWS_61 – Lifecycle configuration
+**What it means:** The bucket has no lifecycle rules.  
+**Risk:** Without lifecycle policies, objects may be kept indefinitely, increasing storage costs and the potential blast radius of a data breach. Lifecycle rules can automatically transition objects to cheaper storage classes or expire them after a defined period.  
+**Fix:** Add an `aws_s3_bucket_lifecycle_configuration` resource (or use the deprecated `lifecycle_rule` inside the bucket resource). Example:
+
+```hcl
+resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "expire-old-objects"
+    status = "Enabled"
+
+    expiration {
+      days = 365
+    }
+  }
+}
+```
+
+---
+
+### 2. CKV_AWS_18 – Access logging
+**What it means:** Server access logging is not enabled.  
+**Risk:** Without access logs, you lose visibility into who is accessing your data. Logs are essential for security audits, anomaly detection, and forensic investigations.  
+**Fix:** Create a target bucket for logs (or use an existing one) and attach a logging configuration.
+
+```hcl
+resource "aws_s3_bucket_logging" "bucket_logging" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/"
+}
+```
+
+---
+
+### 3. CKV2_AWS_62 – Event notifications
+**What it means:** The bucket does not send event notifications (e.g., to SNS, SQS, or Lambda) for object operations.  
+**Risk:** Without event notifications, you cannot react in real time to sensitive operations (like object creation/deletion). This hampers security monitoring and automated response.  
+**Fix:** Add an `aws_s3_bucket_notification` resource.
+
+```hcl
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  bucket = aws_s3_bucket.bucket.id
+
+  topic {
+    topic_arn     = aws_sns_topic.bucket_events.arn
+    events        = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+  }
+}
+```
+
+---
+
+### 4. CKV2_AWS_6 – Public Access Block
+**What it means:** The bucket does not have a public access block configuration.  
+**Risk:** Without explicit public access blocks, a misconfigured bucket policy or ACL could accidentally expose data to the internet.  
+**Fix:** Attach a `aws_s3_bucket_public_access_block` that blocks all public access.
+
+```hcl
+resource "aws_s3_bucket_public_access_block" "bucket_block" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+```
+
+---
+
+### 5. CKV_AWS_145 – Default encryption with KMS
+**What it means:** The bucket does not enforce default encryption using AWS KMS (customer-managed keys).  
+**Risk:** Data at rest may be unencrypted or only encrypted with SSE-S3 (AES‑256). Using KMS gives you more control over key rotation, access policies, and audit trails.  
+**Fix:** Add a server-side encryption configuration that uses `aws:kms`.
+
+```hcl
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket_encryption" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.mykey.arn   # or an existing KMS key ARN
+    }
+  }
+}
+```
+
+---
+
+### 6. CKV_AWS_144 – Cross-region replication
+**What it means:** The bucket is not configured for cross-region replication (CRR).  
+**Risk:** Without replication, data is vulnerable to regional outages or disasters. CRR ensures business continuity and compliance with data residency requirements.  
+**Fix:** Enable replication to a bucket in another region. This requires versioning on both source and destination buckets, an IAM role, and a replication configuration.
+
+```hcl
+resource "aws_s3_bucket_replication_configuration" "replication" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.source.id
+
+  rule {
+    id     = "replicate-to-dr"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.destination.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+---
+
+### 7. CKV_AWS_21 – Versioning enabled
+**What it means:** The bucket does not have versioning enabled.  
+**Risk:** Without versioning, accidental deletions or overwrites are irreversible. Versioning protects against data loss and is a prerequisite for replication.  
+**Fix:** Enable versioning on the bucket.
+
+```hcl
+resource "aws_s3_bucket_versioning" "bucket_versioning" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+```
+
+---
+
+### Additional note on the provider configuration
+The second provider alias (`usw1`) has an empty `region` string. This will cause Terraform to fail because the AWS provider requires a valid region. Set it to a real region, e.g., `"us-west-1"`.
+
+---
+
+### Putting it all together
+For each bucket (`bucket` and `bucket_2`), you need to add the corresponding resources. The fixes are identical in structure; just reference the correct bucket. Here’s a minimal example for `aws_s3_bucket.bucket`:
+
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "bucket"
+  provider = aws.usw1   # ensure the provider alias is correct
+}
+
+resource "aws_s3_bucket_versioning" "bucket_versioning" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "expire"
+    status = "Enabled"
+    expiration {
+      days = 365
+    }
+  }
+}
+
+resource "aws_s3_bucket_logging" "bucket_logging" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = aws_s3_bucket.log_bucket.id
+  target_prefix = "log/"
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket_block" {
+  bucket = aws_s3_bucket.bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket_encryption" {
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.mykey.arn
+    }
+  }
+}
+
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  bucket = aws_s3_bucket.bucket.id
+
+  topic {
+    topic_arn = aws_sns_topic.bucket_events.arn
+    events    = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+  }
+}
+
+# Replication requires versioning on both source and destination, plus an IAM role.
+# Example (simplified):
+resource "aws_s3_bucket_replication_configuration" "bucket_replication" {
+  role   = aws_iam_role.replication.arn
+  bucket = aws_s3_bucket.bucket.id
+
+  rule {
+    id     = "replicate-to-dr"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.destination.arn
+      storage_class = "STANDARD"
+    }
+  }
+}
+```
+
+Apply the same pattern to `bucket-2`. After these changes, all the listed checks should pass.

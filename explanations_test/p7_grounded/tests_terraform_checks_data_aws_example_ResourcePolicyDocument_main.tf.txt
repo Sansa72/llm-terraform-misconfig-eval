@@ -1,0 +1,23 @@
+The scanner flagged a security misconfiguration in the `aws_iam_policy_document` resource named `fail`.
+
+**Check ID:** `CKV_AWS_356`  
+**Resource:** `aws_iam_policy_document.fail` (lines 1–13)  
+**Rule:** Ensure no IAM policies documents allow `"*"` as a statement's resource for restrictable actions.
+
+**What the file shows:**  
+The policy document `fail` contains a statement (lines 4–8) that:
+- Uses `effect = "Allow"` (line 5)
+- Specifies the action `"s3:Describe*"` (line 7)
+- Sets `resources = ["*"]` (line 9)
+
+This combination directly violates the check: a wildcard resource (`"*"`) is used with an action that the scanner considers “restrictable” (i.e., an action that can and should be scoped to specific resources). The check `CKV_AWS_356` is designed to catch exactly this pattern.
+
+**Why it’s flagged:**  
+The policy document `fail` grants `s3:Describe*` permissions on **all** S3 resources (`"*"`). The scanner identifies this as overly broad. The other policy documents in the file illustrate compliant alternatives:
+- `pass2` uses `effect = "Deny"` (not flagged).
+- `pass` uses specific resource ARNs (e.g., `arn:aws:s3:::${var.s3_bucket_name}`) instead of `"*"`.
+- `pass_unrestrictable` uses `"*"` but with an action (`s3:ListAllMyBuckets`) that is not considered restrictable.
+- `pass_condition` uses `"*"` but includes a condition block to limit access.
+
+**What to fix:**  
+Modify the `resources` argument in the `fail` policy document to reference specific S3 resources (e.g., a bucket ARN) or add a condition that restricts access, rather than using `"*"`. The exact fix depends on the intended scope of the `s3:Describe*` permission.

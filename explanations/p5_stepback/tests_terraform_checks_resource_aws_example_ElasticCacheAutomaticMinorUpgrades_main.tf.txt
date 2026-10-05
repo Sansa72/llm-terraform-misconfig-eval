@@ -1,0 +1,54 @@
+The scanner flagged several ElastiCache clusters for missing or misconfigured security controls. Below is a breakdown of each finding, the principle it enforces, how the current configuration violates it, and the required change.
+
+---
+
+### Resource: `aws_elasticache_cluster.pass` (lines 3‑11)
+**Finding:** CKV_AWS_323 – Ensure ElastiCache clusters do not use the default subnet group.
+
+- **Principle:** Network segmentation. Placing a cluster in the default subnet group means it inherits the default VPC’s subnets, which are often poorly isolated and may not follow least‑privilege network access. A custom subnet group allows you to place the cluster in controlled, private subnets.
+- **Violation:** The resource does not specify a `subnet_group_name`. It therefore uses the default subnet group.
+- **Fix:** Add `subnet_group_name = "<your-custom-subnet-group>"` to the resource block.
+
+---
+
+### Resource: `aws_elasticache_cluster.pass2` (lines 13‑19)
+**Findings:** CKV_AWS_134, CKV_AWS_323
+
+- **CKV_AWS_134 – Ensure automatic backups are enabled for Redis clusters.**
+  - **Principle:** Data durability and recovery. Automatic backups (snapshots) protect against data loss and enable point‑in‑time recovery.
+  - **Violation:** The resource does not set `snapshot_retention_limit`, which defaults to `0` (no automatic backups).
+  - **Fix:** Add `snapshot_retention_limit = 5` (or any value ≥ 1).
+
+- **CKV_AWS_323 – Ensure ElastiCache clusters do not use the default subnet group.**
+  - **Principle:** Same as above – network segmentation.
+  - **Violation:** No `subnet_group_name` is specified, so the default subnet group is used.
+  - **Fix:** Add `subnet_group_name = "<your-custom-subnet-group>"`.
+
+---
+
+### Resource: `aws_elasticache_cluster.fail` (lines 21‑29)
+**Findings:** CKV_AWS_134, CKV_AWS_322, CKV_AWS_323
+
+- **CKV_AWS_134 – Ensure automatic backups are enabled.**
+  - **Principle:** Data durability and recovery.
+  - **Violation:** `snapshot_retention_limit = 0` explicitly disables automatic backups.
+  - **Fix:** Set `snapshot_retention_limit` to a value ≥ 1 (e.g., `5`).
+
+- **CKV_AWS_322 – Ensure auto minor version upgrades are enabled for Redis.**
+  - **Principle:** Timely patching. Auto minor version upgrades ensure the cluster receives security patches and bug fixes without manual intervention.
+  - **Violation:** `auto_minor_version_upgrade = false` explicitly disables automatic minor version upgrades.
+  - **Fix:** Set `auto_minor_version_upgrade = true`.
+
+- **CKV_AWS_323 – Ensure ElastiCache clusters do not use the default subnet group.**
+  - **Principle:** Network segmentation.
+  - **Violation:** No `subnet_group_name` is specified, so the default subnet group is used.
+  - **Fix:** Add `subnet_group_name = "<your-custom-subnet-group>"`.
+
+---
+
+### Resource: `aws_elasticache_cluster.memcached` (lines 33‑39)
+**Finding:** CKV_AWS_323 – Ensure ElastiCache clusters do not use the default subnet group.
+
+- **Principle:** Network segmentation (same as above).
+- **Violation:** The resource does not specify a `subnet_group_name`, so it uses the default subnet group.
+- **Fix:** Add `subnet_group_name = "<your-custom-subnet-group>"`.

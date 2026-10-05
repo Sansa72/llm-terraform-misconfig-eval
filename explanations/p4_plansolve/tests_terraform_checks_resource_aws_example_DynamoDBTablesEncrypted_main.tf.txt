@@ -1,0 +1,73 @@
+The scanner flagged four DynamoDB tables for missing point‑in‑time recovery, missing customer‑managed key (CMK) encryption, and missing auto scaling. Below is a resource‑by‑resource breakdown of what is wrong, why it matters, and how to fix it.
+
+---
+
+### 1. `aws_dynamodb_table.cmk` (lines 3‑20)
+**Failing checks:** CKV_AWS_28, CKV2_AWS_16  
+**Already compliant:** CKV_AWS_119 (encryption with a CMK is present)
+
+- **CKV_AWS_28 – Point‑in‑time recovery (PITR) is not enabled.**  
+  Without PITR you cannot restore the table to any point in the last 35 days, which is a critical safety net against accidental writes or data corruption.  
+  *Fix:* Add a `point_in_time_recovery` block with `enabled = true` inside the table resource.
+
+- **CKV2_AWS_16 – Auto Scaling is not enabled.**  
+  The table uses provisioned capacity (`billing_mode = "PROVISIONED"`) but has no auto scaling configuration. This means read/write capacity will not adjust to workload changes, risking throttling or over‑provisioning costs.  
+  *Fix:* Either switch to on‑demand mode (`billing_mode = "PAY_PER_REQUEST"`) or define `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources to automatically scale the table’s read and write capacity.
+
+---
+
+### 2. `aws_dynamodb_table.default` (lines 24‑36)
+**Failing checks:** CKV_AWS_28, CKV_AWS_119, CKV2_AWS_16
+
+- **CKV_AWS_28 – Point‑in‑time recovery missing.**  
+  Same issue and fix as above: add `point_in_time_recovery { enabled = true }`.
+
+- **CKV_AWS_119 – Encryption is not using a customer‑managed CMK.**  
+  The table has no `server_side_encryption` block, so it uses the default AWS‑owned key. This does not give you control over key rotation, access policies, or auditing.  
+  *Fix:* Add a `server_side_encryption` block with `enabled = true` and a `kms_key_arn` that points to a CMK you manage.
+
+- **CKV2_AWS_16 – Auto Scaling is not enabled.**  
+  Same as above: either switch to `PAY_PER_REQUEST` billing mode or add auto‑scaling resources.
+
+---
+
+### 3. `aws_dynamodb_table.encrypted_false` (lines 38‑54)
+**Failing checks:** CKV_AWS_28, CKV_AWS_119, CKV2_AWS_16
+
+- **CKV_AWS_28 – Point‑in‑time recovery missing.**  
+  Add `point_in_time_recovery { enabled = true }`.
+
+- **CKV_AWS_119 – Encryption is explicitly disabled.**  
+  The `server_side_encryption` block has `enabled = false`, which turns off encryption entirely. This violates the requirement for encryption at rest using a CMK.  
+  *Fix:* Change the block to `enabled = true` and provide a valid CMK ARN in `kms_key_arn`.
+
+- **CKV2_AWS_16 – Auto Scaling missing.**  
+  Same as above: enable PAY_PER_REQUEST or configure auto‑scaling resources.
+
+---
+
+### 4. `aws_dynamodb_table.encrypted_no_cmk` (lines 56‑72)
+**Failing checks:** CKV_AWS_28, CKV_AWS_119, CKV2_AWS_16
+
+- **CKV_AWS_28 – Point‑in‑time recovery missing.**  
+  Add `point_in_time_recovery { enabled = true }`.
+
+- **CKV_AWS_119 – Encryption uses the default AWS‑owned key, not a CMK.**  
+  The table has `server_side_encryption { enabled = true }` but no `kms_key_arn`. This results in the AWS‑owned key being used, which does not satisfy the requirement for a customer‑managed key.  
+  *Fix:* Add a `kms_key_arn` referencing a CMK you control.
+
+- **CKV2_AWS_16 – Auto Scaling missing.**  
+  Same as above: enable on‑demand billing or add auto‑scaling resources.
+
+---
+
+### Summary of required changes
+
+| Resource              | Add `point_in_time_recovery` | Fix encryption to use CMK | Enable Auto Scaling (or switch to PAY_PER_REQUEST) |
+|-----------------------|------------------------------|--------------------------|---------------------------------------------------|
+| `aws_dynamodb_table.cmk`            | ✅ | Already compliant | ✅ |
+| `aws_dynamodb_table.default`        | ✅ | ✅ (add `server_side_encryption` with CMK ARN) | ✅ |
+| `aws_dynamodb_table.encrypted_false`  | ✅ | ✅ (set `enabled = true` + CMK ARN) | ✅ |
+| `aws_dynamodb_table.encrypted_no_cmk`| ✅ | ✅ (add `kms_key_arn` to existing block) | ✅ |
+
+For auto scaling, the simplest path is to change `billing_mode` to `"PAY_PER_REQUEST"` on all tables. If provisioned capacity is required, you must create separate `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources for both read and write capacity of each table.

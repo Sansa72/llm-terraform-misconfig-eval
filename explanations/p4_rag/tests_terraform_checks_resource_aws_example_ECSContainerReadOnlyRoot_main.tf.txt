@@ -1,0 +1,57 @@
+The scanner flagged three types of misconfigurations in your ECS task definitions. I’ll explain each, why it matters, and exactly what needs to change in your Terraform file.
+
+---
+
+### 1. CKV_AWS_336 – Read-only root filesystem
+
+**What it means**  
+Containers should run with a read-only root filesystem (`readonlyRootFilesystem = true`). This prevents an attacker who compromises the container from writing malicious binaries, modifying system configurations, or persisting malware to the container’s filesystem. It also enforces immutability best practices.
+
+**What’s wrong in the file**  
+- **`aws_ecs_task_definition.fail`**: The first container correctly sets `readonlyRootFilesystem = true`, but the **second container** (lines 73‑82) omits the setting entirely. The default is `false`, so that container runs with a writable root filesystem.  
+- **`aws_ecs_task_definition.fail2`**: Both containers explicitly set `readonlyRootFilesystem = false` (lines 100 and 118).
+
+**Fix**  
+Set `readonlyRootFilesystem = true` for every container in both task definitions. The `pass` resource already does this correctly.
+
+---
+
+### 2. CKV_AWS_334 – Containers must not run as privileged
+
+**What it means**  
+A privileged container (`privileged = true`) has almost all the capabilities of the underlying host, including access to devices, the ability to manipulate kernel parameters, and more. This breaks the isolation model and is a severe security risk.
+
+**What’s wrong in the file**  
+In `fail2`, the second container definition (line 117) includes `privilege = true`. (Note: the correct attribute name is `privileged`, but the scanner is flagging the intent.)
+
+**Fix**  
+Remove the `privilege` attribute or set it to `false`. The container should run without elevated privileges.
+
+---
+
+### 3. CKV_AWS_335 – Do not share the host’s process namespace
+
+**What it means**  
+Sharing the host’s PID namespace (`pidMode = "host"`) allows a container to see and potentially interact with all processes on the underlying EC2 host, including those of other containers. This breaks process isolation and increases the risk of information disclosure or privilege escalation.
+
+**What’s wrong in the file**  
+In `fail2`, the second container definition includes `"pidMode": "host"`.  
+Additionally, `pidMode` is a **task‑level** setting, not a container‑level one. The container definition JSON should not contain a `pidMode` key at all. The scanner is flagging the presence of `"pidMode": "host"` inside the container definition.
+
+**Fix**  
+Remove the `"pidMode": "host"` line from the container definition JSON. If you need to set the task’s PID namespace mode, use the `pid_mode` argument on the `aws_ecs_task_definition` resource itself, and only set it to `"task"` (the default) – never `"host"`. The `fail` resource also has a stray `"pidMode": "task"` in the first container definition; while not flagged, it’s invalid and should be removed for correctness.
+
+---
+
+### Summary of changes
+
+| Resource | Container | Issue | Action |
+|----------|-----------|-------|--------|
+| `aws_ecs_task_definition.fail` | second | Missing `readonlyRootFilesystem` | Add `readonlyRootFilesystem = true` |
+| `aws_ecs_task_definition.fail` | first | Invalid `pidMode` in container definition | Remove `"pidMode": "task"` |
+| `aws_ecs_task_definition.fail2` | first | `readonlyRootFilesystem = false` | Change to `true` |
+| `aws_ecs_task_definition.fail2` | second | `readonlyRootFilesystem = false` | Change to `true` |
+| `aws_ecs_task_definition.fail2` | second | `privilege = true` | Remove or set to `false` |
+| `aws_ecs_task_definition.fail2` | second | `"pidMode": "host"` | Remove entirely |
+
+After these changes, both task definitions will align with the security policies and the example set by the `pass` resource.

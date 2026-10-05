@@ -1,0 +1,14 @@
+**Remediation briefing: CKV_AWS_219 on aws_codepipeline.fail**
+
+**Check ID:** CKV_AWS_219  
+**Resource:** `aws_codepipeline.fail` (lines 77–143)  
+**Triggering lines:** 81–84 – the `artifact_store` block that lacks an `encryption_key` sub-block.
+
+**What is wrong:**  
+The pipeline’s artifact store is not configured to use a KMS customer-managed key (CMK). The scanner requires an explicit `encryption_key` block with `type = "KMS"` inside `artifact_store`. Without it, the pipeline artifacts are encrypted with the default S3-managed keys, which does not satisfy the check’s requirement for a KMS CMK.
+
+**Why it matters (based solely on the finding and file):**  
+The check ensures that CodePipeline artifact stores use a KMS CMK. The `pass` resource (lines 1–75) demonstrates the expected configuration: an `encryption_key` block referencing a KMS key alias ARN and setting `type = "KMS"`. The `fail` resource omits this block entirely, so the check fails.
+
+**Change needed to make the check pass:**  
+Add an `encryption_key` block inside the `artifact_store` block of `aws_codepipeline.fail`. The block must contain an `id` attribute pointing to a valid KMS key (e.g., a key alias ARN like the one used in the `pass` resource) and a `type` attribute set to `"KMS"`. This will instruct CodePipeline to encrypt artifacts with the specified KMS CMK, matching the pattern already present in the `pass` resource.

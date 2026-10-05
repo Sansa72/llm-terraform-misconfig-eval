@@ -1,0 +1,154 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_34",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }"
+      ],
+      "risk": "The default cache behavior allows all protocols, including unencrypted HTTP, which can lead to man-in-the-middle attacks and data interception.",
+      "remediation": "Change viewer_protocol_policy to \"redirect-to-https\" or \"https-only\" to enforce encrypted connections.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "Using the default CloudFront certificate does not allow setting a minimum TLS version, potentially permitting older, insecure protocols like TLSv1.0 and TLSv1.1.",
+      "remediation": "Replace the default certificate with a custom ACM certificate and set minimum_protocol_version to \"TLSv1.2_2021\" or \"TLSv1.2_2019\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }\n\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  logging_config {\n    include_cookies = false\n    bucket          = \"mylogs.s3.amazonaws.com\"\n    prefix          = \"myprefix\"\n  }\n\n  aliases = [\"mysite.example.com\", \"yoursite.example.com\"]\n\n  default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }\n\n  # Cache behavior with precedence 0\n  ordered_cache_behavior {\n    path_pattern     = \"/content/immutable/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n      headers      = [\"Origin\"]\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 86400\n    max_ttl                = 31536000\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  # Cache behavior with precedence 1\n  ordered_cache_behavior {\n    path_pattern     = \"/content/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  price_class = \"PriceClass_200\"\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  tags = {\n    Environment = \"production\"\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "Without a WAF web ACL attached, the distribution is exposed to common web attacks such as SQL injection, cross-site scripting, and Log4j exploits.",
+      "remediation": "Attach a WAF web ACL by setting the web_acl_id argument to the ARN of an existing WAFv2 web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_310",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }"
+      ],
+      "risk": "A single origin means there is no failover if that origin becomes unavailable, causing downtime for the entire distribution.",
+      "remediation": "Add a second origin and configure an origin group with a failover criteria to enable high availability.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "The default CloudFront certificate is used instead of a custom SSL certificate, which may not provide the same level of trust and does not allow enforcing a minimum TLS version.",
+      "remediation": "Provision a custom SSL certificate through AWS Certificate Manager and reference it in the viewer_certificate block with cloudfront_default_certificate set to false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers like HSTS, Content-Security-Policy, or X-Content-Type-Options are not added, leaving clients more vulnerable to attacks.",
+      "remediation": "Create an aws_cloudfront_response_headers_policy with the desired security headers and attach it to the cache behavior using response_headers_policy_id.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.pass",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"pass\" {\n  origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }\n\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n  default_root_object = \"index.html\"\n\n  logging_config {\n    include_cookies = false\n    bucket          = \"mylogs.s3.amazonaws.com\"\n    prefix          = \"myprefix\"\n  }\n\n  aliases = [\"mysite.example.com\", \"yoursite.example.com\"]\n\n  default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }\n\n  # Cache behavior with precedence 0\n  ordered_cache_behavior {\n    path_pattern     = \"/content/immutable/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n      headers      = [\"Origin\"]\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 86400\n    max_ttl                = 31536000\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  # Cache behavior with precedence 1\n  ordered_cache_behavior {\n    path_pattern     = \"/content/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  price_class = \"PriceClass_200\"\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  tags = {\n    Environment = \"production\"\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "No WAFv2 web ACL is attached, so the distribution cannot benefit from AWS Managed Rules for Log4j vulnerability mitigation.",
+      "remediation": "Attach a WAFv2 web ACL that includes the AWSManagedRulesKnownBadInputsRuleSet or a custom rule group addressing Log4j, and set web_acl_id accordingly.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_34",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }"
+      ],
+      "risk": "The default cache behavior allows all protocols, including unencrypted HTTP, which can lead to man-in-the-middle attacks and data interception.",
+      "remediation": "Change viewer_protocol_policy to \"redirect-to-https\" or \"https-only\" to enforce encrypted connections.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_174",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "Using the default CloudFront certificate does not allow setting a minimum TLS version, potentially permitting older, insecure protocols like TLSv1.0 and TLSv1.1.",
+      "remediation": "Replace the default certificate with a custom ACM certificate and set minimum_protocol_version to \"TLSv1.2_2021\" or \"TLSv1.2_2019\".",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_68",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }\n\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n\n  logging_config {\n    include_cookies = false\n    bucket          = \"mylogs.s3.amazonaws.com\"\n    prefix          = \"myprefix\"\n  }\n\n  aliases = [\"mysite.example.com\", \"yoursite.example.com\"]\n\n  default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }\n\n  # Cache behavior with precedence 0\n  ordered_cache_behavior {\n    path_pattern     = \"/content/immutable/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n      headers      = [\"Origin\"]\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 86400\n    max_ttl                = 31536000\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  # Cache behavior with precedence 1\n  ordered_cache_behavior {\n    path_pattern     = \"/content/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  price_class = \"PriceClass_200\"\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  tags = {\n    Environment = \"production\"\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "Without a WAF web ACL attached, the distribution is exposed to common web attacks such as SQL injection, cross-site scripting, and Log4j exploits.",
+      "remediation": "Attach a WAF web ACL by setting the web_acl_id argument to the ARN of an existing WAFv2 web ACL.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_310",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }"
+      ],
+      "risk": "A single origin means there is no failover if that origin becomes unavailable, causing downtime for the entire distribution.",
+      "remediation": "Add a second origin and configure an origin group with a failover criteria to enable high availability.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_305",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }\n\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n\n  logging_config {\n    include_cookies = false\n    bucket          = \"mylogs.s3.amazonaws.com\"\n    prefix          = \"myprefix\"\n  }\n\n  aliases = [\"mysite.example.com\", \"yoursite.example.com\"]\n\n  default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }\n\n  # Cache behavior with precedence 0\n  ordered_cache_behavior {\n    path_pattern     = \"/content/immutable/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n      headers      = [\"Origin\"]\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 86400\n    max_ttl                = 31536000\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  # Cache behavior with precedence 1\n  ordered_cache_behavior {\n    path_pattern     = \"/content/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  price_class = \"PriceClass_200\"\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  tags = {\n    Environment = \"production\"\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "No default_root_object is set, so requests to the root path may result in an error or expose an S3 bucket listing if directory indexing is enabled.",
+      "remediation": "Set default_root_object to a valid object key, such as \"index.html\", to serve a default page for root requests.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_42",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "viewer_certificate {\n    cloudfront_default_certificate = true\n  }"
+      ],
+      "risk": "The default CloudFront certificate is used instead of a custom SSL certificate, which may not provide the same level of trust and does not allow enforcing a minimum TLS version.",
+      "remediation": "Provision a custom SSL certificate through AWS Certificate Manager and reference it in the viewer_certificate block with cloudfront_default_certificate set to false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_32",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }"
+      ],
+      "risk": "No response headers policy is attached, so security headers like HSTS, Content-Security-Policy, or X-Content-Type-Options are not added, leaving clients more vulnerable to attacks.",
+      "remediation": "Create an aws_cloudfront_response_headers_policy with the desired security headers and attach it to the cache behavior using response_headers_policy_id.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_47",
+      "resource": "aws_cloudfront_distribution.fail",
+      "evidence": [
+        "resource \"aws_cloudfront_distribution\" \"fail\" {\n  origin {\n    domain_name              = aws_s3_bucket.b.bucket_regional_domain_name\n    origin_access_control_id = aws_cloudfront_origin_access_control.default.id\n    origin_id                = local.s3_origin_id\n  }\n\n  enabled             = true\n  is_ipv6_enabled     = true\n  comment             = \"Some comment\"\n\n  logging_config {\n    include_cookies = false\n    bucket          = \"mylogs.s3.amazonaws.com\"\n    prefix          = \"myprefix\"\n  }\n\n  aliases = [\"mysite.example.com\", \"yoursite.example.com\"]\n\n  default_cache_behavior {\n    allowed_methods  = [\"DELETE\", \"GET\", \"HEAD\", \"OPTIONS\", \"PATCH\", \"POST\", \"PUT\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    viewer_protocol_policy = \"allow-all\"\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n  }\n\n  # Cache behavior with precedence 0\n  ordered_cache_behavior {\n    path_pattern     = \"/content/immutable/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n      headers      = [\"Origin\"]\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 86400\n    max_ttl                = 31536000\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  # Cache behavior with precedence 1\n  ordered_cache_behavior {\n    path_pattern     = \"/content/*\"\n    allowed_methods  = [\"GET\", \"HEAD\", \"OPTIONS\"]\n    cached_methods   = [\"GET\", \"HEAD\"]\n    target_origin_id = local.s3_origin_id\n\n    forwarded_values {\n      query_string = false\n\n      cookies {\n        forward = \"none\"\n      }\n    }\n\n    min_ttl                = 0\n    default_ttl            = 3600\n    max_ttl                = 86400\n    compress               = true\n    viewer_protocol_policy = \"redirect-to-https\"\n  }\n\n  price_class = \"PriceClass_200\"\n\n  restrictions {\n    geo_restriction {\n      restriction_type = \"whitelist\"\n      locations        = [\"US\", \"CA\", \"GB\", \"DE\"]\n    }\n  }\n\n  tags = {\n    Environment = \"production\"\n  }\n\n  viewer_certificate {\n    cloudfront_default_certificate = true\n  }\n}"
+      ],
+      "risk": "No WAFv2 web ACL is attached, so the distribution cannot benefit from AWS Managed Rules for Log4j vulnerability mitigation.",
+      "remediation": "Attach a WAFv2 web ACL that includes the AWSManagedRulesKnownBadInputsRuleSet or a custom rule group addressing Log4j, and set web_acl_id accordingly.",
+      "confidence": "high"
+    }
+  ]
+}

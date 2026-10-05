@@ -1,0 +1,71 @@
+**Remediation briefing for Terraform file**
+
+Below are the failing checks in the order they appear in the scanner output. Each entry identifies the check, the resource, the triggering lines, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.fail` (lines 1–8)
+
+**Trigger:** The resource block at lines 1–8 contains no `logs_config` block.  
+**What is wrong:** The project has no logging configuration. Without it, build output logs are not captured, making troubleshooting and audit of build environments difficult.  
+**Change needed:** Add a `logs_config` block inside the resource to specify a logging destination (for example, `cloudwatch_logs` with a log group and stream name, or `s3_logs` with bucket details).
+
+---
+
+### 2. CKV_AWS_78 on `aws_codebuild_project.fail` (lines 1–8)
+
+**Trigger:** Line 5 sets `encryption_disabled = true` inside the `artifacts` block.  
+**What is wrong:** Artifact encryption is explicitly disabled. This means build output artifacts are stored without encryption, potentially exposing sensitive data.  
+**Change needed:** Set `encryption_disabled` to `false` or remove the attribute entirely (the default is `false`), so that artifacts are encrypted at rest.
+
+---
+
+### 3. CKV_AWS_147 on `aws_codebuild_project.fail` (lines 1–8)
+
+**Trigger:** The `artifacts` block (lines 3–6) does not include an `encryption_key` argument.  
+**What is wrong:** The project is not configured to use a customer-managed key (CMK) for artifact encryption. By default, AWS uses an AWS-managed key, which may not meet organizational key management requirements.  
+**Change needed:** Add an `encryption_key` argument to the `artifacts` block, providing the ARN of a KMS customer-managed key.
+
+---
+
+### 4. CKV_AWS_314 on `aws_codebuild_project.no_artifacts_encryption_ignored` (lines 10–16)
+
+**Trigger:** The resource block at lines 10–16 contains no `logs_config` block.  
+**What is wrong:** The project lacks a logging configuration, so build environment logs are not captured.  
+**Change needed:** Add a `logs_config` block to the resource, specifying a log destination (e.g., CloudWatch Logs or S3).
+
+---
+
+### 5. CKV_AWS_314 on `aws_codebuild_project.success_no_encryption_disabled` (lines 18–23)
+
+**Trigger:** The resource block at lines 18–23 has no `logs_config` block.  
+**What is wrong:** Logging is not configured for this project, preventing capture of build logs.  
+**Change needed:** Add a `logs_config` block to enable logging.
+
+---
+
+### 6. CKV_AWS_147 on `aws_codebuild_project.success_no_encryption_disabled` (lines 18–23)
+
+**Trigger:** The `artifacts` block (lines 20–22) does not include an `encryption_key` argument.  
+**What is wrong:** The project is not using a customer-managed CMK for artifact encryption; it relies on the default AWS-managed key.  
+**Change needed:** Add an `encryption_key` argument to the `artifacts` block, referencing a KMS CMK ARN.
+
+---
+
+### 7. CKV_AWS_314 on `aws_codebuild_project.success` (lines 25–31)
+
+**Trigger:** The resource block at lines 25–31 has no `logs_config` block.  
+**What is wrong:** Logging is not configured, so build environment logs are not captured.  
+**Change needed:** Add a `logs_config` block to enable logging.
+
+---
+
+### 8. CKV_AWS_147 on `aws_codebuild_project.success` (lines 25–31)
+
+**Trigger:** The `artifacts` block (lines 27–30) does not contain an `encryption_key` argument.  
+**What is wrong:** The project does not use a customer-managed CMK for artifact encryption.  
+**Change needed:** Add an `encryption_key` argument to the `artifacts` block, specifying a KMS CMK ARN.
+
+---
+
+All changes should be applied to the respective resources to resolve the flagged misconfigurations.

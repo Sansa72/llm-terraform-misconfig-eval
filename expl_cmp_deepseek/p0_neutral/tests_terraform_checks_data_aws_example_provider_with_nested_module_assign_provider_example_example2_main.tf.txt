@@ -1,0 +1,38 @@
+The Terraform only defines a bare `aws_s3_bucket`; none of the associated security controls are configured. Checkov flags seven missing safeguards. In current AWS provider versions, these are separate resources, not inline arguments on `aws_s3_bucket`.
+
+**1. CKV2_AWS_61 – Lifecycle configuration missing**  
+- **What:** No `aws_s3_bucket_lifecycle_configuration` is attached.  
+- **Risk:** Objects remain indefinitely. If the bucket accumulates data with retention/archival requirements, stale or sensitive data may be kept longer than intended.  
+- **Fix:** Add a lifecycle rule with appropriate `expiration` or `transition` actions for this bucket’s data.
+
+**2. CKV_AWS_18 – Access logging missing**  
+- **What:** No `aws_s3_bucket_logging` resource.  
+- **Risk:** S3 server access requests are not recorded. Unauthorized or anomalous access to the bucket cannot be audited using access logs.  
+- **Fix:** Enable access logging to a dedicated logging bucket with correct target permissions.
+
+**3. CKV2_AWS_62 – Event notifications missing**  
+- **What:** No `aws_s3_bucket_notification` resource.  
+- **Risk:** Object events (e.g., upload, delete) do not trigger alerts or automation. Suspicious or accidental changes may go undetected.  
+- **Fix:** Configure event notifications to an SNS topic, SQS queue, or Lambda function for relevant bucket events.
+
+**4. CKV2_AWS_6 – Public Access block missing**  
+- **What:** No `aws_s3_bucket_public_access_block` resource.  
+- **Risk:** There is no explicit guardrail preventing public bucket policies or ACLs. If a later configuration grants public access, the bucket could become publicly readable/writable.  
+- **Fix:** Add a public access block with all four settings enabled (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`).
+
+**5. CKV_AWS_145 – KMS encryption not configured**  
+- **What:** No `aws_s3_bucket_server_side_encryption_configuration` using KMS.  
+- **Risk:** Objects do not use a customer-managed KMS key. This may violate compliance requirements and reduces control over key access, rotation, and auditing.  
+- **Fix:** Enable default encryption with `sse_algorithm = "aws:kms"` and specify a KMS key.
+
+**6. CKV_AWS_144 – Cross-region replication missing**  
+- **What:** No `aws_s3_bucket_replication_configuration`.  
+- **Risk:** Objects exist in a single region. A regional outage or accidental bucket destruction can make data unavailable.  
+- **Fix:** Configure replication to a bucket in another region. This requires versioning enabled on both source and destination buckets and an appropriate IAM role.
+
+**7. CKV_AWS_21 – Versioning missing**  
+- **What:** No `aws_s3_bucket_versioning` resource.  
+- **Risk:** Object overwrites and deletes are permanent; previous versions cannot be recovered.  
+- **Fix:** Enable versioning on the bucket (`status = "Enabled"`).
+
+**Note:** Cross-region replication requires versioning to be enabled first. When adding KMS encryption and replication together, ensure the KMS key policy allows the replication role to use the key.

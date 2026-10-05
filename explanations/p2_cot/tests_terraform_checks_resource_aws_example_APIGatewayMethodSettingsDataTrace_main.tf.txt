@@ -1,0 +1,59 @@
+The scanner flagged three issues in the `aws_api_gateway_method_settings` resources:
+
+1. **CKV_AWS_276**: `data_trace_enabled` is set to `true` in the `fail` resource.  
+   Enabling data trace causes full request/response bodies to be logged to CloudWatch, which can expose sensitive data (credentials, PII, etc.) in logs. This setting should be `false` unless strictly required for debugging, and even then only temporarily.
+
+2. **CKV_AWS_225**: Caching is not enabled on any of the three resources.  
+   While caching is a performance feature, the check requires it to be explicitly enabled. Without caching, the API may be more susceptible to backend overload and higher latency, but the primary concern here is compliance with the scanner’s policy.
+
+3. **CKV_AWS_308**: Cache encryption is not enabled on any of the resources.  
+   When caching is enabled, the cached responses must be encrypted at rest to protect data confidentiality. This requires setting `cache_data_encrypted = true`.
+
+The `pass_explicit` resource already disables data trace, but all three resources lack the caching configuration. The `pass_implicit` resource omits the `settings` block entirely, so it uses defaults (caching disabled, no encryption).
+
+To fix all findings while preserving the purpose of each resource, update the `settings` block to:
+- Set `data_trace_enabled = false` (explicitly disable tracing).
+- Set `caching_enabled = true` to enable caching.
+- Set `cache_data_encrypted = true` to encrypt cached data.
+
+Below is the corrected Terraform configuration:
+
+```hcl
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled = false
+    caching_enabled     = true
+    cache_data_encrypted = true
+  }
+}
+
+resource "aws_api_gateway_method_settings" "pass_explicit" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled = false
+    caching_enabled     = true
+    cache_data_encrypted = true
+  }
+}
+
+resource "aws_api_gateway_method_settings" "pass_implicit" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    caching_enabled     = true
+    cache_data_encrypted = true
+    # data_trace_enabled defaults to false, but you can explicitly set it to false for clarity
+  }
+}
+```
+
+After applying these changes, all three checks (CKV_AWS_276, CKV_AWS_225, CKV_AWS_308) will pass.

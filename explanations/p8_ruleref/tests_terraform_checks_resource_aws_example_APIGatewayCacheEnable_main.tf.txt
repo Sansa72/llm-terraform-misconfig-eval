@@ -1,0 +1,112 @@
+The scanner flagged multiple missing security controls on both `aws_api_gateway_stage` resources. Below I’ll walk through each failing check, explain the security rationale, and describe exactly what needs to change in your Terraform to resolve them.
+
+---
+
+### 1. CKV_AWS_73 – X-Ray Tracing disabled (both stages)
+**What it means:**  
+API Gateway stages should have X-Ray tracing enabled so that requests flowing through the API are traced end‑to‑end. This gives you visibility into latency, errors, and bottlenecks across your application components.
+
+**In your file:**  
+Neither `aws_api_gateway_stage.pass` nor `aws_api_gateway_stage.fail` sets `xray_tracing_enabled`. The default is `false`.
+
+**Fix:**  
+Add `xray_tracing_enabled = true` to each stage resource.
+
+---
+
+### 2. CKV_AWS_76 – Access Logging disabled (both stages)
+**What it means:**  
+Access logs record who called your API, when, and what was returned. They are essential for security auditing, anomaly detection, and meeting compliance requirements.
+
+**In your file:**  
+No `access_log_settings` block is present on either stage, so no access logs are sent to CloudWatch or another destination.
+
+**Fix:**  
+Add an `access_log_settings` block to each stage, specifying a destination ARN (a CloudWatch Logs log group) and a log format. For example:
+```hcl
+access_log_settings {
+  destination_arn = aws_cloudwatch_log_group.api_gw.arn
+  format          = "$context.identity.sourceIp ..."   # choose a format that suits your needs
+}
+```
+You’ll also need to create the log group resource and ensure the API Gateway service has permission to write to it.
+
+---
+
+### 3. CKV_AWS_120 – Caching disabled (only `fail` stage)
+**What it means:**  
+API Gateway caching reduces the number of calls to your backend, improving performance and resilience. The check requires that caching be explicitly enabled.
+
+**In your file:**  
+`aws_api_gateway_stage.pass` already has `cache_cluster_enabled = true`, so it passes.  
+`aws_api_gateway_stage.fail` omits this argument, defaulting to `false`.
+
+**Fix:**  
+Add `cache_cluster_enabled = true` (and optionally `cache_cluster_size`) to the `fail` stage.
+
+---
+
+### 4. CKV2_AWS_51 – Client certificate authentication not used (both stages)
+**What it means:**  
+API Gateway can require clients to present a certificate for mutual TLS (mTLS). This ensures that only clients with a valid certificate can invoke the API, adding a strong authentication layer.
+
+**In your file:**  
+Neither stage has a `client_certificate_id` argument, so mTLS is not enforced.
+
+**Fix:**  
+First, create an `aws_api_gateway_client_certificate` resource to generate a certificate. Then reference its ID in each stage:
+```hcl
+resource "aws_api_gateway_client_certificate" "example" {}
+
+resource "aws_api_gateway_stage" "pass" {
+  ...
+  client_certificate_id = aws_api_gateway_client_certificate.example.id
+}
+```
+Do the same for the `fail` stage. Note that the certificate must be deployed to the stage for it to take effect.
+
+---
+
+### 5. CKV2_AWS_4 – Logging level not defined appropriately (both stages)
+**What it means:**  
+API Gateway execution logging (which logs full request/response data) should be turned on with a level like `INFO` or `ERROR`. Without it, you lose detailed troubleshooting and security monitoring data.
+
+**In your file:**  
+The `logging_level` argument is not set; the default is `OFF`.
+
+**Fix:**  
+Set `logging_level = "INFO"` (or `"ERROR"`) on each stage. This controls execution logging, which is separate from access logging. You may also need to configure a CloudWatch log group ARN via the stage’s `logging_level` and the API’s settings, but the stage-level argument is the direct control.
+
+---
+
+### 6. CKV2_AWS_29 – No WAF protection (both stages)
+**What it means:**  
+Public API Gateway endpoints should be associated with an AWS WAF Web ACL to protect against common web exploits (SQL injection, cross‑site scripting, etc.). The check flags any stage that is not associated with a WAF.
+
+**In your file:**  
+There is no WAF association resource linked to either stage.
+
+**Fix:**  
+Create a WAF Web ACL (regional or v2) and then associate it with the API Gateway stage using `aws_wafregional_web_acl_association` (or `aws_wafv2_web_acl_association`). For example:
+```hcl
+resource "aws_wafv2_web_acl_association" "pass" {
+  resource_arn = aws_api_gateway_stage.pass.arn
+  web_acl_arn  = aws_wafv2_web_acl.example.arn
+}
+```
+Repeat for the `fail` stage. The association is a separate resource, not an inline argument on the stage.
+
+---
+
+### Summary of required changes
+For **both** `aws_api_gateway_stage.pass` and `aws_api_gateway_stage.fail` you need to add:
+- `xray_tracing_enabled = true`
+- `access_log_settings { … }` (with a valid log group ARN)
+- `client_certificate_id` referencing a generated client certificate
+- `logging_level = "INFO"` (or `"ERROR"`)
+- A WAF Web ACL association resource
+
+Additionally, for `aws_api_gateway_stage.fail` only:
+- `cache_cluster_enabled = true`
+
+These changes will bring your API Gateway stages into compliance with the flagged policies, improving observability, security, and performance.

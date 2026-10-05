@@ -1,0 +1,91 @@
+The scanner flagged three issues in your Terraform file. Here’s what each one means, backed by the exact evidence in the file.
+
+---
+
+### 1. CKV_AWS_26 on `aws_sns_topic.some-topic` (line 1)
+
+**What the check requires**  
+All data stored in the SNS topic must be encrypted using a KMS key.
+
+**What the file shows**  
+```hcl
+resource "aws_sns_topic" "some-topic" {}   # line 1
+```
+The resource block is empty. There is no `kms_master_key_id` argument, so the topic will use the default AWS-managed key for server-side encryption. The scanner interprets this as a lack of explicit encryption configuration, which violates the policy.
+
+**Fix**  
+Add a `kms_master_key_id` attribute referencing a KMS key (either a customer-managed key or an AWS-managed key alias) to make the encryption explicit. For example:
+```hcl
+resource "aws_sns_topic" "some-topic" {
+  kms_master_key_id = "alias/aws/sns"   # or a custom CMK ARN
+}
+```
+
+---
+
+### 2. CKV_AWS_283 on `aws_iam_policy_document.fail` (lines 3–14)
+
+**What the check requires**  
+IAM policy documents must not grant permissions to the wildcard principal `"*"` (i.e., any AWS principal) without a restrictive condition.
+
+**What the file shows**  
+```hcl
+data "aws_iam_policy_document" "fail" {   # line 3
+  statement {
+    actions = ["sns:Publish"]            # line 6
+    principals {
+      type        = "AWS"                # line 9
+      identifiers = ["*"]                # line 10
+    }
+    resources = [aws_sns_topic.example.arn]  # line 12
+  }
+}
+```
+The `principals` block uses `identifiers = ["*"]` (line 10). This means **any AWS principal** (any account, any IAM user/role) is allowed to perform `sns:Publish` on the topic. There is no `condition` block to restrict who that `"*"` actually applies to. The scanner flags this as an overly permissive policy.
+
+**Fix**  
+Replace `"*"` with a specific set of allowed principal ARNs, or add a condition that limits access (e.g., `ArnEquals`, `StringEquals` on `aws:PrincipalArn`). If the intent is to allow only a particular AWS account, use the account ARN. If you must use `"*"`, you must pair it with a condition that restricts access, as shown in the `pass2` example later in the file.
+
+---
+
+### 3. CKV_AWS_283 on `aws_iam_policy_document.fail2` (lines 78–106)
+
+**What the check requires**  
+Same as above: no statement in the policy document may allow `"*"` as a principal without a restrictive condition.
+
+**What the file shows**  
+The `fail2` document contains **two statements**:
+
+- **First statement (lines 80–94):**  
+  ```hcl
+  principals {
+    type        = "AWS"
+    identifiers = ["*"]                # line 85
+  }
+  condition {                           # lines 88-92
+    test     = "ArnLike"
+    values   = ["arn:aws:service:region:accountId:resourceType/resourceId"]
+    variable = "aws:PrincipalArn"
+  }
+  ```
+  This statement uses `"*"` but **does** include a condition. The scanner does **not** flag this statement alone (as evidenced by the `pass2` example, which is identical and passed). The condition restricts the wildcard principal to only those whose ARN matches the pattern.
+
+- **Second statement (lines 96–106):**  
+  ```hcl
+  principals {
+    type        = "AWS"
+    identifiers = ["*"]                # line 101
+  }
+  resources = [aws_sns_topic.some-topic.arn]  # line 105
+  ```
+  This statement uses `"*"` **without any condition**. That is the violation. The scanner flags the entire policy document because at least one statement is overly permissive.
+
+**Fix**  
+Either remove the second statement entirely, or add a condition to it that restricts the wildcard principal. If the second statement is intentional, you must attach a condition that limits access (e.g., `ArnLike`, `StringEquals` on `aws:PrincipalArn` or `aws:SourceArn`). If it was added by mistake, delete lines 96–106.
+
+---
+
+**Summary of evidence**  
+- `CKV_AWS_26` on `aws_sns_topic.some-topic` (line 1): no `kms_master_key_id` set.  
+- `CKV_AWS_283` on `data.aws_iam_policy_document.fail` (lines 3–14): `principals.identifiers = ["*"]` with no condition.  
+- `CKV_AWS_283` on `data.aws_iam_policy_document.fail2` (lines 78–106): the second statement (lines 96–106) has `principals.identifiers = ["*"]` with no condition.

@@ -1,0 +1,68 @@
+### 1. What the misconfiguration is
+
+- **CKV_AWS_338** on both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail`:  
+  `retention_in_days = 1` retains logs for only 1 day, instead of the required minimum of 365 days.
+
+- **CKV_AWS_158** on `aws_cloudwatch_log_group.fail`:  
+  The log group has no `kms_key_id`, so it is not configured to use a customer-managed KMS key.
+
+### 2. Why it matters
+
+**Retention of 1 day**  
+CloudWatch Logs automatically deletes log events after 1 day. This severely limits:
+- Security incident investigation and forensics
+- Compliance and audit requirements (many require at least 1 year)
+- Operational debugging of issues older than 24 hours
+
+Events are irrecoverable once deleted.
+
+**No KMS key on `fail`**  
+Without `kms_key_id`, CloudWatch Logs uses AWS default encryption rather than a customer-managed KMS key. This reduces your control over:
+- Key access policies and permissions
+- Key rotation and revocation
+- Audit logging of key usage via AWS CloudTrail
+- Meeting compliance requirements that mandate customer-managed keys
+
+It does **not** mean the logs are unencrypted at rest, but it does mean you lack the controls that a customer-managed KMS key provides.
+
+### 3. How to fix safely
+
+Set `retention_in_days` to at least `365` on both resources, and add a valid KMS key reference to the `fail` log group.
+
+Example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.logs.arn
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.logs.arn
+}
+
+resource "aws_kms_key" "logs" {
+  description = "KMS key for CloudWatch Logs encryption"
+  policy      = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "logs.amazonaws.com" }
+        Action    = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:GenerateDataKey*"
+        ]
+        Resource  = "*"
+      }
+    ]
+  })
+}
+```
+
+Important:
+- If you use an existing KMS key, verify its key policy grants the CloudWatch Logs service principal (`logs.<region>.amazonaws.com`) the necessary encrypt/decrypt permissions.
+- Changing `retention_in_days` does not recover logs already deleted under the old 1-day policy.
+- After applying, confirm logs are still being written and are readable to avoid breaking log ingestion.

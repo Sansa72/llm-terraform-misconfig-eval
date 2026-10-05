@@ -1,0 +1,199 @@
+**Remediation briefing for RDS security misconfigurations**
+
+Below is a walk‑through of every failing check, in the order reported by the scanner. For each one you will find the check ID, the affected resource, a one‑line summary of the problem, why it matters, and a prose description of the change required. Where multiple checks can be satisfied by the same configuration change, that interaction is noted.
+
+---
+
+### Findings on `aws_rds_cluster.pass` (lines 1‑3)
+
+**CKV_AWS_313 – copy tags to snapshots**  
+*What is wrong:* `copy_tags_to_snapshot` is not enabled.  
+*Why it matters:* Without it, tags applied to the cluster are not automatically propagated to snapshots, making cost allocation, access control, and resource tracking harder.  
+*Change needed:* Add `copy_tags_to_snapshot = true` inside the `aws_rds_cluster` block.
+
+**CKV_AWS_96 – encryption at rest**  
+*What is wrong:* Storage encryption is not enabled.  
+*Why it matters:* Unencrypted data at rest violates data protection policies and may breach compliance requirements.  
+*Change needed:* Set `storage_encrypted = true`. (This also satisfies the requirement for encryption at rest; see CKV_AWS_327 for using a customer‑managed key.)
+
+**CKV_AWS_162 – IAM authentication**  
+*What is wrong:* IAM database authentication is not enabled.  
+*Why it matters:* Without it, you cannot use IAM roles to manage database access, which reduces the ability to enforce fine‑grained, temporary credentials.  
+*Change needed:* Add `iam_database_authentication_enabled = true`.
+
+**CKV_AWS_326 – Aurora backtracking**  
+*What is wrong:* Backtracking is not configured.  
+*Why it matters:* For Aurora MySQL, backtracking allows you to quickly rewind the cluster to a previous point in time without restoring from a backup, reducing recovery time.  
+*Change needed:* Set `backtrack_window` to a value in seconds (e.g., `backtrack_window = 86400` for 24 hours). This is only valid for Aurora MySQL; if the engine is not MySQL, this check may be a false positive, but the scanner expects the attribute to be present.
+
+**CKV_AWS_327 – encryption with KMS CMK**  
+*What is wrong:* The cluster is not using a customer‑managed KMS key for encryption.  
+*Why it matters:* Using the default AWS‑managed key gives you less control over key rotation, access policies, and auditing. A CMK allows you to define your own key policy and lifecycle.  
+*Change needed:* Provide a KMS key ARN via `kms_key_id = "arn:aws:kms:..."`. This must be combined with `storage_encrypted = true` (already required by CKV_AWS_96). The two checks can be fixed together by setting both attributes.
+
+**CKV_AWS_325 – audit logging for MySQL**  
+*What is wrong:* Audit log export to CloudWatch is not enabled.  
+*Why it matters:* Audit logs are essential for detecting suspicious database activity and meeting compliance standards.  
+*Change needed:* Add `"audit"` to the `enabled_cloudwatch_logs_exports` list. For example, `enabled_cloudwatch_logs_exports = ["audit"]`. (This also helps satisfy CKV_AWS_324.)
+
+**CKV_AWS_139 – deletion protection**  
+*What is wrong:* Deletion protection is not enabled.  
+*Why it matters:* Without it, the cluster can be deleted accidentally or maliciously, leading to data loss.  
+*Change needed:* Set `deletion_protection = true`.
+
+**CKV_AWS_324 – log capture**  
+*What is wrong:* No CloudWatch log exports are configured.  
+*Why it matters:* Capturing logs (error, audit, slow query, etc.) is critical for monitoring, troubleshooting, and security analysis.  
+*Change needed:* Set `enabled_cloudwatch_logs_exports` to a list containing at least one log type (e.g., `["audit", "error"]`). If you already add `"audit"` for CKV_AWS_325, this check will also pass.
+
+---
+
+### Findings on `aws_rds_cluster.pass2` (lines 5‑6)
+
+The same eight checks appear for this resource. The required changes are identical to those described for `aws_rds_cluster.pass`:
+
+- **CKV_AWS_313:** add `copy_tags_to_snapshot = true`
+- **CKV_AWS_96:** add `storage_encrypted = true`
+- **CKV_AWS_162:** add `iam_database_authentication_enabled = true`
+- **CKV_AWS_326:** add `backtrack_window` (e.g., `86400`)
+- **CKV_AWS_327:** add `kms_key_id` (together with `storage_encrypted = true`)
+- **CKV_AWS_325:** add `"audit"` to `enabled_cloudwatch_logs_exports`
+- **CKV_AWS_139:** add `deletion_protection = true`
+- **CKV_AWS_324:** add `enabled_cloudwatch_logs_exports` with at least one log type
+
+---
+
+### Findings on `aws_rds_cluster.fail2` (lines 8‑10)
+
+All checks from the previous resources apply, plus one additional check.
+
+**CKV_AWS_313, CKV_AWS_96, CKV_AWS_162, CKV_AWS_326, CKV_AWS_327, CKV_AWS_325, CKV_AWS_139, CKV_AWS_324**  
+Same problems and fixes as above.
+
+**CKV_AWS_133 – backup policy**  
+*What is wrong:* `backup_retention_period` is set to 0, which disables automated backups.  
+*Why it matters:* Without automated backups you cannot perform point‑in‑time recovery, risking permanent data loss.  
+*Change needed:* Change `backup_retention_period` to a value between 1 and 35 (the valid range for Aurora). For example, set it to `7` or `35`. This also ensures the cluster has a backup policy.
+
+---
+
+### Findings on `aws_rds_cluster.fail` (lines 13‑15)
+
+The same nine checks appear. The difference is that `backup_retention_period` is set to `36`, which is **invalid** (the maximum is 35). Terraform will reject this value, so the resource is effectively misconfigured.
+
+- **CKV_AWS_133:** The invalid retention period means the backup policy is not properly defined.  
+  *Change needed:* Set `backup_retention_period` to a valid integer between 1 and 35 (e.g., `35`).  
+- All other checks (313, 96, 162, 326, 327, 325, 139, 324) require the same additions as described for `aws_rds_cluster.pass`.
+
+---
+
+### Findings on `aws_db_instance.pass` (lines 17‑19)
+
+**CKV_AWS_354 – Performance Insights encrypted with KMS CMK**  
+*What is wrong:* Performance Insights is either not enabled or not using a customer‑managed KMS key.  
+*Why it matters:* Unencrypted performance data could expose sensitive query patterns. A CMK gives you control over encryption of that data.  
+*Change needed:* Enable Performance Insights with `performance_insights_enabled = true` and provide a KMS key ARN via `performance_insights_kms_key_id`. (This also satisfies CKV_AWS_353.)
+
+**CKV_AWS_293 – deletion protection**  
+*What is wrong:* Deletion protection is not enabled.  
+*Why it matters:* Accidental instance deletion can cause data loss.  
+*Change needed:* Set `deletion_protection = true`.
+
+**CKV_AWS_353 – Performance Insights enabled**  
+*What is wrong:* Performance Insights is not turned on.  
+*Why it matters:* Without it, you lose visibility into database load and query performance.  
+*Change needed:* Set `performance_insights_enabled = true`. (If you also set the KMS key for CKV_AWS_354, this check passes automatically.)
+
+**CKV_AWS_157 – Multi‑AZ**  
+*What is wrong:* The instance is not deployed across multiple Availability Zones.  
+*Why it matters:* A single‑AZ instance has no automatic failover, reducing availability during AZ outages or maintenance.  
+*Change needed:* Set `multi_az = true`.
+
+**CKV_AWS_129 – log exports**  
+*What is wrong:* No CloudWatch log exports are configured.  
+*Why it matters:* Database logs (error, general, slow query, audit) are essential for monitoring and security.  
+*Change needed:* Add `enabled_cloudwatch_logs_exports` with a list of desired log types (e.g., `["error", "general", "slowquery", "audit"]`). At least one type must be present.
+
+**CKV_AWS_226 – automatic minor upgrades**  
+*What is wrong:* `auto_minor_version_upgrade` is not enabled.  
+*Why it matters:* Without it, you may miss critical security patches and bug fixes for the database engine.  
+*Change needed:* Set `auto_minor_version_upgrade = true`.
+
+**CKV_AWS_118 – enhanced monitoring**  
+*What is wrong:* Enhanced monitoring is not enabled.  
+*Why it matters:* Enhanced monitoring provides OS‑level metrics that are vital for performance troubleshooting.  
+*Change needed:* Set `monitoring_interval` to a value greater than 0 (e.g., `60`) and provide a valid `monitoring_role_arn` that grants RDS permission to publish metrics to CloudWatch Logs.
+
+**CKV_AWS_16 – encryption at rest**  
+*What is wrong:* Storage encryption is not enabled.  
+*Why it matters:* Unencrypted data at rest is a security risk.  
+*Change needed:* Set `storage_encrypted = true`.
+
+---
+
+### Findings on `aws_db_instance.pass2` (lines 21‑22)
+
+The same eight checks appear. Apply the identical fixes:
+
+- **CKV_AWS_354:** `performance_insights_enabled = true` + `performance_insights_kms_key_id`
+- **CKV_AWS_293:** `deletion_protection = true`
+- **CKV_AWS_353:** `performance_insights_enabled = true`
+- **CKV_AWS_157:** `multi_az = true`
+- **CKV_AWS_129:** `enabled_cloudwatch_logs_exports` with at least one log type
+- **CKV_AWS_226:** `auto_minor_version_upgrade = true`
+- **CKV_AWS_118:** `monitoring_interval > 0` + `monitoring_role_arn`
+- **CKV_AWS_16:** `storage_encrypted = true`
+
+---
+
+### Findings on `aws_db_instance.fail2` (lines 24‑26)
+
+All checks from `aws_db_instance.pass` apply, plus one additional check.
+
+**CKV_AWS_354, CKV_AWS_293, CKV_AWS_353, CKV_AWS_157, CKV_AWS_129, CKV_AWS_226, CKV_AWS_118, CKV_AWS_16**  
+Same problems and fixes as above.
+
+**CKV_AWS_133 – backup policy**  
+*What is wrong:* `backup_retention_period` is set to 0, disabling automated backups.  
+*Why it matters:* No automated backups means no point‑in‑time recovery.  
+*Change needed:* Set `backup_retention_period` to a value between 1 and 35 (the valid range for RDS instances). For example, `7` or `35`.
+
+---
+
+### Findings on `aws_db_instance.fail` (lines 29‑31)
+
+The same nine checks appear. The `backup_retention_period` is `36`, which is invalid (maximum 35). This must be corrected.
+
+- **CKV_AWS_133:** Change `backup_retention_period` to a valid integer between 1 and 35.  
+- All other checks (354, 293, 353, 157, 129, 226, 118, 16) require the same additions as for `aws_db_instance.pass`.
+
+---
+
+### Findings on `aws_db_instance.unknown` (lines 33‑35)
+
+The same eight checks (no CKV_AWS_133 because the retention period is set via a variable, but the scanner still flags the other missing settings). The variable `var.backup_retention_period` must be validated to be between 1 and 35, but the immediate fixes are:
+
+- **CKV_AWS_354, CKV_AWS_293, CKV_AWS_353, CKV_AWS_157, CKV_AWS_129, CKV_AWS_226, CKV_AWS_118, CKV_AWS_16** – apply the same changes as for `aws_db_instance.pass`.  
+- Additionally, ensure that the variable `backup_retention_period` is constrained to a value > 0 (and ≤ 35) so that the backup policy is effective. This can be done with a validation block in the variable declaration or by setting a sensible default.
+
+---
+
+### Findings for `CKV2_AWS_60` on all `aws_db_instance` resources
+
+**CKV2_AWS_60 – copy tags to snapshots (DB instance)**  
+*What is wrong:* `copy_tags_to_snapshot` is not set to `true` on any of the `aws_db_instance` resources.  
+*Why it matters:* Tags are not automatically copied to snapshots, hindering cost tracking and resource management.  
+*Change needed:* Add `copy_tags_to_snapshot = true` to every `aws_db_instance` block (`pass`, `pass2`, `fail2`, `fail`, `unknown`).
+
+---
+
+### Findings for `CKV2_AWS_8` on all `aws_rds_cluster` resources
+
+**CKV2_AWS_8 – AWS Backup plan**  
+*What is wrong:* None of the Aurora clusters are associated with an AWS Backup plan.  
+*Why it matters:* Relying solely on automated snapshots may not meet your backup strategy requirements. An AWS Backup plan provides centralised, cross‑service backup management with retention rules and cross‑region/cross‑account copies.  
+*Change needed:* Create an `aws_backup_plan` resource that defines a backup rule (e.g., daily backups, 35‑day retention) and an `aws_backup_selection` that includes each cluster by ARN. This is a separate resource; it cannot be fixed by adding an attribute to the cluster itself. Ensure every cluster (`pass`, `pass2`, `fail2`, `fail`) is covered by the selection.
+
+---
+
+All checks have been addressed. After applying the changes, re‑run the scanner to confirm that every finding is resolved.

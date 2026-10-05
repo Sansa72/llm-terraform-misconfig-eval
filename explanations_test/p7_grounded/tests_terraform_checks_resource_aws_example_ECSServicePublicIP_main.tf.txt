@@ -1,0 +1,22 @@
+The scanner flagged a security misconfiguration in the `aws_ecs_service.fail` resource.
+
+**Check ID:** CKV_AWS_333  
+**Resource:** `aws_ecs_service.fail` (lines 31–46)  
+**Issue:** The ECS service is configured to automatically assign a public IP address to its tasks.
+
+**Evidence in the file:**
+
+- The `aws_ecs_service.fail` resource contains a `network_configuration` block (lines 42–45).
+- Inside that block, `assign_public_ip` is set to `true` (line 44).
+
+This directly triggers the check, which requires that ECS services do **not** have public IPs assigned automatically.
+
+**Why it’s flagged:**
+
+The scanner’s rule CKV_AWS_333 enforces that ECS services should not be publicly accessible by default. Setting `assign_public_ip = true` gives the tasks a public IP address, which may expose them to the internet unnecessarily.
+
+**How to fix it:**
+
+Change the value of `assign_public_ip` to `false` in the `network_configuration` block of the failing resource, or remove the `assign_public_ip` line entirely (the default is `false`). The `pass2` resource (lines 20–30) already demonstrates the correct configuration with `assign_public_ip = false`. The `pass` resource (lines 1–12) is also compliant because it omits the `network_configuration` block altogether, so no public IP is assigned.
+
+No other resources or configurations are implicated by this finding.

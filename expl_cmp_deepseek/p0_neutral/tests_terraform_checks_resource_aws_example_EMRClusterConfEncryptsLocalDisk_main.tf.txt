@@ -1,0 +1,71 @@
+The file defines three `aws_emr_security_configuration` resources. Checkov flags them because they do not meet the expected EMR encryption baseline.
+
+## `aws_emr_security_configuration.pass`
+
+**Findings:** `CKV_AWS_351`, `CKV_AWS_171`
+
+**Misconfiguration:**
+- `EnableInTransitEncryption` is `false`, so EMR in-transit encryption is disabled.
+- `S3EncryptionConfiguration.EncryptionMode` is `SSE-S3`, not `SSE-KMS`.
+
+**Risk:**
+- Any EMR cluster using this configuration will send data between cluster components unencrypted, exposing it to network interception.
+- S3 data is encrypted with S3-managed keys instead of a customer-managed KMS key. This reduces key control, rotation, and audit capabilities.
+
+**Fix:**
+```json
+"EnableInTransitEncryption": true,
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-KMS",
+  "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+}
+```
+The local disk encryption block is already present and uses `AwsKms`, so no change is needed there.
+
+---
+
+## `aws_emr_security_configuration.fail`
+
+**Findings:** `CKV_AWS_351`, `CKV_AWS_171`, `CKV_AWS_350`, `CKV_AWS_349`
+
+**Misconfiguration:**
+- In-transit encryption is disabled.
+- S3 encryption uses `SSE-S3`.
+- There is no `LocalDiskEncryptionConfiguration`, so EBS volumes and local instance storage are not encrypted.
+
+**Risk:**
+- Network traffic between EMR components is unencrypted.
+- EBS volumes and local disks are unencrypted. If a volume snapshot, instance store, or underlying physical media is exposed, data at rest can be read.
+- S3 encryption lacks KMS key control and audit.
+
+**Fix:**
+```json
+"EnableInTransitEncryption": true,
+"EnableAtRestEncryption": true,
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-KMS",
+  "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+},
+"LocalDiskEncryptionConfiguration": {
+  "EnableEbsEncryption": true,
+  "EncryptionKeyProviderType": "AwsKms",
+  "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+}
+```
+
+---
+
+## `aws_emr_security_configuration.fail2`
+
+**Findings:** `CKV_AWS_351`, `CKV_AWS_171`, `CKV_AWS_350`, `CKV_AWS_349`
+
+**Misconfiguration:**
+- `EnableInTransitEncryption` is `false`.
+- `EnableAtRestEncryption` is `false`.
+- No S3, EBS, or local disk encryption is configured.
+
+**Risk:**
+- This is the most severe case: all EMR data at rest and in transit is unencrypted. Any EMR cluster using this configuration has no encryption controls.
+
+**Fix:**
+Apply the same settings as for `fail`, explicitly enabling both at-rest and in-transit encryption, using `SSE-KMS` for S3, and adding KMS-encrypted EBS/local disk configuration.

@@ -1,0 +1,39 @@
+**Remediation Briefing**
+
+Below are the required fixes for each flagged misconfiguration, in the order they appear in the scanner output.
+
+---
+
+### 1. CKV_AWS_283 on `data.aws_iam_policy_document.fail`
+
+**What is wrong:** The policy statement grants `sns:Publish` permission to any AWS principal (`"*"`) without any condition to limit access.
+
+**Why it matters:** A wildcard principal allows every AWS identity (including those in other accounts) to perform the action on the resource. This effectively makes the SNS topic publicly writeable, which can lead to data injection, spam, or unauthorised triggering of downstream systems.
+
+**Change needed:** Restrict the principal to a specific set of trusted AWS account IDs or ARNs, or keep the wildcard but add a condition that limits access based on source ARN, account, or other attributes. For example, replace `identifiers = ["*"]` with a list of allowed account numbers (e.g., `["123456789012"]`) or add a `condition` block that uses `ArnLike` or `StringEquals` on `aws:PrincipalArn` to restrict which principals can assume the wildcard. The `pass2` example in the same file shows a valid approach: keep the wildcard principal but add a condition that scopes it down.
+
+---
+
+### 2. CKV_AWS_283 on `data.aws_iam_policy_document.fail2`
+
+**What is wrong:** The policy document contains two statements. The second statement grants `sns:Publish` to any AWS principal (`"*"`) with no condition, while the first statement already has a condition. The second statement alone triggers the check.
+
+**Why it matters:** Even though one statement is properly restricted, the presence of an unrestricted wildcard statement still opens the resource to all AWS identities. Attackers can exploit the permissive statement to gain the same access the first statement tried to limit.
+
+**Change needed:** Remove the second statement entirely, or apply the same condition (or an equivalent restrictive condition) to it. If the intent is to allow a different set of principals, replace the wildcard with explicit identifiers. Do not leave a statement with `identifiers = ["*"]` and no condition.
+
+---
+
+### 3. CKV_AWS_26 on `aws_sns_topic.some-topic`
+
+**What is wrong:** The SNS topic is created without server-side encryption enabled.
+
+**Why it matters:** Without encryption, messages stored in the topic are written to disk in plaintext. This violates data protection requirements and increases the risk of sensitive data exposure if the underlying storage is compromised.
+
+**Change needed:** Enable encryption at rest by setting the `kms_master_key_id` argument on the `aws_sns_topic` resource. You can use an AWS-managed key by specifying `alias/aws/sns`, or provide the ARN/alias of a customer-managed KMS key. For example, add `kms_master_key_id = "alias/aws/sns"` to the resource block.
+
+---
+
+### Interactions between fixes
+
+The SNS topic encryption fix (CKV_AWS_26) and the IAM policy document fixes (CKV_AWS_283) are independent. Changing the topic to enable encryption does not affect the policy documents, and restricting the principals in the policies does not alter the topic’s encryption configuration. No coordination between the fixes is required.

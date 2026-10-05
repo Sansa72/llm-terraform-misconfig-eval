@@ -1,0 +1,64 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_158",
+      "resource": "aws_cloudwatch_log_group.pass_365",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"pass_365\" {",
+        "  retention_in_days = 365",
+        "}"
+      ],
+      "risk": "CloudWatch log group is not encrypted with a customer-managed KMS key, potentially violating encryption requirements.",
+      "remediation": "Add a kms_key_id argument referencing a valid KMS key to enable customer-managed encryption.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_158",
+      "resource": "aws_cloudwatch_log_group.pass_0",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"pass_0\" {",
+        "  retention_in_days = 0",
+        "}"
+      ],
+      "risk": "CloudWatch log group is not encrypted with a customer-managed KMS key, potentially violating encryption requirements.",
+      "remediation": "Add a kms_key_id argument referencing a valid KMS key to enable customer-managed encryption.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_338",
+      "resource": "aws_cloudwatch_log_group.fail",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"fail\" {",
+        "  retention_in_days = 5",
+        "}"
+      ],
+      "risk": "Log retention is set to 5 days, which is less than the required 365 days, causing logs to be deleted prematurely and potentially losing forensic data.",
+      "remediation": "Set retention_in_days to at least 365 to retain logs for one year or more.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_158",
+      "resource": "aws_cloudwatch_log_group.fail",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"fail\" {",
+        "  retention_in_days = 5",
+        "}"
+      ],
+      "risk": "CloudWatch log group is not encrypted with a customer-managed KMS key, potentially exposing log data to weaker encryption controls.",
+      "remediation": "Add a kms_key_id argument referencing a valid KMS key to enable customer-managed encryption.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_158",
+      "resource": "aws_cloudwatch_log_group.unknown",
+      "evidence": [
+        "resource \"aws_cloudwatch_log_group\" \"unknown\" {",
+        "  retention_in_days = var.retention",
+        "}"
+      ],
+      "risk": "CloudWatch log group is not encrypted with a customer-managed KMS key, potentially violating encryption requirements.",
+      "remediation": "Add a kms_key_id argument referencing a valid KMS key to enable customer-managed encryption.",
+      "confidence": "high"
+    }
+  ]
+}

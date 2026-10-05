@@ -1,0 +1,59 @@
+The scanner flagged two issues across your three EBS volumes:
+
+- **CKV_AWS_3** requires that every EBS volume be encrypted at rest.
+- **CKV_AWS_189** requires that the encryption use a Customer Managed Key (CMK) rather than the default AWS-managed key.
+
+Here’s how each resource currently fails and what to change.
+
+---
+
+### `aws_ebs_volume.default` (lines 12‑15)
+- **Problem:** No `encrypted` attribute is set, so it defaults to `false` (unencrypted). This fails both CKV_AWS_3 (no encryption) and CKV_AWS_189 (no CMK).
+- **Fix:** Set `encrypted = true` and provide a CMK ARN via `kms_key_id`.
+
+### `aws_ebs_volume.disabled` (lines 17‑22)
+- **Problem:** Explicitly sets `encrypted = false`, which is unencrypted. Fails both checks.
+- **Fix:** Change to `encrypted = true` and add `kms_key_id` pointing to a CMK.
+
+### `aws_ebs_volume.enabled` (lines 3‑8)
+- **Problem:** Encryption is enabled, but no `kms_key_id` is specified, so it uses the AWS-managed `aws/ebs` key. This fails CKV_AWS_189 because a CMK is required.
+- **Fix:** Add `kms_key_id` with the ARN or key ID of a customer-managed KMS key.
+
+---
+
+### Why this matters
+- **CKV_AWS_3:** Without encryption, data on the volume is stored in plaintext. If the underlying physical media is ever compromised (e.g., discarded, stolen, or accessed by a malicious insider), the data is immediately readable.
+- **CKV_AWS_189:** Using a CMK gives you control over key rotation, access policies, and auditing. The AWS-managed key cannot be restricted or rotated on your schedule, and its usage may not meet compliance requirements that mandate customer-controlled encryption keys.
+
+### Recommended change
+Create a KMS key (or reference an existing one) and set `kms_key_id` on all volumes. For example:
+
+```hcl
+resource "aws_kms_key" "ebs" {
+  description         = "Customer managed key for EBS encryption"
+  enable_key_rotation = true
+}
+
+resource "aws_ebs_volume" "enabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn
+}
+
+resource "aws_ebs_volume" "default" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn
+}
+
+resource "aws_ebs_volume" "disabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn
+}
+```
+
+If you already have a suitable CMK, reference its ARN via a data source instead of creating a new key.

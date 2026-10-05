@@ -1,0 +1,61 @@
+**Remediation briefing: EFS encryption findings**
+
+Below are the failing checks in the order reported by the scanner. Each section names the check and resource, states the problem in one line, explains why it matters, and describes the required change in prose. No complete Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_184 on `aws_efs_file_system.enabled` (lines 3‑7)
+
+**What is wrong:** The file system is encrypted but uses the default AWS-managed KMS key instead of a customer-managed key (CMK).
+
+**Why it matters:** AWS-managed keys are automatically rotated and cannot be controlled, audited, or revoked by your organisation. Using a CMK gives you control over key policy, rotation, and access logging, which is essential for compliance and security governance.
+
+**Change needed:** Add a `kms_key_id` argument to this resource, referencing the ARN of a customer-managed KMS key. The key can be created in the same Terraform configuration (e.g., via `aws_kms_key` and `aws_kms_alias`) or imported from an existing key. The `encrypted = true` line can remain as-is; it is already present.
+
+---
+
+### 2. CKV_AWS_184 on `aws_efs_file_system.default` (lines 11‑13)
+
+**What is wrong:** The file system is not encrypted at all, so it certainly does not use a customer-managed KMS key.
+
+**Why it matters:** Without encryption, data at rest is stored in plaintext. If the underlying storage media is compromised, all file contents are exposed. Regulatory frameworks (PCI‑DSS, HIPAA, etc.) mandate encryption at rest.
+
+**Change needed:** Set `encrypted = true` and provide a `kms_key_id` referencing a customer-managed KMS key. The same CMK used for the `enabled` resource can be reused here, or a separate key can be specified. Both attributes must be added to the resource block.
+
+---
+
+### 3. CKV_AWS_42 on `aws_efs_file_system.default` (lines 11‑13)
+
+**What is wrong:** The file system is not encrypted at rest.
+
+**Why it matters:** This is a broader check that simply requires encryption to be enabled, regardless of key type. Unencrypted EFS exposes all stored data to physical media access risks and violates basic data protection standards.
+
+**Change needed:** Set `encrypted = true` in the resource block. This change alone would satisfy CKV_AWS_42, but to also pass CKV_AWS_184 you must additionally specify a CMK via `kms_key_id`. The two fixes are complementary: enabling encryption addresses this check, while adding the CMK addresses the previous one.
+
+---
+
+### 4. CKV_AWS_184 on `aws_efs_file_system.disabled` (lines 15‑19)
+
+**What is wrong:** Encryption is explicitly disabled (`encrypted = false`), so no KMS key—customer-managed or otherwise—is used.
+
+**Why it matters:** Explicitly disabling encryption is a clear security anti-pattern. It leaves data completely unprotected at rest, with the same risks as the `default` resource.
+
+**Change needed:** Change `encrypted = false` to `encrypted = true` and add a `kms_key_id` argument pointing to a customer-managed KMS key. You can reuse the same CMK from the other file systems or define a new one. The `encrypted` line must be updated, not just added.
+
+---
+
+### 5. CKV_AWS_42 on `aws_efs_file_system.disabled` (lines 15‑19)
+
+**What is wrong:** The file system has encryption explicitly turned off.
+
+**Why it matters:** This check fails for the same reason as on the `default` resource—data at rest is not protected. Even if a CMK were somehow referenced, `encrypted = false` would override it and leave the file system unencrypted.
+
+**Change needed:** Set `encrypted = true`. This alone resolves CKV_AWS_42. To also pass CKV_AWS_184, you must include a `kms_key_id` as described above. The two changes are applied to the same resource block.
+
+---
+
+### Interactions between fixes
+
+- All three resources can share a single customer-managed KMS key. If you create one `aws_kms_key` and an alias, you can reference the same ARN in each `kms_key_id`. This simplifies key management and reduces cost.
+- The `enabled` resource already has `encrypted = true`; it only needs the `kms_key_id` added. The `default` and `disabled` resources need both `encrypted = true` and `kms_key_id`.
+- There is no conflict: applying all changes will make every resource pass both CKV_AWS_42 and CKV_AWS_184. No fix undoes another.

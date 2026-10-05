@@ -1,0 +1,37 @@
+The scanner flagged both `aws_api_gateway_rest_api` resources named `fail` and `fail2` because neither is configured to create a replacement API Gateway before destroying the existing one.  
+
+**What’s happening**  
+- `fail` has no `lifecycle` block at all, so Terraform uses the default behaviour: destroy the old resource, then create the new one.  
+- `fail2` explicitly sets `create_before_destroy = false`, which enforces the same destroy-then-create order.  
+
+**Why it matters**  
+When a change forces the API Gateway to be replaced (for example, modifying the `name`), Terraform will tear down the current gateway before provisioning the replacement. During that gap, all API endpoints become unreachable, causing a full outage for any clients depending on them. This is an availability risk, which is a core security concern (availability is part of the CIA triad).  
+
+**How to fix it**  
+Add or update the `lifecycle` block so that `create_before_destroy` is set to `true`. This instructs Terraform to provision the new API Gateway first, allow it to become ready, and only then destroy the old one, avoiding downtime.  
+
+For the `fail` resource, uncomment and correct the lifecycle block:  
+```hcl
+resource "aws_api_gateway_rest_api" "fail" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+For `fail2`, change `false` to `true`:  
+```hcl
+resource "aws_api_gateway_rest_api" "fail2" {
+  name = "example"
+  tags = { test = "Fail" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+```
+
+After applying these changes, Terraform will create the new API Gateway before destroying the old one, preserving availability during updates.

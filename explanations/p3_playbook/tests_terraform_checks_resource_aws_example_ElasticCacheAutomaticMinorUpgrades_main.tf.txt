@@ -1,0 +1,57 @@
+**Remediation Briefing: ElastiCache Security Misconfigurations**
+
+Below is a per‑finding breakdown of the issues, their importance, and the required changes. All findings are listed in the order they appear in the scanner output.
+
+---
+
+### 1. CKV_AWS_323 on `aws_elasticache_cluster.pass` (lines 3‑11)
+**What’s wrong:** The cluster does not specify a custom subnet group, so it falls back to the default VPC subnet group.  
+**Why it matters:** Default subnet groups are often not designed with the isolation, network segmentation, or private‑subnet placement required for secure cache workloads.  
+**Change needed:** Add a `subnet_group_name` argument referencing a custom `aws_elasticache_subnet_group` resource. Create that subnet group with the appropriate private subnets for your VPC, then set `subnet_group_name = aws_elasticache_subnet_group.<name>.name` on this cluster.
+
+---
+
+### 2. CKV_AWS_134 on `aws_elasticache_cluster.pass2` (lines 13‑19)
+**What’s wrong:** The cluster has no `snapshot_retention_limit` set, so automatic backups are disabled.  
+**Why it matters:** Without automatic backups, you risk permanent data loss in the event of a failure or accidental deletion.  
+**Change needed:** Add `snapshot_retention_limit = <positive_integer>` (e.g., `5`) to enable daily automatic backups. You may also optionally set `snapshot_window` to control the backup time.
+
+---
+
+### 3. CKV_AWS_323 on `aws_elasticache_cluster.pass2` (lines 13‑19)
+**What’s wrong:** Same as finding #1 – the cluster uses the default subnet group because no custom subnet group is specified.  
+**Why it matters:** Identical risk to the first cluster.  
+**Change needed:** Add the same `subnet_group_name` argument referencing the custom subnet group you create. This can be the same subnet group used for the `pass` cluster if they reside in the same VPC.
+
+---
+
+### 4. CKV_AWS_134 on `aws_elasticache_cluster.fail` (lines 21‑29)
+**What’s wrong:** `snapshot_retention_limit` is explicitly set to `0`, disabling automatic backups.  
+**Why it matters:** Same data‑loss risk as finding #2.  
+**Change needed:** Change `snapshot_retention_limit` to a positive value (e.g., `5`). This will enable automatic daily snapshots.
+
+---
+
+### 5. CKV_AWS_322 on `aws_elasticache_cluster.fail` (lines 21‑29)
+**What’s wrong:** `auto_minor_version_upgrade` is explicitly set to `false`.  
+**Why it matters:** Disabling automatic minor version upgrades leaves the cluster vulnerable to known security issues and prevents it from receiving performance improvements without manual intervention.  
+**Change needed:** Set `auto_minor_version_upgrade = true` (or remove the line entirely, as `true` is the default). This ensures the engine is automatically patched during the maintenance window.
+
+---
+
+### 6. CKV_AWS_323 on `aws_elasticache_cluster.fail` (lines 21‑29)
+**What’s wrong:** No custom subnet group is specified; the cluster uses the default.  
+**Why it matters:** Same network segmentation and security concerns as the other clusters.  
+**Change needed:** Add a `subnet_group_name` argument pointing to the same custom ElastiCache subnet group used for the other clusters.
+
+---
+
+### 7. CKV_AWS_323 on `aws_elasticache_cluster.memcached` (lines 33‑39)
+**What’s wrong:** The Memcached cluster also lacks a custom subnet group, falling back to the default.  
+**Why it matters:** Even though Memcached does not support backups or auto minor version upgrades, proper network placement is still critical for security.  
+**Change needed:** Add a `subnet_group_name` argument referencing the same custom ElastiCache subnet group. The subnet group must be compatible with the Memcached engine (no engine‑specific restrictions).
+
+---
+
+### Interaction note
+All four clusters can share a single custom ElastiCache subnet group (assuming they are in the same VPC). Create one `aws_elasticache_subnet_group` resource with the desired private subnets, then reference it in each cluster’s `subnet_group_name` argument. This resolves all four `CKV_AWS_323` findings simultaneously. The backup and auto‑minor‑version‑upgrade fixes are independent and only apply to the Redis clusters (`pass2` and `fail`).

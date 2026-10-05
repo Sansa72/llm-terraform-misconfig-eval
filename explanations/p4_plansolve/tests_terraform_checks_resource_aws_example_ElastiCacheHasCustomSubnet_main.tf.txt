@@ -1,0 +1,9 @@
+The `aws_elasticache_cluster.fail` resource triggers two misconfigurations. Here’s what needs to change and why.
+
+**1. CKV_AWS_134 – Automatic backup is disabled**  
+The resource sets `snapshot_retention_limit = 0`, which explicitly disables automatic daily snapshots. Without automatic backups, you risk permanent data loss if the cluster fails or is accidentally deleted.  
+**Fix:** Set `snapshot_retention_limit` to a positive integer (for example, `5`). This enables automatic backups and retains them for the specified number of days. The value must be at least 1; typical values range from 1 to 35.
+
+**2. CKV_AWS_323 – Default subnet group in use**  
+The resource does not include a `subnet_group_name` argument, so it falls back to the AWS default subnet group. The default group often spans all subnets in the VPC, including public ones, which can expose the cluster to unintended network access.  
+**Fix:** Add `subnet_group_name` and point it to a custom subnet group that contains only private subnets (for example, `subnet_group_name = "mysubnet"`). This ensures the cluster is placed in a controlled network environment.

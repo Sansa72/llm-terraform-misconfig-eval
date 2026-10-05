@@ -1,0 +1,10 @@
+The scanner flagged a misconfiguration in the `aws_appflow_flow.fail` resource (lines 1–42) under check **CKV_AWS_263**, which requires that an AppFlow flow uses a customer-managed KMS key (CMK) for encryption.
+
+**What the finding says**  
+The check ID is `CKV_AWS_263` and the description is “Ensure App Flow flow uses CMK”. It was raised against the resource `aws_appflow_flow.fail`.
+
+**What the file shows**  
+- The `fail` resource (lines 1–42) defines an AppFlow flow with no `kms_arn` argument.  
+- The `pass` resource (lines 44–86) is structurally identical except that it includes `kms_arn = aws_kms_key.example.arn` on line 85.  
+
+Because the `fail` resource does not specify a `kms_arn`, it will not use a customer-managed key. The scanner interprets this as a security misconfiguration. The fix is to add a `kms_arn` argument pointing to a valid KMS key, as demonstrated in the `pass` resource.

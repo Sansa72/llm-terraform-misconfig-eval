@@ -1,0 +1,89 @@
+The scanner flagged two distinct misconfigurations across your Elastic Beanstalk environment resources. I’ll break them down by check ID, pointing to the exact resources and lines that trigger each finding.
+
+---
+
+### CKV_AWS_340: Ensure Elastic Beanstalk managed platform updates are enabled
+
+**What the check requires**  
+The environment must have the `ManagedActionsEnabled` setting set to `true` in the `aws:elasticbeanstalk:managedupdates` namespace. This ensures the platform version is automatically updated during the specified maintenance window.
+
+**Evidence in the file**  
+None of the six environment resources contain a `setting` block for managed platform updates. The scanner therefore flags **all** of them:
+
+- `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+- `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+- `aws_elastic_beanstalk_environment.fail3` (lines 28–48)
+- `aws_elastic_beanstalk_environment.fail4` (lines 50–65)
+- `aws_elastic_beanstalk_environment.pass` (lines 68–82)
+- `aws_elastic_beanstalk_environment.pass2` (lines 84–98)
+
+Even the resources named `pass` and `pass2` are missing this setting, so they are also flagged.
+
+**How to fix**  
+Add a `setting` block similar to the following inside each affected resource:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedupdates"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+```
+
+---
+
+### CKV_AWS_312: Ensure Elastic Beanstalk environments have enhanced health reporting enabled
+
+**What the check requires**  
+The environment must have the `HealthStreamingEnabled` option set to `true` in the `aws:elasticbeanstalk:healthreporting:system` namespace. This enables enhanced health reporting, which provides more granular health information than the default basic health system.
+
+**Evidence in the file**  
+The scanner flags four resources where enhanced health reporting is either missing or explicitly disabled:
+
+1. **`aws_elastic_beanstalk_environment.fail` (lines 1–10)**  
+   - No `setting` block for health reporting at all.  
+   - **Result:** Enhanced health reporting is not enabled.
+
+2. **`aws_elastic_beanstalk_environment.fail2` (lines 12–26)**  
+   - Contains a `setting` block (lines 20–24) with `namespace = "aws:elasticbeanstalk:healthreporting:system"` and `name = "SystemType"`, but the value is `"basic"`.  
+   - **Result:** The health system is explicitly set to basic, not enhanced.
+
+3. **`aws_elastic_beanstalk_environment.fail3` (lines 28–48)**  
+   - Contains a `setting` block (lines 36–39) with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "HealthStreamingEnabled"`, and `value = "False"`.  
+   - **Result:** Enhanced health reporting is explicitly disabled.  
+   - (The second `setting` block with namespace `"guff"` is irrelevant to this check.)
+
+4. **`aws_elastic_beanstalk_environment.fail4` (lines 50–65)**  
+   - Contains a `setting` block (lines 58–62) with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "HealthStreamingEnabled"`, but `value = ""` (empty string).  
+   - **Result:** The value is not set to `true`, so enhanced health reporting is not enabled.
+
+**Resources not flagged**  
+The scanner did **not** flag `aws_elastic_beanstalk_environment.pass` (lines 68–82) and `aws_elastic_beanstalk_environment.pass2` (lines 84–98) for CKV_AWS_312. Both contain a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "HealthStreamingEnabled"`, and `value = "true"` (or `true`). This satisfies the check.
+
+**How to fix**  
+For the four failing resources, ensure a `setting` block is present with the exact configuration:
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting:system"
+  name      = "HealthStreamingEnabled"
+  value     = "true"
+}
+```
+
+Remove or correct any existing `setting` blocks that set `SystemType` to `basic` or `HealthStreamingEnabled` to `false`/empty.
+
+---
+
+### Summary of required changes
+
+| Resource | CKV_AWS_340 (Managed Updates) | CKV_AWS_312 (Enhanced Health) |
+|----------|-----------------------------|-------------------------------|
+| `fail`   | Add managed updates setting | Add enhanced health setting |
+| `fail2`  | Add managed updates setting | Change `SystemType` from `basic` to `HealthStreamingEnabled = true` |
+| `fail3`  | Add managed updates setting | Change `HealthStreamingEnabled` from `False` to `true` |
+| `fail4`  | Add managed updates setting | Change `HealthStreamingEnabled` from `""` to `true` |
+| `pass`   | Add managed updates setting | Already compliant |
+| `pass2`  | Add managed updates setting | Already compliant |
+
+All changes are based solely on the provided Terraform file and scanner findings.

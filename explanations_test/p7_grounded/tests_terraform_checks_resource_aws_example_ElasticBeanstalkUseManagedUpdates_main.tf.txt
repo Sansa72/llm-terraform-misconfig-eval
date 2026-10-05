@@ -1,0 +1,70 @@
+The scanner flagged two misconfigurations across three Elastic Beanstalk environments defined in your Terraform file. Here’s what the findings mean, based strictly on the provided evidence.
+
+---
+
+### Check IDs and what they look for
+
+- **CKV_AWS_340** – “Ensure Elastic Beanstalk managed platform updates are enabled”  
+  This check expects the environment to have the `ManagedActionsEnabled` setting explicitly set to `true`.
+
+- **CKV_AWS_312** – “Ensure Elastic Beanstalk environments have enhanced health reporting enabled”  
+  This check expects the environment to have the `EnhancedHealthReportingEnabled` setting explicitly set to `true`.
+
+---
+
+### Resource `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+
+**Findings:**  
+- CKV_AWS_340 (managed platform updates)  
+- CKV_AWS_312 (enhanced health reporting)
+
+**Evidence:**  
+The resource block (lines 1–10) contains no `setting` blocks at all.  
+Because neither `ManagedActionsEnabled` nor `EnhancedHealthReportingEnabled` is configured, the environment will use the default values. The scanner treats the absence of an explicit `true` as a failure for both checks.
+
+---
+
+### Resource `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+
+**Findings:**  
+- CKV_AWS_340 (managed platform updates)  
+- CKV_AWS_312 (enhanced health reporting)
+
+**Evidence:**  
+- Lines 21–25 contain a `setting` block that explicitly sets `ManagedActionsEnabled` to `"false"`. This directly violates CKV_AWS_340, which requires managed platform updates to be enabled.  
+- There is no `setting` block for `EnhancedHealthReportingEnabled`. The absence of this explicit `true` setting triggers CKV_AWS_312.
+
+---
+
+### Resource `aws_elastic_beanstalk_environment.pass` (lines 29–43)
+
+**Findings:**  
+- CKV_AWS_312 (enhanced health reporting)
+
+**Evidence:**  
+- Lines 38–42 contain a `setting` block that sets `ManagedActionsEnabled` to `"true"`, satisfying CKV_AWS_340.  
+- There is no `setting` block for `EnhancedHealthReportingEnabled`. The absence of an explicit `true` value triggers CKV_AWS_312.
+
+---
+
+### Summary of required fixes
+
+For each environment, you need to ensure the following `setting` blocks are present (or that the values are `true`):
+
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "true"
+}
+
+setting {
+  namespace = "aws:elasticbeanstalk:healthreporting"
+  name      = "EnhancedHealthReportingEnabled"
+  value     = "true"
+}
+```
+
+- **`fail`** (lines 1–10): Add both blocks.  
+- **`fail2`** (lines 12–26): Change the existing `ManagedActionsEnabled` value from `"false"` to `"true"`, and add the missing enhanced health reporting block.  
+- **`pass`** (lines 29–43): Add the enhanced health reporting block.

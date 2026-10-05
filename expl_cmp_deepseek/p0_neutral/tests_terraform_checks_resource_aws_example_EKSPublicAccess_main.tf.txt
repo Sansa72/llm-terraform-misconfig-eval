@@ -1,0 +1,109 @@
+The flagged findings are consistent with the Terraform resources:
+
+- `aws_eks_cluster.disabled` already disables the public endpoint, but lacks Secrets encryption and control plane logging.
+- `aws_eks_cluster.default` and `aws_eks_cluster.enabled` expose the EKS public API server to the internet and also lack Secrets encryption and control plane logging.
+
+---
+
+## 1. Secrets encryption not enabled — CKV_AWS_58
+
+**Misconfiguration**  
+None of the three `aws_eks_cluster` resources define an `encryption_config` block. This means Kubernetes Secrets are not encrypted using a customer-managed KMS key.
+
+**Why it matters**  
+You lose control over key rotation, revocation, and audit for Kubernetes Secrets. If the default AWS-managed encryption is not acceptable for your compliance or security policy, sensitive data in Secrets has weaker key management and a larger blast radius if the control plane storage is compromised.
+
+**Fix**  
+Add a KMS key and reference it in the cluster resource:
+
+```hcl
+resource "aws_kms_key" "eks" {
+  description = "EKS secrets encryption"
+}
+
+resource "aws_eks_cluster" "example" {
+  # ...
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+  }
+}
+```
+
+**Note:** Enabling Secrets encryption requires recreating the EKS cluster. Plan a migration rather than applying in-place.
+
+---
+
+## 2. Control plane logging not enabled for all log types — CKV_AWS_37
+
+**Misconfiguration**  
+None of the clusters set `enabled_cluster_log_types`, so EKS control plane logs are not delivered to CloudWatch Logs.
+
+**Why it matters**  
+You lose visibility into API server activity, audit events, authenticator decisions, controller manager, and scheduler operations. This makes detecting unauthorized API calls, debugging security incidents, and performing forensics much harder.
+
+**Fix**  
+Enable all log types on each cluster:
+
+```hcl
+resource "aws_eks_cluster" "example" {
+  # ...
+
+  enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler",
+  ]
+}
+```
+
+Ensure the cluster IAM role has the necessary CloudWatch Logs permissions.
+
+---
+
+## 3. Public endpoint exposed to the internet — CKV_AWS_39 and CKV_AWS_38
+
+**Misconfiguration**  
+`aws_eks_cluster.default` and `aws_eks_cluster.enabled` have `endpoint_public_access = true` (explicitly or by default). Because `public_access_cidrs` is not set, it defaults to `0.0.0.0/0`, meaning the EKS API server is reachable from any IPv4 address on the internet.
+
+**Why it matters**  
+The Kubernetes API server becomes an internet-facing attack surface. Any host can attempt authentication, increasing the risk of credential brute-forcing, exploit attempts against API server vulnerabilities, or unauthorized access if credentials leak. The blast radius is the entire cluster control plane.
+
+**Fix**  
+If public access is not required, disable the public endpoint and enable private access:
+
+```hcl
+vpc_config {
+  subnet_ids              = ["subnet-12345"]
+  endpoint_public_access  = false
+  endpoint_private_access = true
+}
+```
+
+If public access must remain available, restrict it to trusted CIDR ranges:
+
+```hcl
+vpc_config {
+  subnet_ids              = ["subnet-12345"]
+  endpoint_public_access  = true
+  public_access_cidrs     = ["203.0.113.0/24"]  # trusted range
+  endpoint_private_access = true
+}
+```
+
+Ensure your VPC routing, security groups, and network access allow the intended private connectivity before disabling public access to avoid lockout.
+
+---
+
+### Summary of required changes
+
+| Resource                  | Add Secrets encryption | Enable all control plane logs | Disable/restrict public endpoint |
+|---------------------------|------------------------|-------------------------------|----------------------------------|
+| `aws_eks_cluster.disabled`| Yes                    | Yes                           | Already disabled                 |
+| `aws_eks_cluster.default` | Yes                    | Yes                           | Yes                              |
+| `aws_eks_cluster.enabled` | Yes                    | Yes                           | Yes                              |

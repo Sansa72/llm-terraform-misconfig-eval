@@ -1,0 +1,14 @@
+**Check 1: CKV_AWS_338 on `aws_cloudwatch_log_group.pass` (lines 1–4)**  
+**What is wrong:** The log group’s retention is set to 1 day, far below the required minimum of 365 days.  
+**Why it matters:** Short retention periods can cause premature deletion of security-relevant logs, hindering incident investigation, forensic analysis, and compliance with regulatory frameworks that mandate long-term log storage.  
+**Change needed:** Increase the `retention_in_days` argument to at least 365. The resource already has a KMS key configured, so no other modification is required for this check.
+
+**Check 2: CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (lines 6–8)**  
+**What is wrong:** The same retention misconfiguration exists here – `retention_in_days` is set to 1.  
+**Why it matters:** As above, insufficient retention risks losing critical log data before it can be reviewed or used in an investigation.  
+**Change needed:** Set `retention_in_days` to 365 or a higher value that meets your organisation’s retention policy. This change alone will resolve the CKV_AWS_338 finding for this resource.
+
+**Check 3: CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (lines 6–8)**  
+**What is wrong:** The log group is not configured with a KMS key, meaning log data is encrypted only with the default AWS-managed key.  
+**Why it matters:** Using a customer-managed KMS key gives you control over key rotation, access policies, and audit trails. Without it, you may not meet security standards that require customer-managed encryption for sensitive log data.  
+**Change needed:** Add a `kms_key_id` argument referencing a valid KMS key (ARN, alias, or ID). This can be the same key used in the `pass` resource or a different one, depending on your key management strategy. The fix is independent of the retention change; both can be applied together to the same resource.

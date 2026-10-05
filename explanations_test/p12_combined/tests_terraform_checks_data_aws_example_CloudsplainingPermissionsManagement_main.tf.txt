@@ -1,0 +1,51 @@
+**Remediation briefing: IAM policy misconfigurations in `data.aws_iam_policy_document.fail`**
+
+All five findings are raised against the same resource: the `data "aws_iam_policy_document" "fail"` block defined at **lines 19–31**. The single statement inside it (lines 22–29) grants `Allow` on `actions = ["iam:*"]` for `resources = ["*"]`. This unrestricted combination triggers every check. The remediation for each check is a variation on the same theme: replace the wildcard action and/or the wildcard resource with the minimum required permissions and specific resource ARNs.
+
+---
+
+### 1. CKV_AWS_107: Ensure IAM policies do not allow credentials exposure
+- **Resource:** `aws_iam_policy_document.fail` (lines 19–31)
+- **Triggering lines:** 24–25 (`actions = ["iam:*"]`) and 27–28 (`resources = ["*"]`)
+- **What is wrong:** The policy allows all IAM actions on all resources. This includes actions that expose credentials, such as `iam:GetAccessKey`, `iam:CreateAccessKey`, `iam:ListAccessKeys`, and `iam:GetLoginProfile`. Allowing these on `"*"` means credentials for any IAM user in the account could be retrieved or created.
+- **Change needed:** Remove the credential‑exposing actions from the policy. Either replace `"iam:*"` with a list of specific IAM actions that do **not** include credential‑exposure actions, or restrict the `resources` to ARNs of IAM entities that are not users (e.g., roles) if the use case genuinely requires those actions.
+
+---
+
+### 2. CKV_AWS_356: Ensure no IAM policies documents allow “*” as a statement’s resource for restrictable actions
+- **Resource:** `aws_iam_policy_document.fail` (lines 19–31)
+- **Triggering lines:** 27–28 (`resources = ["*"]`) combined with line 25 (`actions = ["iam:*"]`)
+- **What is wrong:** The policy uses `"*"` as the resource for IAM actions, which are restrictable. This grants the actions across all IAM resources (users, roles, policies, etc.) in the account, violating the principle of least privilege.
+- **Change needed:** Replace `resources = ["*"]` with one or more specific resource ARNs (e.g., `arn:aws:iam::123456789012:role/specific-role`). If the policy must apply to multiple resources, enumerate them explicitly; do not use a wildcard.
+
+---
+
+### 3. CKV_AWS_109: Ensure IAM policies do not allow permissions management / resource exposure without constraints
+- **Resource:** `aws_iam_policy_document.fail` (lines 19–31)
+- **Triggering lines:** 24–25 (`actions = ["iam:*"]`) and 27–28 (`resources = ["*"]`)
+- **What is wrong:** The policy grants full IAM permissions management (e.g., `iam:CreateUser`, `iam:AttachUserPolicy`, `iam:PutRolePolicy`) and resource exposure (e.g., `iam:ListUsers`, `iam:GetPolicy`) on all resources, with no conditions or resource restrictions. This provides unconstrained control over the entire IAM layer.
+- **Change needed:** Restrict the actions to only those required for the specific task, and limit the resources to the exact IAM entities that need to be managed. Additionally, consider adding `condition` blocks (e.g., based on tags or source IP) to further constrain the permissions.
+
+---
+
+### 4. CKV_AWS_110: Ensure IAM policies do not allow privilege escalation
+- **Resource:** `aws_iam_policy_document.fail` (lines 19–31)
+- **Triggering lines:** 24–25 (`actions = ["iam:*"]`) and 27–28 (`resources = ["*"]`)
+- **What is wrong:** The policy includes IAM actions that can be used to escalate privileges, such as `iam:CreateAccessKey`, `iam:UpdateLoginProfile`, `iam:AttachUserPolicy`, `iam:PutUserPolicy`, `iam:AddUserToGroup`, and `iam:UpdateAssumeRolePolicy`. Because the resource is `"*"`, an identity with this policy could grant itself or others elevated permissions.
+- **Change needed:** Remove all IAM actions that allow privilege escalation. Replace the wildcard action with a tightly scoped set of IAM actions that are read‑only or limited to non‑escalation tasks (e.g., `iam:Get*`, `iam:List*`, `iam:PassRole` only for specific roles). Ensure the resource is restricted to the exact entities that require those actions.
+
+---
+
+### 5. CKV2_AWS_40: Ensure AWS IAM policy does not allow full IAM privileges
+- **Resource:** `aws_iam_policy_document.fail` (lines 19–31)
+- **Triggering lines:** 24–25 (`actions = ["iam:*"]`) and 27–28 (`resources = ["*"]`)
+- **What is wrong:** The policy grants `iam:*` on `*`, which is full administrative access to all IAM resources. This violates the principle of least privilege and gives the attached identity complete control over the IAM layer.
+- **Change needed:** Replace the wildcard action with a minimal set of specific IAM actions that the policy actually requires. Do not use `"iam:*"`. If the policy is intended for a specific role or user, scope the `resources` to that entity’s ARN and list only the necessary actions.
+
+---
+
+**Summary of required changes:**  
+All five checks will pass once the statement in `data.aws_iam_policy_document.fail` is modified to:
+- Use a list of **specific IAM actions** instead of `"iam:*"`, excluding any that expose credentials, manage permissions, or allow privilege escalation.
+- Use **explicit resource ARNs** instead of `"*"`, limiting the scope to the exact IAM resources that need to be affected.
+- Optionally, add **condition blocks** to further restrict when the permissions apply.

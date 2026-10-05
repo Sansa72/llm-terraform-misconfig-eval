@@ -1,0 +1,101 @@
+**Remediation Briefing: Lambda Security Misconfigurations**
+
+Below is a finding-by-finding breakdown of every flagged check, in the order presented by the scanner. For each, the issue is stated, the risk is explained, and the required change is described in prose (no ready-to-paste blocks). Where multiple findings affect the same resource, the changes are independent and can be applied cumulatively.
+
+---
+
+### 1. CKV_AWS_50 on `aws_lambda_function.pass` (lines 1‑11)
+**What’s wrong:** X‑ray tracing is not enabled.  
+**Why it matters:** Without active tracing, you lose end‑to‑end visibility into requests, making it harder to debug performance issues and errors in distributed applications.  
+**Change needed:** Add a `tracing_config` block inside the resource and set its `mode` argument to `"Active"`. This requires no additional IAM permissions beyond the Lambda execution role’s existing trust policy.
+
+### 2. CKV_AWS_117 on `aws_lambda_function.pass` (lines 1‑11)
+**What’s wrong:** The function is not attached to a VPC.  
+**Why it matters:** Without VPC placement, the function cannot access resources inside a VPC (e.g., RDS, ElastiCache) and may be exposed to the public internet unnecessarily.  
+**Change needed:** Add a `vpc_config` block containing `subnet_ids` (a list of private subnet IDs) and `security_group_ids` (a list of security group IDs that allow required traffic). Ensure the subnets and security groups exist in the same AWS region.
+
+### 3. CKV_AWS_116 on `aws_lambda_function.pass` (lines 1‑11)
+**What’s wrong:** No Dead Letter Queue (DLQ) is configured.  
+**Why it matters:** Without a DLQ, failed asynchronous invocations are lost, making it impossible to inspect or replay events that caused errors.  
+**Change needed:** Add a `dead_letter_config` block with a `target_arn` pointing to an existing SQS queue or SNS topic. The Lambda execution role must have `sqs:SendMessage` or `sns:Publish` permissions on that target.
+
+### 4. CKV_AWS_272 on `aws_lambda_function.pass` (lines 1‑11)
+**What’s wrong:** Code signing is not enforced.  
+**Why it matters:** Without code signing validation, the function could run untrusted or tampered code, undermining integrity controls.  
+**Change needed:** Set the `code_signing_config_arn` argument to the ARN of a pre‑created `aws_lambda_code_signing_config` resource. This requires a signing profile in AWS Signer and a valid signing configuration.
+
+### 5. CKV_AWS_115 on `aws_lambda_function.pass` (lines 1‑11)
+**What’s wrong:** No function‑level concurrency limit is set.  
+**Why it matters:** Without a reserved concurrency limit, a single function can consume all available account concurrency, starving other functions and causing throttling.  
+**Change needed:** Add the `reserved_concurrent_executions` argument with a positive integer (e.g., `10`). Choose a value that reflects the function’s expected peak concurrent invocations while leaving headroom for other functions.
+
+---
+
+### 6. CKV_AWS_50 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** X‑ray tracing is not enabled.  
+**Why it matters:** Same as finding #1 – lack of tracing hampers observability.  
+**Change needed:** Insert a `tracing_config` block with `mode = "Active"` inside the `aws_lambda_function.fail` resource.
+
+### 7. CKV_AWS_117 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** The function is not placed inside a VPC.  
+**Why it matters:** Same as finding #2 – no VPC means no private network access and potential unwanted internet exposure.  
+**Change needed:** Add a `vpc_config` block with appropriate `subnet_ids` and `security_group_ids` for the VPC in which the function should run.
+
+### 8. CKV_AWS_116 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** No Dead Letter Queue is configured.  
+**Why it matters:** Same as finding #3 – failed asynchronous invocations are lost.  
+**Change needed:** Add a `dead_letter_config` block with a `target_arn` pointing to an SQS queue or SNS topic, and grant the execution role the necessary send permissions.
+
+### 9. CKV_AWS_272 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** Code signing validation is not enabled.  
+**Why it matters:** Same as finding #4 – code integrity is not verified before execution.  
+**Change needed:** Set the `code_signing_config_arn` argument to the ARN of a valid Lambda code signing configuration.
+
+### 10. CKV_AWS_363 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** The runtime `python3.6` is deprecated.  
+**Why it matters:** Deprecated runtimes no longer receive security patches or support, exposing the function to unpatched vulnerabilities and potential runtime failures.  
+**Change needed:** Update the `runtime` argument to a currently supported Python version, such as `"python3.12"`. Verify that the function code is compatible with the new runtime.
+
+### 11. CKV_AWS_115 on `aws_lambda_function.fail` (lines 13‑23)
+**What’s wrong:** No function‑level concurrency limit is set.  
+**Why it matters:** Same as finding #5 – risk of one function exhausting the account’s concurrency quota.  
+**Change needed:** Add the `reserved_concurrent_executions` argument with a sensible limit (e.g., `5`).
+
+---
+
+### 12. CKV_AWS_50 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** X‑ray tracing is not enabled.  
+**Why it matters:** Same as finding #1 – missing distributed tracing.  
+**Change needed:** Add a `tracing_config` block with `mode = "Active"` to the `fail2` resource.
+
+### 13. CKV_AWS_117 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** The function is not inside a VPC.  
+**Why it matters:** Same as finding #2 – no private network access.  
+**Change needed:** Add a `vpc_config` block with valid subnet and security group IDs.
+
+### 14. CKV_AWS_116 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** No Dead Letter Queue is configured.  
+**Why it matters:** Same as finding #3 – lost async failure events.  
+**Change needed:** Add a `dead_letter_config` block with a `target_arn` and ensure the execution role has the required permissions.
+
+### 15. CKV_AWS_272 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** Code signing validation is not enabled.  
+**Why it matters:** Same as finding #4 – no code integrity check.  
+**Change needed:** Set `code_signing_config_arn` to the ARN of a code signing configuration.
+
+### 16. CKV_AWS_363 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** The runtime `dotnetcore3.1` is deprecated.  
+**Why it matters:** Deprecated runtimes are unsupported and insecure.  
+**Change needed:** Change the `runtime` argument to a supported .NET runtime, such as `"dotnet8"`. Ensure the function code is rebuilt and tested against the new runtime.
+
+### 17. CKV_AWS_115 on `aws_lambda_function.fail2` (lines 25‑35)
+**What’s wrong:** No function‑level concurrency limit is set.  
+**Why it matters:** Same as finding #5 – risk of quota exhaustion.  
+**Change needed:** Add the `reserved_concurrent_executions` argument with an appropriate limit.
+
+---
+
+**Interaction notes:**  
+- All changes for a given resource are additive and do not conflict. You can apply them together in a single update.  
+- The VPC, DLQ, and code signing configurations require supporting resources (subnets, security groups, SQS/SNS, signing profiles) that must exist or be created separately.  
+- Updating the runtime (CKV_AWS_363) may require code changes; test thoroughly before deploying.

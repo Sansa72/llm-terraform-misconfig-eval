@@ -1,0 +1,35 @@
+**Remediation Briefing**
+
+Below are the failing checks, presented in the order they appear in the scanner output. For each, I explain the issue, why it matters, and the change required to pass the check.
+
+---
+
+### 1. CKV_AWS_315 on `aws_autoscaling_group.passtag` (lines 1-24)
+**What is wrong:** The Auto Scaling group is using a launch configuration (`launch_configuration`) instead of a launch template.  
+**Why it matters:** Launch configurations are a legacy feature; AWS recommends launch templates because they support versioning, multiple instance types, dedicated hosts, and other advanced capabilities. Using launch templates also ensures you can take advantage of future EC2 features.  
+**Change needed:** Replace the `launch_configuration` argument with a reference to a new or existing `aws_launch_template` resource. You will need to define a launch template (e.g., `aws_launch_template.foobar`) that mirrors the settings of the current launch configuration, then update the ASG to use `launch_template { id = aws_launch_template.foobar.id, version = "$Latest" }`. The existing tags on the ASG (defined with `tag` blocks) can remain as they are; they are already being propagated to instances.
+
+---
+
+### 2. CKV_AWS_315 on `aws_autoscaling_group.passtags` (lines 27-49)
+**What is wrong:** This Auto Scaling group also uses a launch configuration instead of a launch template.  
+**Why it matters:** Same as above – launch configurations are deprecated in favour of launch templates, which provide better flexibility and future compatibility.  
+**Change needed:** Migrate this ASG to use a launch template in the same way as described for `passtag`. The existing tags (defined via the `tags` argument with a list of maps) can be kept as-is; they will continue to be applied to instances launched by the group. Ensure the launch template reference replaces `launch_configuration`.
+
+---
+
+### 3. CKV_AWS_153 on `aws_autoscaling_group.fail` (lines 52-58)
+**What is wrong:** This Auto Scaling group has no tags defined, so no tags are supplied to the launch configuration or propagated to instances.  
+**Why it matters:** Tags are essential for resource identification, cost allocation, access control, and operational management. Without tags, instances launched by this group will lack metadata, making it difficult to track ownership, environment, or purpose.  
+**Change needed:** Add at least one tag to the ASG resource. You can use the `tag` block (like in `passtag`) or the `tags` argument (like in `passtags`). For example, add a `tag` block with a meaningful key/value pair (e.g., `Name` and `Environment`) and set `propagate_at_launch = true` so that instances inherit the tag. This will satisfy the check.
+
+---
+
+### 4. CKV_AWS_315 on `aws_autoscaling_group.fail` (lines 52-58)
+**What is wrong:** This ASG also uses a launch configuration instead of a launch template.  
+**Why it matters:** Same as the other CKV_AWS_315 findings – launch configurations are legacy and should be replaced with launch templates for better feature support and future-proofing.  
+**Change needed:** Migrate this ASG to a launch template, as described for the first two resources. Since this resource also fails CKV_AWS_153, you should combine the fixes: define a launch template and add the required tags (either on the ASG itself or within the launch template’s `tag_specifications`). The simplest approach is to add a `tag` block to the ASG resource while also switching to a launch template.
+
+---
+
+**Interaction note:** The `fail` resource is the only one that requires both a launch template migration and the addition of tags. The other two resources already have tags, so they only need the launch template change. When you create the launch template for any of these groups, you can optionally move the instance tags into the launch template’s `tag_specifications` block, but that is not required to pass these checks – keeping the tags on the ASG resource (as currently done for `passtag` and `passtags`) is sufficient.

@@ -1,0 +1,74 @@
+### 1. IAM password policy (`aws_iam_account_password_policy.password-policy`)
+
+**What is missing:**  
+`max_password_age` and `password_reuse_prevention` are not set.
+
+**Why it matters:**  
+Without `max_password_age`, passwords do not expire. Without `password_reuse_prevention`, users can reuse previous passwords. A leaked or previously exposed password remains usable indefinitely, and password rotation becomes much less effective.
+
+**Fix safely:**
+
+```hcl
+resource "aws_iam_account_password_policy" "password-policy" {
+  minimum_password_length        = 15
+  require_lowercase_characters   = true
+  require_numbers                = true
+  require_uppercase_characters   = true
+  require_symbols                = true
+  allow_users_to_change_password = true
+
+  max_password_age            = 90
+  password_reuse_prevention   = 24
+}
+```
+
+Communicate the change before applying because it can force password changes for existing users.
+
+---
+
+### 2. S3 bucket (`aws_s3_bucket.template_bucket`)
+
+The bucket only defines `region`, `bucket`, `acl`, and `force_destroy`. The following controls are absent:
+
+| Checkov control | Missing configuration | Risk | Safe fix |
+|---|---|---|---|
+| `CKV2_AWS_61` | Lifecycle configuration | Objects can be retained indefinitely, increasing exposure and storage cost. | Add `aws_s3_bucket_lifecycle_configuration` with appropriate expiration/transition rules. |
+| `CKV_AWS_18` | Access logging | Bucket requests are not logged, reducing visibility into unauthorized access or forensic investigations. | Enable S3 server access logging to a dedicated, access-controlled log bucket. |
+| `CKV2_AWS_62` | Event notifications | No automated alerting on object create/delete/restore events, delaying detection of suspicious changes. | Add `aws_s3_bucket_notification` to send events to SNS, SQS, or Lambda. |
+| `CKV2_AWS_6` | Public Access block | With `acl = var.acl`, public access may be possible if that variable permits public ACLs. There is no bucket-level guardrail. | Add `aws_s3_bucket_public_access_block` with all block settings enabled. |
+| `CKV_AWS_145` | KMS default encryption | Objects are not explicitly configured to use SSE-KMS, which may violate encryption key control requirements. | Add `aws_s3_bucket_server_side_encryption_configuration` with `sse_algorithm = "aws:kms"`. |
+| `CKV_AWS_144` | Cross-region replication | No automated copy exists in another region; data is less resilient to region loss or source bucket deletion. | Add `aws_s3_bucket_replication_configuration` to a destination bucket in another region. Requires versioning and an IAM replication role. |
+| `CKV_AWS_21` | Versioning | Object overwrites and deletes are destructive. With `force_destroy = true`, accidental or malicious deletion can be irreversible. | Enable S3 versioning. This is also required for replication. |
+
+**Minimal safe example for several high-impact S3 controls:**
+
+```hcl
+resource "aws_s3_bucket_versioning" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "template_bucket" {
+  bucket = aws_s3_bucket.template_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "aws:kms"
+    }
+  }
+}
+```
+
+Apply changes in a non-production environment first. If enabling replication, enable versioning first and ensure the destination bucket and replication IAM role are correctly configured.

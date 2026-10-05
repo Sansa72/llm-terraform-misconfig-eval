@@ -1,0 +1,32 @@
+### 1. What the misconfiguration is
+The `aws_s3_bucket` resource is declared with only a bucket name (`module-bucket`). It is missing the required security and operational configurations, leading Checkov to flag seven separate issues:
+- No public access block configured.
+- No access logging enabled.
+- Default encryption is not set to use KMS.
+- Versioning is not enabled.
+- No lifecycle configuration.
+- No event notifications.
+- No cross-region replication (CRR).
+
+### 2. Why it matters
+- **Public Access Block (CKV2_AWS_6):** Without a public access block, a future misconfiguration in a bucket policy or ACL could accidentally expose the bucket's contents to the public internet.
+- **Access Logging (CKV_AWS_18):** Without logging, there is no audit trail of who is reading, writing, or deleting objects. This severely hinders incident response and compliance auditing.
+- **KMS Encryption (CKV_AWS_145):** Without explicit KMS encryption, data at rest relies on default S3 encryption (SSE-S3). You lose the ability to control access via customer-managed KMS keys (CMKs) and audit key usage in CloudTrail.
+- **Versioning (CKV_AWS_21):** Without versioning, an accidental overwrite or deletion permanently destroys the data.
+- **Lifecycle (CKV2_AWS_61):** Without lifecycle rules, data accumulates indefinitely, increasing storage costs and expanding the blast radius if the bucket is compromised.
+- **Event Notifications (CKV2_AWS_62):** Without notifications, security automations (e.g., triggering alerts on new object uploads) cannot react to bucket activity.
+- **Cross-Region Replication (CKV_AWS_144):** Without CRR, a regional outage or bucket deletion results in total data loss with no regional redundancy.
+
+### 3. How to fix it safely
+Because the AWS provider v4+ separated S3 configurations into distinct resources, you must add these as separate Terraform resources. Implementing these fixes requires creating supporting infrastructure (a KMS key, a destination logging bucket, and a replication destination bucket). 
+
+Apply the most critical security fixes first:
+1. **Public Access Block:** Create an `aws_s3_bucket_public_access_block` resource linked to the bucket with all four block settings set to `true`.
+2. **Versioning:** Create an `aws_s3_bucket_versioning` resource setting `status = "Enabled"`. (This is a prerequisite for replication).
+3. **KMS Encryption:** Create an `aws_kms_key` and attach it via an `aws_s3_bucket_server_side_encryption_configuration` resource.
+4. **Access Logging:** Create a separate `aws_s3_bucket` for logs, and then create an `aws_s3_bucket_logging` resource pointing the `module-bucket` to the logging bucket.
+
+For the operational requirements, ensure the supporting infrastructure exists before applying:
+5. **Lifecycle Configuration:** Add an `aws_s3_bucket_lifecycle_configuration` resource to manage object retention or expiration.
+6. **Event Notifications:** Add an `aws_s3_bucket_notification` resource if you have an SNS topic, SQS queue, or Lambda function to receive the events.
+7. **Cross-Region Replication:** Create a destination bucket in a different region and an IAM role for replication, then configure it via an `aws_s3_bucket_replication_configuration` resource.

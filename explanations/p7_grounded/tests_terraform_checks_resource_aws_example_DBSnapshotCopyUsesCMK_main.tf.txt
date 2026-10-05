@@ -1,0 +1,8 @@
+The scanner flagged a finding on the `aws_db_snapshot_copy` resource named `fail` (lines 1–4). The check ID is **CKV_AWS_266**, and its description says “Ensure App Flow connector profile uses CMK.” However, the resource in question is an RDS snapshot copy, not an AppFlow connector profile. This suggests the scanner may have misapplied the check label, but the underlying issue it detected is still valid: the resource is missing a customer-managed key (CMK) for encryption.
+
+**Evidence from the file:**
+- The `fail` resource (lines 1–4) does **not** include a `kms_key_id` argument.
+- The `pass` resource (lines 6–10) does include `kms_key_id = aws_kms_key.example.id`, and the scanner did **not** flag it.
+
+**What needs to be fixed:**
+Add a `kms_key_id` argument to the `aws_db_snapshot_copy` block named `fail`, specifying the ARN or ID of a customer-managed KMS key. This ensures the snapshot copy is encrypted with a CMK rather than the default AWS-managed key, which aligns with the security best practice the scanner is enforcing (even if the check name is mismatched).

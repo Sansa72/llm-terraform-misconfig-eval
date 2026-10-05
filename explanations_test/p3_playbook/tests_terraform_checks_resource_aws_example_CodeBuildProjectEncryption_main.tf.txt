@@ -1,0 +1,67 @@
+**Remediation Briefing: CodeBuild Security Misconfigurations**
+
+Below are the required fixes for each failing check, in the order they appear in the scanner report. Changes are described in prose; no complete Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_314 on `aws_codebuild_project.fail` (lines 1-8)
+**What is wrong:** The project has no logging configuration (no `logs` block).  
+**Why it matters:** Without logging, you lose all build output, error details, and security-relevant events. This prevents auditing, troubleshooting, and meeting compliance requirements.  
+**Change needed:** Add a `logs` block inside the resource. At minimum, include a `cloudwatch_logs` sub-block with `group_name` set to an existing or to-be-created CloudWatch Logs group and `status = "ENABLED"`. Optionally, also configure S3 logs for durable storage. This fix is independent of the encryption issues below.
+
+---
+
+### 2. CKV_AWS_78 on `aws_codebuild_project.fail` (lines 1-8)
+**What is wrong:** Artifact encryption is explicitly disabled (`encryption_disabled = true`).  
+**Why it matters:** Disabling encryption leaves build artifacts (stored in S3) unprotected at rest. This violates data protection best practices and may breach regulatory requirements.  
+**Change needed:** Remove the `encryption_disabled = true` line or change it to `false`. This re-enables default S3 server-side encryption.  
+**Interaction note:** This fix must be applied *before* addressing the next finding (CKV_AWS_147), because specifying a customer-managed key is only meaningful when encryption is enabled.
+
+---
+
+### 3. CKV_AWS_147 on `aws_codebuild_project.fail` (lines 1-8)
+**What is wrong:** The project does not specify a customer-managed KMS key for artifact encryption; it relies on the default AWS-managed key.  
+**Why it matters:** A customer-managed CMK gives you control over key rotation, access policies, and usage auditing. Many security standards require CMK usage for sensitive data.  
+**Change needed:** After ensuring encryption is enabled (see CKV_AWS_78), add an `encryption_key` argument inside the `artifacts` block, set to the ARN of a KMS CMK. The CodeBuild service role must have `kms:Encrypt` and `kms:Decrypt` permissions on that key.
+
+---
+
+### 4. CKV_AWS_314 on `aws_codebuild_project.no_artifacts_encryption_ignored` (lines 10-16)
+**What is wrong:** The project has no logging configuration.  
+**Why it matters:** Even when artifact output is disabled (`type = "NO_ARTIFACTS"`), build logs are critical for monitoring build health, debugging failures, and detecting malicious activity.  
+**Change needed:** Add a `logs` block with a CloudWatch Logs group (and optionally S3 logs). The existing `encryption_disabled` setting is ignored for `NO_ARTIFACTS` and does not interact with this fix.
+
+---
+
+### 5. CKV_AWS_314 on `aws_codebuild_project.success_no_encryption_disabled` (lines 18-23)
+**What is wrong:** No logging configuration is present.  
+**Why it matters:** Missing logs remove visibility into the build process, hindering operational and security oversight.  
+**Change needed:** Add a `logs` block with CloudWatch Logs enabled. This is independent of the encryption key issue below.
+
+---
+
+### 6. CKV_AWS_147 on `aws_codebuild_project.success_no_encryption_disabled` (lines 18-23)
+**What is wrong:** The project uses default AWS-managed encryption for S3 artifacts instead of a customer-managed CMK.  
+**Why it matters:** A CMK provides greater control over key management, access policies, and audit trails, which is often required for compliance and least-privilege security.  
+**Change needed:** Add an `encryption_key` argument in the `artifacts` block, pointing to a KMS CMK ARN. No prerequisite fix is needed because encryption is already enabled (default). This change does not affect the logging configuration.
+
+---
+
+### 7. CKV_AWS_314 on `aws_codebuild_project.success` (lines 25-31)
+**What is wrong:** The project lacks a logging configuration.  
+**Why it matters:** Same as all other logging findings—no logs means no visibility.  
+**Change needed:** Add a `logs` block with CloudWatch Logs enabled. This is independent of the encryption key issue below.
+
+---
+
+### 8. CKV_AWS_147 on `aws_codebuild_project.success` (lines 25-31)
+**What is wrong:** The project does not use a CMK for artifact encryption, relying on the default AWS-managed key.  
+**Why it matters:** Same as the other CMK findings—customer-managed keys are essential for control and compliance.  
+**Change needed:** Add an `encryption_key` argument in the `artifacts` block with a KMS CMK ARN. No other changes are required; encryption is already enabled (`encryption_disabled = false`).
+
+---
+
+**Summary of interactions:**  
+- For `aws_codebuild_project.fail`, the `encryption_disabled` fix (CKV_AWS_78) must be completed before adding a CMK (CKV_AWS_147).  
+- All logging fixes (CKV_AWS_314) are independent of encryption settings and can be applied in any order.  
+- No other resources have interdependent findings.

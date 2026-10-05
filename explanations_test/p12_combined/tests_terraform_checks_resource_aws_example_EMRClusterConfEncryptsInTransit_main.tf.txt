@@ -1,0 +1,161 @@
+## Remediation Briefing: EMR Security Configuration Findings
+
+Below are the failing checks, ordered as they appear in the scanner output. Each entry identifies the resource, the exact lines that trigger the finding, what is wrong, why it matters, and the change needed to pass the check.
+
+---
+
+### 1. CKV_AWS_171 on `aws_emr_security_configuration.pass` (lines 1‑22)
+
+**Trigger**  
+Lines 8‑10, specifically the `S3EncryptionConfiguration` block:  
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-S3"
+}
+```
+
+**What is wrong**  
+The S3 encryption mode is set to `SSE-S3` instead of `SSE-KMS`.
+
+**Why it matters**  
+SSE‑S3 uses Amazon S3‑managed keys, which do not provide the same level of access control and auditability as AWS KMS customer master keys. The check requires SSE‑KMS for cluster security configurations.
+
+**Change needed**  
+Modify the `EncryptionMode` value from `"SSE-S3"` to `"SSE-KMS"`. You may also need to supply a KMS key ARN in the `S3EncryptionConfiguration` block (the same key used for local disk encryption could be reused, or a separate one specified).
+
+---
+
+### 2. CKV_AWS_351 on `aws_emr_security_configuration.fail` (lines 24‑40)
+
+**Trigger**  
+Line 36: `"EnableInTransitEncryption": false`
+
+**What is wrong**  
+In‑transit encryption is explicitly disabled.
+
+**Why it matters**  
+Without in‑transit encryption, data moving between EMR cluster nodes and between the cluster and S3 is not protected from interception. The check requires it to be enabled.
+
+**Change needed**  
+Set `"EnableInTransitEncryption"` to `true` in the `EncryptionConfiguration` block.
+
+---
+
+### 3. CKV_AWS_171 on `aws_emr_security_configuration.fail` (lines 24‑40)
+
+**Trigger**  
+Lines 29‑31, the `S3EncryptionConfiguration` block:  
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-S3"
+}
+```
+
+**What is wrong**  
+S3 encryption is using `SSE-S3` instead of `SSE-KMS`.
+
+**Why it matters**  
+Same as finding #1 – SSE‑S3 does not provide the key management and audit capabilities of KMS‑based encryption.
+
+**Change needed**  
+Change the `EncryptionMode` value from `"SSE-S3"` to `"SSE-KMS"` and, if required by the policy, include a KMS key ARN.
+
+---
+
+### 4. CKV_AWS_350 on `aws_emr_security_configuration.fail` (lines 24‑40)
+
+**Trigger**  
+The `AtRestEncryptionConfiguration` block (lines 28‑33) contains no `LocalDiskEncryptionConfiguration` block.
+
+**What is wrong**  
+EBS disk encryption is not configured. The security configuration lacks a `LocalDiskEncryptionConfiguration` block with `EnableEbsEncryption` set to `true`.
+
+**Why it matters**  
+Without this setting, EBS volumes attached to the cluster are not encrypted at rest, leaving data on those volumes unprotected.
+
+**Change needed**  
+Add a `LocalDiskEncryptionConfiguration` block inside `AtRestEncryptionConfiguration` that includes `"EnableEbsEncryption": true`, `"EncryptionKeyProviderType": "AwsKms"`, and a valid KMS key ARN.
+
+---
+
+### 5. CKV_AWS_349 on `aws_emr_security_configuration.fail` (lines 24‑40)
+
+**Trigger**  
+Same as finding #4 – the `AtRestEncryptionConfiguration` block (lines 28‑33) has no `LocalDiskEncryptionConfiguration` block.
+
+**What is wrong**  
+Local (instance store) disk encryption is not configured. The required `LocalDiskEncryptionConfiguration` block is missing entirely.
+
+**Why it matters**  
+Instance store volumes are not encrypted at rest, exposing data on those disks if the physical hardware is compromised.
+
+**Change needed**  
+Add the same `LocalDiskEncryptionConfiguration` block described in finding #4. This block enables both EBS and local disk encryption when `EncryptionKeyProviderType` is `"AwsKms"` and a key ARN is supplied.
+
+---
+
+### 6. CKV_AWS_351 on `aws_emr_security_configuration.fail2` (lines 43‑53)
+
+**Trigger**  
+The entire `configuration` block (lines 46‑52) contains only `"EnableAtRestEncryption": false`. There is no `"EnableInTransitEncryption"` key.
+
+**What is wrong**  
+In‑transit encryption is not enabled. The configuration does not declare `EnableInTransitEncryption` at all, which defaults to disabled.
+
+**Why it matters**  
+Data in motion between cluster components and S3 is not encrypted, risking exposure.
+
+**Change needed**  
+Add `"EnableInTransitEncryption": true` to the `EncryptionConfiguration` object.
+
+---
+
+### 7. CKV_AWS_171 on `aws_emr_security_configuration.fail2` (lines 43‑53)
+
+**Trigger**  
+The configuration (lines 46‑52) has no `AtRestEncryptionConfiguration` block and therefore no `S3EncryptionConfiguration` with SSE‑KMS.
+
+**What is wrong**  
+S3 encryption is not configured to use SSE‑KMS. The entire at‑rest encryption section is missing.
+
+**Why it matters**  
+Without an explicit SSE‑KMS configuration, S3 data written by the cluster may not be encrypted with customer‑managed keys, reducing control and auditability.
+
+**Change needed**  
+Add an `AtRestEncryptionConfiguration` block containing an `S3EncryptionConfiguration` with `"EncryptionMode": "SSE-KMS"` (and optionally a KMS key ARN). Also set `"EnableAtRestEncryption": true`.
+
+---
+
+### 8. CKV_AWS_350 on `aws_emr_security_configuration.fail2` (lines 43‑53)
+
+**Trigger**  
+The configuration (lines 46‑52) lacks any `LocalDiskEncryptionConfiguration` block.
+
+**What is wrong**  
+EBS disk encryption is not configured. The required `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption` is absent.
+
+**Why it matters**  
+EBS volumes attached to the cluster will not be encrypted at rest.
+
+**Change needed**  
+Inside the newly added `AtRestEncryptionConfiguration`, include a `LocalDiskEncryptionConfiguration` block with `"EnableEbsEncryption": true`, `"EncryptionKeyProviderType": "AwsKms"`, and a valid KMS key ARN.
+
+---
+
+### 9. CKV_AWS_349 on `aws_emr_security_configuration.fail2` (lines 43‑53)
+
+**Trigger**  
+Same as finding #8 – no `LocalDiskEncryptionConfiguration` block exists.
+
+**What is wrong**  
+Local (instance store) disk encryption is not configured.
+
+**Why it matters**  
+Instance store volumes remain unencrypted, exposing data at rest on those disks.
+
+**Change needed**  
+The same `LocalDiskEncryptionConfiguration` block added for finding #8 will also satisfy this check, as it enables encryption for both EBS and local disks when using `AwsKms` as the key provider type.
+
+---
+
+All changes should be applied to the respective `configuration` JSON strings in the Terraform resources. After updating the configurations, re‑run the scanner to confirm the findings are resolved.

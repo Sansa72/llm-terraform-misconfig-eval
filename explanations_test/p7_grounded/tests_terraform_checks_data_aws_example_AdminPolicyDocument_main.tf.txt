@@ -1,0 +1,108 @@
+The scanner found multiple security misconfigurations in the IAM policy documents defined in your Terraform file. Below I break down each finding by resource, check ID, and the exact lines that trigger it.
+
+---
+
+### Resource: `aws_iam_policy_document.pass` (lines 3–15)
+
+**Finding:**  
+- **CKV_AWS_356** – *Ensure no IAM policies documents allow "*" as a statement's resource for restrictable actions*
+
+**Triggering code (lines 3–15):**
+```hcl
+data "aws_iam_policy_document" "pass" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:Describe*",
+    ]
+    resources = [
+      "*",
+    ]
+  }
+}
+```
+
+**Explanation:**  
+The policy grants `s3:Describe*` actions on resource `"*"`. The scanner considers `s3:Describe*` actions to be “restrictable” – meaning they can and should be scoped to specific resources rather than allowing them on all resources. By using `"*"` as the resource, the policy is overly broad. The check flags this as a misconfiguration.
+
+---
+
+### Resource: `aws_iam_policy_document.fail` (lines 43–55)
+
+**Triggering code:**
+```hcl
+data "aws_iam_policy_document" "fail" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "*"
+    ]
+    resources = [
+      "*",
+    ]
+  }
+}
+```
+
+This single statement triggers **nine** distinct checks because it combines `effect = "Allow"`, `actions = ["*"]`, and `resources = ["*"]`. Each finding is explained below:
+
+| Check ID | Description | Why it’s triggered |
+|----------|-------------|---------------------|
+| **CKV_AWS_1** | Ensure IAM policies that allow full `"*-*"` administrative privileges are not created | The policy allows all actions (`"*"`) on all resources (`"*"`), which is equivalent to full administrative access. |
+| **CKV_AWS_49** | Ensure no IAM policies documents allow `"*"` as a statement’s actions | The `actions` list contains `"*"`. |
+| **CKV_AWS_107** | Ensure IAM policies does not allow credentials exposure | Allowing `"*"` actions on `"*"` resources includes IAM actions that could expose credentials (e.g., `iam:ListAccessKeys`, `iam:GetLoginProfile`). |
+| **CKV_AWS_108** | Ensure IAM policies does not allow data exfiltration | The wildcard actions and resources grant unrestricted access to data retrieval actions (e.g., `s3:GetObject`, `dynamodb:Scan`). |
+| **CKV_AWS_109** | Ensure IAM policies does not allow permissions management / resource exposure without constraints | The policy allows all IAM and resource‑management actions (e.g., `iam:Attach*`, `s3:PutBucketPolicy`) on all resources. |
+| **CKV_AWS_110** | Ensure IAM policies does not allow privilege escalation | The wildcard combination permits actions that can be used to escalate privileges (e.g., `iam:CreateAccessKey`, `iam:UpdateLoginProfile`). |
+| **CKV_AWS_111** | Ensure IAM policies does not allow write access without constraints | The policy allows all write actions (e.g., `s3:PutObject`, `ec2:RunInstances`) on all resources. |
+| **CKV_AWS_356** | Ensure no IAM policies documents allow `"*"` as a statement’s resource for restrictable actions | The resource is `"*"` and the actions include restrictable ones (in fact, all actions). |
+| **CKV2_AWS_40** | Ensure AWS IAM policy does not allow full IAM privileges | The policy effectively grants full IAM administrative access because it allows all actions on all resources. |
+
+All findings are grounded in the same statement block (lines 43–55). The policy is dangerously permissive.
+
+---
+
+### Resource: `aws_iam_policy_document.no_effect` (lines 57–68)
+
+**Triggering code:**
+```hcl
+data "aws_iam_policy_document" "no_effect" {
+  version = "2012-10-17"
+
+  statement {
+    actions = [
+      "*"
+    ]
+    resources = [
+      "*",
+    ]
+  }
+}
+```
+
+**Findings:**  
+- CKV_AWS_108 (data exfiltration)  
+- CKV_AWS_111 (write access without constraints)  
+- CKV_AWS_49 (wildcard actions)  
+- CKV_AWS_107 (credentials exposure)  
+- CKV_AWS_356 (wildcard resource for restrictable actions)  
+- CKV_AWS_109 (permissions management / resource exposure without constraints)  
+- CKV_AWS_1 (full `"*-*"` administrative privileges)  
+- CKV_AWS_110 (privilege escalation)  
+
+**Explanation:**  
+The statement does not explicitly set `effect`. In AWS IAM policy documents, the default effect is `"Allow"`. The scanner therefore treats this policy as if it had `effect = "Allow"`, making it functionally identical to the `fail` resource: it allows all actions on all resources. All the same checks are triggered for the same reasons. The only difference is that `CKV2_AWS_40` (full IAM privileges) was not reported for this resource in the provided findings, but the other eight checks are present.
+
+---
+
+### Summary
+
+- **`aws_iam_policy_document.pass`** uses a wildcard resource (`"*"`) with a restrictable action (`s3:Describe*`), violating **CKV_AWS_356**.
+- **`aws_iam_policy_document.fail`** explicitly allows all actions on all resources, triggering **nine** checks that warn against full administrative access, wildcard actions/resources, and specific risks like data exfiltration, credential exposure, and privilege escalation.
+- **`aws_iam_policy_document.no_effect`** omits the `effect` field, which defaults to `"Allow"`, resulting in the same dangerous policy as `fail` and triggering the same set of checks (except CKV2_AWS_40, which was not reported for this resource in the provided findings).
+
+To fix these, scope down the `actions` and `resources` to the minimum required for the intended use case, and always explicitly set `effect` to avoid ambiguity.

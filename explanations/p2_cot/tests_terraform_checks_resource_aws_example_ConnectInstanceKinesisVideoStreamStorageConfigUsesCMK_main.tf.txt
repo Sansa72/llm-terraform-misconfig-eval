@@ -1,0 +1,35 @@
+The findings highlight two separate issues in the `aws_connect_instance_storage_config` resources, though one is a false positive.
+
+**CKV_AWS_269 – Kinesis Video Stream encryption key (real issue)**
+
+The `fail` resource configures a Kinesis Video Stream storage for Amazon Connect media streams. It enables KMS encryption, but does not specify a customer-managed key (CMK) via `key_id`. When `encryption_type` is set to `"KMS"` without a key ID, AWS uses an **AWS managed key** for the service. This means you have no control over the key’s policy, rotation schedule, or access auditing. A customer-managed key (CMK) allows you to enforce granular permissions, restrict access to specific IAM principals, enable automatic rotation, and integrate with CloudTrail for detailed usage logging. The `pass` resource correctly references a CMK ARN, satisfying the check.
+
+**CKV_AWS_270 – S3 storage config encryption (false positive)**
+
+This check expects encryption settings for an S3 storage configuration, but your resources are of type `MEDIA_STREAMS` (Kinesis Video Stream), not S3. The scanner is incorrectly applying the S3 rule to these resources. You can safely suppress or ignore this finding for both the `pass` and `fail` resources, as they do not contain an S3 storage configuration.
+
+**Fix**
+
+For the `fail` resource, provide a KMS key ARN in the encryption config, just like the `pass` resource. For example:
+
+```hcl
+resource "aws_connect_instance_storage_config" "fail" {
+  instance_id   = aws_connect_instance.fail.id
+  resource_type = "MEDIA_STREAMS"
+
+  storage_config {
+    kinesis_video_stream_config {
+      prefix                 = "fail"
+      retention_period_hours = 3
+
+      encryption_config {
+        encryption_type = "KMS"
+        key_id          = aws_kms_key.your_cmk.arn   # <-- add this
+      }
+    }
+    storage_type = "KINESIS_VIDEO_STREAM"
+  }
+}
+```
+
+Make sure the KMS key exists and that the Connect instance’s IAM role has permissions to use it (e.g., `kms:GenerateDataKey`, `kms:Decrypt`).

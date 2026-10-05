@@ -1,0 +1,103 @@
+The scanner flagged three `aws_api_gateway_method_settings` resources against three separate policies. All three resources need changes, even the ones named “pass_*”. Below I explain each finding, why it matters, and exactly what to modify in your Terraform.
+
+---
+
+### 1. CKV_AWS_276 – Data Trace must not be enabled
+
+**What the policy says**  
+API Gateway method settings include a “Data Trace” option that, when enabled, logs the full request and response payloads to CloudWatch. This can expose sensitive data (credentials, PII, session tokens) in logs, violating least‑privilege and data‑protection principles. The policy requires `data_trace_enabled` to be `false` (or absent, since the default is `false`).
+
+**Where it applies in your file**  
+Only the `aws_api_gateway_method_settings.fail` resource explicitly sets `data_trace_enabled = true` (line 8). The other two resources do not enable it, so they are not flagged for this check.
+
+**Fix**  
+Change the setting to `false` or remove the line entirely (the default is `false`). I recommend explicitly setting it to `false` to make the intent clear.
+
+```hcl
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled = false   # ← was true
+  }
+}
+```
+
+---
+
+### 2. CKV_AWS_225 – API Gateway method caching must be enabled
+
+**What the policy says**  
+Enabling the method‑level cache reduces the number of calls made to the backend, improving latency and protecting the backend from traffic spikes. The check requires `caching_enabled = true` in the `settings` block.
+
+**Where it applies**  
+All three resources are flagged:
+
+- `fail` – has a `settings` block but no `caching_enabled` attribute (defaults to `false`).
+- `pass_explicit` – same situation; `settings` block present but no `caching_enabled`.
+- `pass_implicit` – no `settings` block at all, so caching is implicitly disabled.
+
+**Fix**  
+Add `caching_enabled = true` inside the `settings` block for every resource. For `pass_implicit`, you must add a `settings` block.
+
+---
+
+### 3. CKV_AWS_308 – API Gateway cache must be encrypted
+
+**What the policy says**  
+When caching is enabled, the cached data should be encrypted at rest. This prevents unauthorised access to the cache storage. The check requires `cache_data_encrypted = true`.
+
+**Where it applies**  
+Again, all three resources are flagged because none of them set `cache_data_encrypted = true`. Even if caching is not enabled, the scanner expects the encryption setting to be explicitly set to `true` (the default is `false`). In practice, you should enable both caching and encryption together.
+
+**Fix**  
+Add `cache_data_encrypted = true` alongside `caching_enabled = true` in every `settings` block.
+
+---
+
+### Corrected Terraform
+
+Here is how the three resources should look after applying all fixes:
+
+```hcl
+resource "aws_api_gateway_method_settings" "fail" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled   = false   # CKV_AWS_276
+    caching_enabled       = true    # CKV_AWS_225
+    cache_data_encrypted  = true    # CKV_AWS_308
+  }
+}
+
+resource "aws_api_gateway_method_settings" "pass_explicit" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    data_trace_enabled   = false   # already false, but keep explicit
+    caching_enabled       = true
+    cache_data_encrypted  = true
+  }
+}
+
+resource "aws_api_gateway_method_settings" "pass_implicit" {
+  rest_api_id = aws_api_gateway_rest_api.test.id
+  stage_name  = aws_api_gateway_stage.test.stage_name
+  method_path = "path1/GET"
+
+  settings {
+    caching_enabled       = true
+    cache_data_encrypted  = true
+    # data_trace_enabled defaults to false, so it’s fine to omit
+  }
+}
+```
+
+**Note on the resource names**  
+The names `pass_explicit` and `pass_implicit` are misleading – they currently fail the caching and encryption checks. After applying the changes above, they will actually pass all policies.

@@ -1,0 +1,13 @@
+The scanner flagged a misconfiguration because the EFS file system is set to encrypt data at rest, but it does not specify a customer-managed KMS key. This means the file system falls back to the default AWS-managed key, which does not meet the check’s requirement for a customer-managed key (CMK).
+
+**What the current configuration does**  
+The resource `aws_efs_file_system.fail` has `encrypted = true` but no `kms_key_id` argument. When `kms_key_id` is omitted, Amazon EFS automatically uses the AWS-managed KMS key `aws/elasticfilesystem` to encrypt the file system. This key is created, owned, and rotated by AWS on your behalf, but you cannot control its key policy, audit its usage independently, or revoke it.
+
+**What a compliant configuration would do**  
+A compliant configuration would also set `kms_key_id` to the ARN of a customer-managed KMS key (CMK). For example, the `pass` resource in the same file does exactly this: `kms_key_id = aws_kms_key.test.arn`. With a CMK, you retain full control over the key policy, can enable cross-account access, configure automatic rotation, and have detailed CloudTrail logs of every encrypt/decrypt operation.
+
+**The precise difference**  
+The only difference between the failing resource and a passing one is the presence of the `kms_key_id` argument pointing to a customer-managed key. Everything else—`encrypted = true`—remains identical. The security significance lies in ownership and control: a CMK lets you enforce least privilege, revoke access instantly, and meet compliance requirements that mandate customer-controlled encryption keys. The AWS-managed key does not provide these capabilities.
+
+**What the engineer needs to change**  
+Add a `kms_key_id` argument to the `aws_efs_file_system.fail` resource, referencing the ARN of an existing customer-managed KMS key (e.g., `aws_kms_key.test.arn` if that key is appropriate, or a new key created for this purpose). The resource will then use that CMK for encryption instead of the default AWS-managed key, satisfying the check.

@@ -1,0 +1,42 @@
+**Remediation briefing: ECS task definition security findings**
+
+Below are the failing checks, in the order they appear in the scanner output, with the exact trigger, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_336 on `aws_ecs_task_definition.pass` (lines 1–41)
+
+**Trigger**  
+The `container_definitions` JSON (lines 2–27) defines two containers (`first` and `second`). Neither container includes the `readonlyRootFilesystem` attribute.
+
+**What is wrong**  
+The root filesystem of each container is writable by default. A writable root filesystem allows a process inside the container to modify system binaries, configuration files, or other critical content, which increases the potential impact of a container compromise.
+
+**Remediation**  
+Add `"readonlyRootFilesystem": true` to each container definition in the JSON array. If the application needs to write to specific directories, mount those directories as separate volumes rather than leaving the entire root filesystem writable.
+
+---
+
+### 2. CKV_AWS_336 on `aws_ecs_task_definition.fail` (lines 43–84)
+
+**Trigger**  
+The `container_definitions` JSON (lines 44–70) again defines two containers without `readonlyRootFilesystem`. The absence of this setting in both containers causes the same check to fail.
+
+**What is wrong**  
+Identical to the previous finding: the root filesystem is writable for both containers, exposing the same risk of unauthorised modification.
+
+**Remediation**  
+Add `"readonlyRootFilesystem": true` to each container definition in this resource’s JSON array. As before, use volumes for any required writable paths.
+
+---
+
+### 3. CKV_AWS_334 on `aws_ecs_task_definition.fail` (lines 43–84)
+
+**Trigger**  
+The second container definition (lines 57–69) contains `"privilege": true` on line 68.
+
+**What is wrong**  
+The container is running in privileged mode. This gives it elevated Linux capabilities and access to host devices, weakening the container isolation boundary. A privileged container that is compromised can more easily affect the underlying host.
+
+**Remediation**  
+Remove the `"privilege": true` line from the second container definition (the default is `false`). If the container genuinely requires specific host capabilities, replace the blanket privileged mode with a `linuxParameters` block that grants only the necessary capabilities.

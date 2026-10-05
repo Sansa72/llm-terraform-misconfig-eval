@@ -1,0 +1,123 @@
+The scanner found three EKS clusters in your Terraform, each missing critical security controls. I’ll walk through every failing check, explain why it matters, and show exactly what to change in your configuration.
+
+---
+
+## 1. Secrets encryption – CKV_AWS_58 (all three clusters)
+
+**What’s wrong**  
+None of the clusters (`disabled`, `default`, `enabled`) have envelope encryption enabled for Kubernetes secrets. By default, EKS stores `Secret` objects in etcd without encrypting them at the application layer. An attacker who gains access to the underlying etcd storage (e.g., via a snapshot or compromised IAM role) could read all secrets in plaintext.
+
+**What the policy requires**  
+Enable EKS secrets encryption using a KMS key. This wraps the etcd-stored secrets with an additional layer of encryption that you control.
+
+**How to fix it**  
+Add an `encryption_config` block to each cluster resource, referencing a KMS key ARN. The `resources` list must include `"secrets"`. For example:
+
+```hcl
+resource "aws_eks_cluster" "disabled" {
+  name     = "example"
+  role_arn = "aws_iam_role.arn"
+
+  vpc_config {
+    subnet_ids            = ["subnet-12345"]
+    endpoint_public_access = false
+  }
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks.arn   # replace with your key ARN
+    }
+  }
+}
+```
+
+Apply the same `encryption_config` block to the `default` and `enabled` clusters. The KMS key can be shared or per-cluster; the important point is that it exists and is referenced.
+
+---
+
+## 2. Control plane logging – CKV_AWS_37 (all three clusters)
+
+**What’s wrong**  
+No cluster has any control plane log types enabled. The `enabled_cluster_log_types` argument is missing, which means no API server, audit, authenticator, controller manager, or scheduler logs are sent to CloudWatch. Without these logs, you lose visibility into cluster operations, API calls, and potential security incidents.
+
+**What the policy requires**  
+Enable **all** available log types: `api`, `audit`, `authenticator`, `controllerManager`, `scheduler`. This provides a comprehensive audit trail for forensics and monitoring.
+
+**How to fix it**  
+Add the `enabled_cluster_log_types` argument to each cluster resource with the full list:
+
+```hcl
+resource "aws_eks_cluster" "disabled" {
+  # ... other configuration ...
+
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+}
+```
+
+Do this for all three clusters. The logs will be delivered to CloudWatch Logs; ensure the cluster’s IAM role has the necessary permissions (the `aws_iam_role` you’re referencing should include the `AmazonEKSControlPlaneLoggingPolicy` or equivalent).
+
+---
+
+## 3. Public endpoint disabled – CKV_AWS_39 (clusters `default` and `enabled`)
+
+**What’s wrong**  
+- `default` cluster: `endpoint_public_access` is not set, so it defaults to `true`.  
+- `enabled` cluster: `endpoint_public_access` is explicitly set to `true`.  
+
+Both expose the Kubernetes API server to the internet, which drastically increases the attack surface. Anyone who can reach the endpoint can attempt authentication or exploit unpatched vulnerabilities.
+
+**What the policy requires**  
+Disable the public endpoint entirely. The API server should only be accessible from within the VPC (via the private endpoint) or through a controlled network path (e.g., VPN, Direct Connect).
+
+**How to fix it**  
+Set `endpoint_public_access = false` in the `vpc_config` block for both clusters. The `disabled` cluster already has this, so it passes.
+
+```hcl
+resource "aws_eks_cluster" "default" {
+  name     = "example"
+  role_arn = "aws_iam_role.arn"
+
+  vpc_config {
+    subnet_ids            = ["subnet-12345"]
+    endpoint_public_access = false   # add this
+  }
+}
+```
+
+If you have a legitimate need for public access (e.g., CI/CD pipelines outside the VPC), you should instead restrict the source IPs – but that would still leave CKV_AWS_39 failing. The policy’s intent is to eliminate the public endpoint. The recommended approach is to disable it and use private connectivity.
+
+---
+
+## 4. Public endpoint CIDR restriction – CKV_AWS_38 (clusters `default` and `enabled`)
+
+**What’s wrong**  
+Even if you keep the public endpoint enabled, the `public_access_cidrs` setting is missing, which means it defaults to `["0.0.0.0/0"]` – open to the entire internet. This is flagged on the two clusters that have (or default to) `endpoint_public_access = true`.
+
+**What the policy requires**  
+If the public endpoint is enabled, it must be restricted to specific, trusted CIDR ranges. Allowing `0.0.0.0/0` is equivalent to having no network‑layer protection.
+
+**How to fix it**  
+The cleanest fix is to disable the public endpoint (as above), which also satisfies this check. If you absolutely must keep the public endpoint enabled, add a `public_access_cidrs` list with only the IP ranges that require access:
+
+```hcl
+vpc_config {
+  subnet_ids            = ["subnet-12345"]
+  endpoint_public_access = true
+  public_access_cidrs   = ["203.0.113.0/24", "198.51.100.0/24"]   # example
+}
+```
+
+However, this will still fail CKV_AWS_39. The more secure and policy‑compliant path is to set `endpoint_public_access = false` and rely on private connectivity.
+
+---
+
+## Summary of required changes
+
+| Cluster   | Add `encryption_config` | Add `enabled_cluster_log_types` | Set `endpoint_public_access = false` |
+|-----------|------------------------|--------------------------------|-------------------------------------|
+| disabled  | ✅ Yes                 | ✅ Yes                         | Already set                          |
+| default   | ✅ Yes                 | ✅ Yes                         | ✅ Yes                               |
+| enabled   | ✅ Yes                 | ✅ Yes                         | ✅ Yes                               |
+
+After applying these changes, all three clusters will have secrets encryption, full control plane logging, and no public API endpoint – satisfying CKV_AWS_58, CKV_AWS_37, CKV_AWS_39, and CKV_AWS_38.

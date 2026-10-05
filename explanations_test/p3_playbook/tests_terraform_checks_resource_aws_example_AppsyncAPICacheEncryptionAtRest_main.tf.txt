@@ -1,0 +1,27 @@
+Here is the remediation briefing for the flagged misconfigurations.
+
+---
+
+### 1. CKV_AWS_215 on `aws_appsync_api_cache.fail` (lines 10–17)
+**What is wrong:** The `transit_encryption_enabled` argument is explicitly set to `false`, disabling encryption in transit for the cache.  
+**Why it matters:** Without transit encryption, data moving between the AppSync API and the cache is sent in cleartext. This exposes sensitive information to interception and violates data protection requirements.  
+**Change needed:** Set `transit_encryption_enabled` to `true` so that all communication with the cache is encrypted using TLS. The passing resource `aws_appsync_api_cache.pass` already demonstrates the correct value.
+
+### 2. CKV_AWS_214 on `aws_appsync_api_cache.fail` (lines 10–17)
+**What is wrong:** The `at_rest_encryption_enabled` argument is explicitly set to `false`, leaving cached data unencrypted on disk.  
+**Why it matters:** Without at‑rest encryption, sensitive data stored in the cache could be read if the underlying storage media is compromised. This fails to meet common compliance and security standards.  
+**Change needed:** Set `at_rest_encryption_enabled` to `true` so that the cache contents are encrypted before being written to disk. Again, the `pass` resource shows the correct setting.
+
+### 3. CKV_AWS_215 on `aws_appsync_api_cache.fail2` (lines 19–24)
+**What is wrong:** The `transit_encryption_enabled` argument is omitted entirely, which defaults to `false`.  
+**Why it matters:** The same risk of unencrypted data in transit applies. The default value leaves the cache exposed.  
+**Change needed:** Add `transit_encryption_enabled = true` to the resource block. This will bring the configuration in line with the `pass` resource and enable TLS for all cache traffic.
+
+### 4. CKV_AWS_214 on `aws_appsync_api_cache.fail2` (lines 19–24)
+**What is wrong:** The `at_rest_encryption_enabled` argument is missing, so it defaults to `false`.  
+**Why it matters:** Without at‑rest encryption, cached data is stored in plaintext, increasing the risk of data exposure if the storage layer is compromised.  
+**Change needed:** Add `at_rest_encryption_enabled = true` to the resource block. This ensures that the cache contents are encrypted before being persisted.
+
+---
+
+**Interaction note:** Both `fail` and `fail2` require the same two attributes to be set to `true`. The `pass` resource already provides a working example of the correct configuration. No other resources in the file are affected by these changes.

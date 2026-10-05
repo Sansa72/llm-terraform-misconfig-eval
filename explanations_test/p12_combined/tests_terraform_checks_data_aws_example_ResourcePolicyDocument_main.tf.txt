@@ -1,0 +1,18 @@
+**Remediation Briefing: CKV_AWS_356 – Overly permissive resource wildcard for restrictable actions**
+
+---
+
+### Finding 1 of 1
+
+**Check ID:** `CKV_AWS_356`  
+**Resource:** `data.aws_iam_policy_document.fail`  
+**Location:** Lines 1–13 in the provided Terraform file.
+
+**What is wrong**  
+The policy document `fail` contains a statement (lines 5–11) that allows the action `s3:Describe*` on resource `"*"`. The scanner has determined that `s3:Describe*` is a “restrictable” action—one that can be scoped to specific resources—yet the statement grants it against all resources. This violates the principle of least privilege by granting broader access than necessary.
+
+**Why it matters**  
+A resource wildcard (`"*"`) for a restrictable action means the permission applies to every S3 resource in the account (all buckets, objects, access points, jobs, etc.). If the policy is attached to a principal, that principal can perform the described actions on any resource, even those it has no legitimate need to access. The finding is based solely on the policy document shown; no further context about the intended use is provided.
+
+**Remediation guidance**  
+Replace the wildcard resource `"*"` in the `resources` list (line 10) with the specific Amazon Resource Names (ARNs) of the S3 resources that the policy is meant to cover. For example, if the policy should only apply to a particular bucket or set of buckets, list those bucket ARNs (e.g., `arn:aws:s3:::example-bucket`). If the action is intended for bucket-level operations, ensure the resource ARN matches the target bucket(s). Do not use `"*"` unless the action is genuinely required on all resources and cannot be scoped (which is not the case here, as the scanner flagged it as restrictable). The other policy documents in the file (`pass`, `pass2`, `pass_unrestrictable`) illustrate valid patterns: using explicit ARNs, conditions, or actions that are not restrictable.

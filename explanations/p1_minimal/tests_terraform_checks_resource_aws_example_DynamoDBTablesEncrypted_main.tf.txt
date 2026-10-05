@@ -1,0 +1,111 @@
+The scanner found three types of misconfigurations across your DynamoDB tables. Below is a breakdown of each failing check, why it matters, and how to fix it.
+
+---
+
+### 1. CKV_AWS_28 – Point-in-Time Recovery (PITR) is not enabled
+**Affected resources:** all four tables (`cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`)
+
+**What it means:**  
+DynamoDB Point-in-Time Recovery provides continuous backups of your table for the last 35 days. Without it, you cannot restore the table to any point in that window, increasing the risk of data loss from accidental writes or deletes.
+
+**Fix:**  
+Add a `point_in_time_recovery` block with `enabled = true` to each table resource.
+
+```hcl
+resource "aws_dynamodb_table" "example" {
+  # ... existing configuration ...
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+```
+
+---
+
+### 2. CKV_AWS_119 – Table not encrypted with a Customer Managed CMK
+**Affected resources:** `default`, `encrypted_false`, `encrypted_no_cmk`  
+(Table `cmk` already uses a customer managed key and passes this check.)
+
+**What it means:**  
+DynamoDB always encrypts data at rest, but by default it uses an **AWS owned key** that you cannot control, rotate, or audit. The check requires a **Customer Managed Key (CMK)** in AWS KMS, which gives you full control over key policy, rotation, and access logging.
+
+**Why the three tables fail:**
+- `default` – no `server_side_encryption` block → uses AWS owned key.
+- `encrypted_false` – `enabled = false` is ignored (encryption is always on) → still uses AWS owned key.
+- `encrypted_no_cmk` – `enabled = true` but no `kms_key_arn` → uses AWS owned key.
+
+**Fix:**  
+Explicitly set `server_side_encryption` with `enabled = true` and provide the ARN of a KMS CMK. You can use the same key as the `cmk` table or create a dedicated one.
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = aws_kms_key.my_key.arn   # or a specific ARN
+}
+```
+
+---
+
+### 3. CKV2_AWS_16 – Auto Scaling is not enabled
+**Affected resources:** all four tables
+
+**What it means:**  
+Your tables use `PROVISIONED` billing mode with fixed read/write capacity units. Without auto scaling, the table cannot automatically adjust to traffic spikes, leading to throttling or over‑provisioning. The check expects either:
+- Auto Scaling policies for read and write capacity, **or**
+- Switching to `PAY_PER_REQUEST` billing mode (on‑demand), which eliminates the need for capacity management entirely.
+
+**Fix options:**
+
+#### Option A: Switch to on‑demand (simplest)
+Change `billing_mode` to `PAY_PER_REQUEST` and remove the static `read_capacity` / `write_capacity` arguments. This is often the best choice for unpredictable workloads.
+
+```hcl
+resource "aws_dynamodb_table" "example" {
+  name         = "GameScores"
+  billing_mode = "PAY_PER_REQUEST"
+  # ... other configuration ...
+}
+```
+
+#### Option B: Add Auto Scaling (if you must stay provisioned)
+Define an `aws_appautoscaling_target` and `aws_appautoscaling_policy` for both read and write capacity. Example for one table:
+
+```hcl
+resource "aws_appautoscaling_target" "read_target" {
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.example.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "read_policy" {
+  name               = "DynamoDBReadCapacityUtilization:${aws_appautoscaling_target.read_target.resource_id}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id       = aws_appautoscaling_target.read_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.read_target.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.read_target.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value = 70.0
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+  }
+}
+# Repeat for write capacity
+```
+
+---
+
+### Summary of required changes per table
+
+| Table resource      | Add PITR | Use CMK encryption | Enable Auto Scaling or switch to PAY_PER_REQUEST |
+|--------------------|----------|-------------------|-------------------------------------------------|
+| `aws_dynamodb_table.cmk` | ✅ | Already OK | ✅ |
+| `aws_dynamodb_table.default` | ✅ | ✅ | ✅ |
+| `aws_dynamodb_table.encrypted_false` | ✅ | ✅ | ✅ |
+| `aws_dynamodb_table.encrypted_no_cmk` | ✅ | ✅ | ✅ |
+
+Apply the appropriate fixes to each table, and all flagged checks will be resolved.

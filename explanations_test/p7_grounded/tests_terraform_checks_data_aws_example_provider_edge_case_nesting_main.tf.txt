@@ -1,0 +1,34 @@
+The scanner flagged a misconfiguration on the `aws_s3_bucket_object` resource named `this_other_file` (lines 36–41). The check **CKV_AWS_186** requires that S3 bucket objects are encrypted using a customer-managed KMS key (CMK).
+
+**What the file shows**  
+The resource block at lines 36–41 is:
+
+```terraform
+resource "aws_s3_bucket_object" "this_other_file" {
+  bucket   = "your_bucket_name"
+  key      = "key"
+  source   = "source"
+}
+```
+
+There are no arguments that enable or configure encryption. Specifically, the block does not contain:
+- `server_side_encryption` (e.g., set to `"aws:kms"`)
+- `kms_key_id` (the ARN or ID of a customer-managed KMS key)
+
+**Why the check fires**  
+CKV_AWS_186 expects the object to be explicitly encrypted with a KMS CMK. Because the resource definition lacks both the encryption method and a reference to a customer-managed key, the check reports a failure.
+
+**What the engineer needs to do**  
+Add the required encryption configuration to the resource. For example, you would need to provide a customer-managed KMS key (either by referencing an existing key or creating one) and then set:
+
+```terraform
+resource "aws_s3_bucket_object" "this_other_file" {
+  bucket                 = "your_bucket_name"
+  key                    = "key"
+  source                 = "source"
+  server_side_encryption = "aws:kms"
+  kms_key_id             = aws_kms_key.example.arn   # or a hardcoded key ARN
+}
+```
+
+The exact key resource is not shown in the provided file, so the engineer must supply a valid customer-managed KMS key ARN/ID. The finding does not indicate any other issues; it only flags the absence of KMS CMK encryption for this object.

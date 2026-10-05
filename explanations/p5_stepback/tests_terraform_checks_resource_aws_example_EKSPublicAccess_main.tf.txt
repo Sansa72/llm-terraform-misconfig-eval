@@ -1,0 +1,84 @@
+## aws_eks_cluster.disabled (lines 3–12)
+
+**CKV_AWS_58 – Secrets encryption not enabled**  
+*Principle:* Kubernetes secrets (stored in etcd) contain sensitive data such as tokens, passwords, and keys. Enabling envelope encryption with a KMS key ensures that secrets are encrypted at rest, protecting them from unauthorised access if the underlying storage is compromised.  
+*Finding:* The `aws_eks_cluster.disabled` resource does not include an `encryption_config` block, so secrets are stored in plaintext.  
+*Fix:* Add an `encryption_config` block referencing a KMS key ARN. For example:
+```hcl
+encryption_config {
+  resources = ["secrets"]
+  provider {
+    key_arn = aws_kms_key.eks.arn
+  }
+}
+```
+
+**CKV_AWS_37 – Control plane logging not enabled for all log types**  
+*Principle:* EKS control plane logs (API server, audit, authenticator, controller manager, scheduler) provide essential visibility for security monitoring, troubleshooting, and audit trails. Without them, suspicious activity or misconfigurations may go undetected.  
+*Finding:* The cluster has no `enabled_cluster_log_types` block, so no control plane logs are sent to CloudWatch.  
+*Fix:* Add the `enabled_cluster_log_types` argument with all available log types:
+```hcl
+enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+```
+
+---
+
+## aws_eks_cluster.default (lines 16–23)
+
+**CKV_AWS_39 – Public endpoint is enabled**  
+*Principle:* Exposing the Kubernetes API server to the internet increases the attack surface. Disabling the public endpoint forces all API access through private networks (e.g., VPC endpoints, VPN), reducing exposure to unauthorised access attempts.  
+*Finding:* The `vpc_config` block omits `endpoint_public_access`, which defaults to `true`. The cluster’s API endpoint is therefore publicly reachable.  
+*Fix:* Explicitly set `endpoint_public_access = false` inside `vpc_config`.
+
+**CKV_AWS_38 – Public endpoint accessible to 0.0.0.0/0**  
+*Principle:* If a public endpoint is required, it should be restricted to a known set of trusted IP ranges. Allowing `0.0.0.0/0` means any internet host can attempt to connect, making brute‑force and exploitation attacks trivial.  
+*Finding:* Because `endpoint_public_access` is `true` (default) and `public_access_cidrs` is not set, the default CIDR `["0.0.0.0/0"]` is applied.  
+*Fix:* Either disable the public endpoint entirely (preferred) or, if public access is unavoidable, restrict it to specific CIDRs:
+```hcl
+vpc_config {
+  subnet_ids              = ["subnet-12345"]
+  endpoint_public_access  = true
+  public_access_cidrs    = ["203.0.113.0/24"]  # replace with your trusted IP range
+}
+```
+
+**CKV_AWS_58 – Secrets encryption not enabled**  
+*Principle:* Same as above.  
+*Finding:* No `encryption_config` block is present.  
+*Fix:* Add an `encryption_config` block with a KMS key ARN.
+
+**CKV_AWS_37 – Control plane logging not enabled for all log types**  
+*Principle:* Same as above.  
+*Finding:* No `enabled_cluster_log_types` block is present.  
+*Fix:* Add the block with all five log types: `["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+## aws_eks_cluster.enabled (lines 25–34)
+
+**CKV_AWS_39 – Public endpoint is enabled**  
+*Principle:* Same as above.  
+*Finding:* `endpoint_public_access` is explicitly set to `True`.  
+*Fix:* Change to `endpoint_public_access = false` unless a strong business requirement exists for a public endpoint.
+
+**CKV_AWS_38 – Public endpoint accessible to 0.0.0.0/0**  
+*Principle:* Same as above.  
+*Finding:* `endpoint_public_access = True` is set, but `public_access_cidrs` is omitted, defaulting to `["0.0.0.0/0"]`.  
+*Fix:* Either disable the public endpoint or add a restricted `public_access_cidrs` list.
+
+**CKV_AWS_58 – Secrets encryption not enabled**  
+*Principle:* Same as above.  
+*Finding:* No `encryption_config` block.  
+*Fix:* Add an `encryption_config` block with a KMS key ARN.
+
+**CKV_AWS_37 – Control plane logging not enabled for all log types**  
+*Principle:* Same as above.  
+*Finding:* No `enabled_cluster_log_types` block.  
+*Fix:* Add the block with all five log types.
+
+---
+
+**Summary of required changes for all three clusters:**
+- Add `encryption_config` with a KMS key to enable secrets encryption.
+- Add `enabled_cluster_log_types` with all five log types to enable full control plane logging.
+- For `default` and `enabled`, either set `endpoint_public_access = false` or, if public access is mandatory, provide a restrictive `public_access_cidrs` list.

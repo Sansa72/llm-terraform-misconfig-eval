@@ -1,0 +1,42 @@
+The provided Terraform file defines a single S3 bucket resource with only a bucket name. The scanner has flagged seven missing security configurations. Below, I break down each finding, referencing the exact check ID, the resource, and the lines of code that trigger it.
+
+---
+
+### 1. CKV2_AWS_61: Ensure that an S3 bucket has a lifecycle configuration
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A `lifecycle_rule` block inside the bucket resource (or an `aws_s3_bucket_lifecycle_configuration` resource) that defines rules for transitioning objects to cheaper storage classes or expiring them.
+- **What the file contains:** Only a `bucket` argument. There is no `lifecycle_rule` block, no `lifecycle_configuration` resource, and no reference to any lifecycle policy. The scanner correctly flags this absence.
+
+### 2. CKV_AWS_18: Ensure the S3 bucket has access logging enabled
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A `logging` block within the bucket resource (or a separate `aws_s3_bucket_logging` resource) that enables server access logging and specifies a target bucket and prefix.
+- **What the file contains:** No `logging` block, no `aws_s3_bucket_logging` resource, and no indication that access logging is configured. The finding is valid.
+
+### 3. CKV2_AWS_62: Ensure S3 buckets have event notifications enabled
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** An `event_notification` configuration (via `aws_s3_bucket_notification` or the deprecated `notification_configuration` block) that sends bucket events (e.g., `s3:ObjectCreated:*`) to a target like SNS, SQS, or Lambda.
+- **What the file contains:** No event notification configuration of any kind. The check is triggered because the bucket definition lacks this entirely.
+
+### 4. CKV2_AWS_6: Ensure that S3 bucket has a Public Access block
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A `aws_s3_bucket_public_access_block` resource (or the deprecated `block_public_acls`, `block_public_policy`, etc. arguments inside the bucket resource) that explicitly blocks public access.
+- **What the file contains:** No public access block configuration. The bucket is defined without any restrictions on public access, so the check fails.
+
+### 5. CKV_AWS_145: Ensure that S3 buckets are encrypted with KMS by default
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A `server_side_encryption_configuration` block (or an `aws_s3_bucket_server_side_encryption_configuration` resource) that sets the default encryption to `aws:kms` and specifies a KMS key ARN.
+- **What the file contains:** No encryption configuration at all. The bucket will use the default S3-managed encryption (SSE-S3) if the account default is set, but the check specifically requires KMS-based encryption. The finding is correct.
+
+### 6. CKV_AWS_144: Ensure that S3 bucket has cross-region replication enabled
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A replication configuration (either via a `replication_configuration` block inside the bucket resource or a separate `aws_s3_bucket_replication_configuration` resource) that defines a replication rule to another region.
+- **What the file contains:** No replication configuration. The check is triggered because replication is not enabled.
+
+### 7. CKV_AWS_21: Ensure all data stored in the S3 bucket have versioning enabled
+- **Resource:** `aws_s3_bucket.bucket` (lines 1–3)
+- **What the check expects:** A `versioning` block with `enabled = true` (or an `aws_s3_bucket_versioning` resource with `status = "Enabled"`).
+- **What the file contains:** No versioning configuration. The bucket will use the default (versioning suspended), so the check fails.
+
+---
+
+**Summary:** The Terraform snippet at lines 1–3 defines only a bucket name. All seven security controls—lifecycle management, access logging, event notifications, public access blocking, KMS encryption, cross-region replication, and versioning—are absent. Each finding is directly attributable to the lack of the corresponding configuration block or resource in the given code.

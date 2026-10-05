@@ -1,0 +1,79 @@
+### 1. CKV_AWS_158: Missing customer-managed KMS encryption on all log groups
+
+**Misconfiguration**  
+All four `aws_cloudwatch_log_group` resources (`pass_365`, `pass_0`, `fail`, `unknown`) are missing the `kms_key_id` argument. Checkov requires CloudWatch Log Groups to be encrypted using a customer-managed KMS key.
+
+**Why it matters**  
+Without `kms_key_id`, CloudWatch Logs uses the AWS-owned encryption key by default. You do not control that key’s access policy, rotation, auditing, or revocation. If these logs contain sensitive data (application logs, request details, etc.), you lose the ability to enforce least-privilege access and meet compliance requirements that mandate customer-managed keys. The blast radius is the confidentiality of all log data in these groups.
+
+**Safe fix**  
+Create or reference a KMS key and assign it to each log group:
+
+```hcl
+resource "aws_cloudwatch_log_group" "example" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.logs.arn
+}
+
+resource "aws_kms_key" "logs" {
+  enable_key_rotation = true
+}
+
+resource "aws_kms_key_policy" "logs" {
+  key_id = aws_kms_key.logs.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableCloudWatchLogs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      },
+      # Add your administrator/root permissions as needed
+    ]
+  })
+}
+```
+
+Apply the same `kms_key_id` to all four log groups.
+
+---
+
+### 2. CKV_AWS_338: Log retention below 1 year on `aws_cloudwatch_log_group.fail`
+
+**Misconfiguration**  
+`aws_cloudwatch_log_group.fail` sets `retention_in_days = 5`. This means logs are automatically deleted after 5 days, which is less than the required 365 days.
+
+**Why it matters**  
+Logs are a critical source for incident response, security audits, and compliance. If they are deleted after only 5 days, you lose forensic evidence and the ability to investigate past events. The blast radius is limited to the `fail` log group, but any data written there becomes unavailable after 5 days.
+
+**Safe fix**  
+Change `retention_in_days` to at least `365` (or `0` for indefinite retention, if appropriate for your policy):
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.logs.arn   # also fix CKV_AWS_158
+}
+```
+
+For `aws_cloudwatch_log_group.unknown`, where `retention_in_days = var.retention`, ensure the variable’s default or validation enforces a value ≥ 365 to avoid the same risk:
+
+```hcl
+variable "retention" {
+  default = 365
+  validation {
+    condition     = var.retention == 0 || var.retention >= 365
+    error_message = "Retention must be at least 365 days, or 0 for indefinite."
+  }
+}
+```

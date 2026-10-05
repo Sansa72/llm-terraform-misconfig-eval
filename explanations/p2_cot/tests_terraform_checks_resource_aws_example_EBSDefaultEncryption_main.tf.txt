@@ -1,0 +1,15 @@
+The finding flags the `aws_ebs_encryption_by_default` resource named `disabled` because it explicitly sets `enabled = false`, which disables default encryption for new EBS volumes in the account/region.
+
+**What this means**  
+When default EBS encryption is disabled, any new EBS volume created without an explicit encryption setting will be unencrypted. This can lead to data at rest being stored in plaintext, increasing the risk of exposure if a volume is inadvertently made public, shared, or compromised.
+
+**How to fix it**  
+Change the `enabled` argument to `true` so that all new EBS volumes are encrypted by default, even when encryption is not specified at volume creation. The resource’s purpose—managing the default encryption setting—is preserved; you are simply aligning it with the required secure state.
+
+```hcl
+resource "aws_ebs_encryption_by_default" "disabled" {
+  enabled = true
+}
+```
+
+If the resource was intended to explicitly disable encryption, that intent conflicts with the security requirement. The correct path is to enable default encryption and, if necessary, handle any exceptions through explicit volume-level configuration rather than weakening the account-wide default.

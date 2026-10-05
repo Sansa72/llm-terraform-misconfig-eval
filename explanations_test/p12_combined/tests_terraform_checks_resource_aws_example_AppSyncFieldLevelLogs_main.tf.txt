@@ -1,0 +1,35 @@
+## Remediation Briefing
+
+### 1. CKV_AWS_194 on `aws_appsync_graphql_api.none`
+
+**Resource:** `aws_appsync_graphql_api.none` (lines 25–33)  
+**Trigger:** The `field_log_level` argument inside the `log_config` block is set to `"NONE"` (line 32).  
+**What’s wrong:** Field-level logging is explicitly disabled. Without field-level logs, you lose visibility into GraphQL resolver execution and field-level errors, making troubleshooting and security monitoring harder.  
+**How to fix:** Change the `field_log_level` value from `"NONE"` to `"ALL"` or `"ERROR"` (as seen in the other resources) so that field-level logs are sent to CloudWatch.
+
+---
+
+### 2. CKV2_AWS_33 on `aws_appsync_graphql_api.all`
+
+**Resource:** `aws_appsync_graphql_api.all` (lines 3–11)  
+**Trigger:** No WAF Web ACL is associated with this AppSync API. The configuration only defines the API itself; there is no `aws_wafv2_web_acl_association` or `aws_wafregional_web_acl_association` resource linking it to a WAF Web ACL.  
+**What’s wrong:** The API is not protected by AWS WAF, leaving it exposed to common web exploits without the ability to filter malicious requests.  
+**How to fix:** Create (or reference an existing) WAF Web ACL and add an `aws_wafv2_web_acl_association` resource that associates that Web ACL with this AppSync API’s ARN. The association resource must be defined outside the `aws_appsync_graphql_api` block.
+
+---
+
+### 3. CKV2_AWS_33 on `aws_appsync_graphql_api.error`
+
+**Resource:** `aws_appsync_graphql_api.error` (lines 13–21)  
+**Trigger:** Same as above – no WAF association is present for this API. The file contains only the API resource definition; no WAF association resource references it.  
+**What’s wrong:** The API lacks WAF protection, making it vulnerable to common web attacks without request filtering.  
+**How to fix:** Associate this API with a WAF Web ACL by adding an `aws_wafv2_web_acl_association` resource that points to the API’s ARN and a Web ACL ARN.
+
+---
+
+### 4. CKV2_AWS_33 on `aws_appsync_graphql_api.none`
+
+**Resource:** `aws_appsync_graphql_api.none` (lines 25–33)  
+**Trigger:** No WAF association is defined for this API. The configuration only contains the API resource; no WAF association resource is present.  
+**What’s wrong:** The API is not protected by WAF, leaving it without a layer of request inspection and filtering against common threats.  
+**How to fix:** Add a WAF Web ACL association to this API using an `aws_wafv2_web_acl_association` resource, referencing the API’s ARN and a Web ACL ARN.

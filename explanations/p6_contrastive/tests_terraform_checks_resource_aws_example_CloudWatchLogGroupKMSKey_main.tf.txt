@@ -1,0 +1,29 @@
+**Finding 1: CKV_AWS_338 on `aws_cloudwatch_log_group.pass` (lines 1‑4)**  
+- **What the file currently does:** Sets `retention_in_days = 1`, meaning log events are automatically deleted after 1 day.  
+- **What a compliant configuration would do:** Sets `retention_in_days` to a value of at least 365, so logs are preserved for a full year.  
+- **Precise difference:** The value of the `retention_in_days` property changes from `1` to `365` (or higher). All other properties (`kms_key_id = "someKey"`) remain unchanged.  
+- **Why this matters for security:** Logs are essential for incident investigation, auditing, and meeting regulatory requirements (e.g., PCI DSS, HIPAA, SOC 2). A 1‑day retention window makes it impossible to review historical events, detect long‑running attacks, or satisfy compliance mandates that typically require at least one year of log storage.
+
+**Finding 2: CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (lines 6‑8)**  
+- **What the file currently does:** Sets `retention_in_days = 1` – identical to the first resource.  
+- **What a compliant configuration would do:** Sets `retention_in_days` to `365` or more.  
+- **Precise difference:** The `retention_in_days` property changes from `1` to `365` (or higher). The rest of the resource block (currently only `retention_in_days`) stays as is, but note that this resource also lacks encryption (see next finding).  
+- **Why this matters for security:** Same rationale as above – insufficient retention leads to loss of forensic evidence and non‑compliance.
+
+**Finding 3: CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (lines 6‑8)**  
+- **What the file currently does:** Does not specify a `kms_key_id`. CloudWatch Logs will therefore encrypt data at rest using the default AWS‑owned key, over which you have no control or visibility.  
+- **What a compliant configuration would do:** Includes a `kms_key_id` property pointing to a customer‑managed KMS key (e.g., `kms_key_id = aws_kms_key.log_key.arn`).  
+- **Precise difference:** The resource block gains a `kms_key_id` attribute with a valid KMS key identifier. The `retention_in_days` property (once fixed) remains unchanged.  
+- **Why this matters for security:** Customer‑managed KMS keys allow you to enforce key rotation, define fine‑grained access policies, and audit usage via CloudTrail. Default encryption with AWS‑owned keys provides encryption at rest but removes your ability to manage the key lifecycle or prove control to auditors, which is often required for sensitive data.
+
+---
+
+**What the engineer must change (property‑level instructions):**
+
+1. **For both log groups (`pass` and `fail`):**  
+   Change `retention_in_days` from `1` to a value of at least `365`. This satisfies CKV_AWS_338 and ensures logs are kept for the minimum one‑year period required by most security standards.
+
+2. **For the `fail` log group only:**  
+   Add a `kms_key_id` property referencing a customer‑managed KMS key. The `pass` resource already has this, so no change is needed there for CKV_AWS_158. This gives you control over encryption key management and auditing for the `fail` log group.
+
+No other properties need to be altered. The `pass` resource’s `kms_key_id` can remain as `"someKey"` (though ensure it is a valid KMS key ARN).

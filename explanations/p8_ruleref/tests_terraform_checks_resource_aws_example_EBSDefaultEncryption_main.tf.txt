@@ -1,0 +1,29 @@
+The scanner flagged the `aws_ebs_encryption_by_default` resource named `"disabled"` because it explicitly sets `enabled = false`, which disables default EBS encryption for the region. This violates the security requirement that default encryption must be enabled.
+
+**What the resource does**  
+`aws_ebs_encryption_by_default` controls whether new EBS volumes and snapshots are automatically encrypted at rest in the target AWS region. When enabled, any volume created without an explicit encryption setting inherits the default (encrypted). When disabled, volumes default to unencrypted unless the creator explicitly opts in.
+
+**Why it’s a problem**  
+Disabling default encryption removes a critical safety net. Without it, a simple oversight—forgetting to set `encrypted = true` on a volume or snapshot—results in unencrypted data at rest. This can lead to data exposure, non‑compliance with regulatory standards, and a false sense of security. The Prisma Cloud policy CKV_AWS_106 exists to prevent exactly this gap.
+
+**What the file shows**  
+The file contains multiple `aws_ebs_encryption_by_default` blocks, likely for testing or documentation. The one that fails is:
+
+```hcl
+resource "aws_ebs_encryption_by_default" "disabled" {
+  enabled = false
+}
+```
+
+This block actively turns off default encryption. The other blocks (`"enabled"` with `true`, `"default"` with no argument, `"null"` with `null`) are not flagged because they either enable encryption or leave the setting unspecified (which, in Terraform, means “do not manage” and does not actively disable it). However, in a real deployment you would only have **one** such resource per region; having multiple would cause conflicts.
+
+**How to fix it**  
+Change the `enabled` argument to `true`:
+
+```hcl
+resource "aws_ebs_encryption_by_default" "disabled" {
+  enabled = true
+}
+```
+
+If the resource was intended to be a negative test case, remove it from the production configuration. If you want to rely on the default AWS behavior (which is disabled), be aware that this will not satisfy the policy—the policy requires explicit enablement. The fix ensures that all new EBS volumes are encrypted by default, aligning with the security baseline.

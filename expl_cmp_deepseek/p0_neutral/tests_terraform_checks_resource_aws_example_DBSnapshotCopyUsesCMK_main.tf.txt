@@ -1,0 +1,26 @@
+1. **What the misconfiguration is**  
+   The `aws_db_snapshot_copy.fail` resource does not set `kms_key_id`. The equivalent `pass` resource does set it to `aws_kms_key.example.id`.  
+   *Note: the Checkov finding title mentions “App Flow connector profile,” which does not match this resource; the actual issue is the missing KMS key on the DB snapshot copy.*
+
+2. **Why it matters**  
+   Without `kms_key_id`, the copied RDS snapshot will either:
+   - remain unencrypted if the source snapshot is unencrypted, or
+   - use the AWS-managed default KMS key for RDS if the source is encrypted.
+
+   In both cases you lose control over encryption key management. AWS-managed keys cannot be rotated, have limited key policy controls, and cannot be shared or revoked across accounts. This can violate compliance requirements and increases the risk of unauthorized access if the snapshot is shared or leaked.
+
+3. **How to fix it safely**  
+   Add a customer-managed KMS key to the resource:
+
+   ```hcl
+   resource "aws_db_snapshot_copy" "fail" {
+     source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+     target_db_snapshot_identifier = "testsnapshot1234-copy"
+     kms_key_id                    = aws_kms_key.example.id
+   }
+   ```
+
+   Ensure:
+   - The KMS key exists in the same region as the target snapshot.
+   - The AWS identity running Terraform has `kms:Encrypt`, `kms:Decrypt`, `kms:ReEncrypt*`, `kms:GenerateDataKey*`, and `kms:DescribeKey` permissions on the key.
+   - The key policy allows RDS to use the key for snapshot encryption.

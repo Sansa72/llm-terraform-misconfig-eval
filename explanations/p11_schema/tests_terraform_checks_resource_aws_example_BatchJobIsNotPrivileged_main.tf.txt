@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_210",
+      "resource": "aws_batch_job_definition.fail",
+      "evidence": [
+        "\"privileged\": true,"
+      ],
+      "risk": "The container is running in privileged mode, which grants it elevated permissions and access to host devices, increasing the risk of container escape and host compromise.",
+      "remediation": "Set the 'privileged' property to false or remove it entirely to run the container without elevated privileges.",
+      "confidence": "high"
+    }
+  ]
+}

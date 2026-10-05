@@ -1,0 +1,85 @@
+The scanner flagged two issues in your Terraform file, both related to encryption key management for Amazon Connect storage configurations. Here’s what each finding means, why it matters, and exactly what needs to change.
+
+---
+
+## Security Rationale (Common to Both Checks)
+
+Amazon Connect can store call recordings, chat transcripts, media streams, and other artifacts in S3 or Kinesis Video Streams. When you enable server-side encryption with KMS, you must choose between an **AWS managed key** (the default when no key is specified) and a **customer managed key (CMK)**.  
+
+- **AWS managed keys** are automatically created, rotated, and fully controlled by AWS. You cannot audit their usage via CloudTrail beyond basic existence, nor can you apply granular key policies or revoke access independently of the service.
+- **Customer managed keys (CMKs)** give you full control: you define the key policy, you can enable automatic rotation, you can audit every encrypt/decrypt operation, and you can revoke access instantly if needed. This aligns with the principle of least privilege and provides stronger data protection guarantees.
+
+Both policies require that when encryption is enabled, a CMK (identified by its ARN) is explicitly provided. Without it, the configuration falls back to an AWS managed key, which is considered a security misconfiguration.
+
+---
+
+## Finding 1: CKV_AWS_270 on `aws_connect_instance_storage_config.pass` (lines 1-17)
+
+**Policy:** Ensure Connect Instance **S3** Storage Config uses CMK  
+**Resource:** `aws_connect_instance_storage_config.pass`
+
+This resource is configured for **Kinesis Video Stream** storage (`resource_type = "MEDIA_STREAMS"`, `storage_type = "KINESIS_VIDEO_STREAM"`), not S3. The encryption block already includes a CMK:
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+  key_id          = aws_kms_key.test.arn
+}
+```
+
+Because the resource is not an S3 storage config, the CKV_AWS_270 check is **not applicable** to this resource. The scanner likely misapplied the rule. The configuration is already compliant with the spirit of the policy (using a CMK for Kinesis Video Stream encryption). You can safely suppress this finding as a false positive, or verify that the scanner’s policy logic is correctly scoped to S3 storage configs only.
+
+---
+
+## Finding 2: CKV_AWS_270 and CKV_AWS_269 on `aws_connect_instance_storage_config.fail` (lines 20-35)
+
+**Policies:**
+- CKV_AWS_270: Ensure Connect Instance **S3** Storage Config uses CMK
+- CKV_AWS_269: Ensure Connect Instance **Kinesis Video Stream** Storage Config uses CMK
+
+**Resource:** `aws_connect_instance_storage_config.fail`
+
+This resource is a Kinesis Video Stream storage config (`resource_type = "MEDIA_STREAMS"`, `storage_type = "KINESIS_VIDEO_STREAM"`). The encryption block is present but **missing the `key_id`**:
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+}
+```
+
+Because no `key_id` is specified, the configuration will use the **AWS managed KMS key** for the service, not a customer managed key. This violates both policies:
+- **CKV_AWS_269** directly applies to Kinesis Video Stream storage configs and requires a CMK.
+- **CKV_AWS_270** technically targets S3 configs, but the scanner may be flagging any storage config that enables encryption without a CMK. Regardless, the underlying issue is the same: you are not using a CMK.
+
+### What to Fix
+
+Add the `key_id` attribute pointing to a customer managed KMS key ARN. For example, using the same key as the “pass” resource:
+
+```hcl
+resource "aws_connect_instance_storage_config" "fail" {
+  instance_id   = aws_connect_instance.fail.id
+  resource_type = "MEDIA_STREAMS"
+
+  storage_config {
+    kinesis_video_stream_config {
+      prefix                 = "fail"
+      retention_period_hours = 3
+
+      encryption_config {
+        encryption_type = "KMS"
+        key_id          = aws_kms_key.test.arn   # <-- add this line
+      }
+    }
+    storage_type = "KINESIS_VIDEO_STREAM"
+  }
+}
+```
+
+After this change, both CKV_AWS_269 and the misapplied CKV_AWS_270 on the `fail` resource will be resolved. The `pass` resource already meets the requirement and can be ignored for CKV_AWS_270.
+
+---
+
+## Summary of Actions
+
+1. **For `aws_connect_instance_storage_config.pass`:** No change needed. Suppress the CKV_AWS_270 finding as a false positive (it’s not an S3 config).
+2. **For `aws_connect_instance_storage_config.fail`:** Add `key_id = aws_kms_key.test.arn` (or another valid CMK ARN) inside the `encryption_config` block. This will satisfy both CKV_AWS_269 and CKV_AWS_270.

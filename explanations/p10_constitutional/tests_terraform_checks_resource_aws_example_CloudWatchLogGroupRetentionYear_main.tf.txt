@@ -1,0 +1,84 @@
+The scanner flagged five issues across four `aws_cloudwatch_log_group` resources in the provided Terraform file. Each finding is tied to a specific rule and a specific resource block. Below is the explanation of what the rules require, what the current configuration shows, and what must be changed in the file to resolve the findings.
+
+---
+
+**Finding 1: CKV_AWS_158 on `aws_cloudwatch_log_group.pass_365` (lines 1–3)**  
+**Rule:** Ensure that CloudWatch Log Group is encrypted by KMS.  
+**Configuration excerpt:**  
+```terraform
+resource "aws_cloudwatch_log_group" "pass_365" {
+  retention_in_days = 365
+}
+```  
+**Issue:** The resource block does not include a `kms_key_id` argument. Without it, the log group is not encrypted using a KMS key.  
+**Remediation:** Add a `kms_key_id` argument to this resource block, specifying the ARN of a KMS key. For example, the block would become:
+```terraform
+resource "aws_cloudwatch_log_group" "pass_365" {
+  retention_in_days = 365
+  kms_key_id        = "<kms-key-arn>"
+}
+```
+
+**Finding 2: CKV_AWS_158 on `aws_cloudwatch_log_group.pass_0` (lines 5–7)**  
+**Rule:** Ensure that CloudWatch Log Group is encrypted by KMS.  
+**Configuration excerpt:**  
+```terraform
+resource "aws_cloudwatch_log_group" "pass_0" {
+  retention_in_days = 0
+}
+```  
+**Issue:** The resource block lacks a `kms_key_id` argument, so the log group is not KMS-encrypted.  
+**Remediation:** Add a `kms_key_id` argument to this resource block, e.g.:
+```terraform
+resource "aws_cloudwatch_log_group" "pass_0" {
+  retention_in_days = 0
+  kms_key_id        = "<kms-key-arn>"
+}
+```
+
+**Finding 3: CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (lines 9–11)**  
+**Rule:** Ensure CloudWatch log groups retain logs for at least 1 year.  
+**Configuration excerpt:**  
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 5
+}
+```  
+**Issue:** The `retention_in_days` is set to `5`, which is less than the required 365 days (1 year).  
+**Remediation:** Change the `retention_in_days` value to `365` or greater. For example:
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+}
+```
+
+**Finding 4: CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (lines 9–11)**  
+**Rule:** Ensure that CloudWatch Log Group is encrypted by KMS.  
+**Configuration excerpt:** (same resource as above)  
+**Issue:** The resource block also lacks a `kms_key_id` argument.  
+**Remediation:** Add a `kms_key_id` argument to the same resource block, e.g.:
+```terraform
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365
+  kms_key_id        = "<kms-key-arn>"
+}
+```
+
+**Finding 5: CKV_AWS_158 on `aws_cloudwatch_log_group.unknown` (lines 13–15)**  
+**Rule:** Ensure that CloudWatch Log Group is encrypted by KMS.  
+**Configuration excerpt:**  
+```terraform
+resource "aws_cloudwatch_log_group" "unknown" {
+  retention_in_days = var.retention
+}
+```  
+**Issue:** The resource block does not include a `kms_key_id` argument. The value of `var.retention` is not defined in the provided file, but the KMS encryption finding is independent of retention.  
+**Remediation:** Add a `kms_key_id` argument to this resource block, e.g.:
+```terraform
+resource "aws_cloudwatch_log_group" "unknown" {
+  retention_in_days = var.retention
+  kms_key_id        = "<kms-key-arn>"
+}
+```
+
+All remediations require only changes to the existing resource blocks: adding a `kms_key_id` argument (for all four resources) and adjusting `retention_in_days` to at least 365 (for the `fail` resource). No new resources or external facts are introduced; the `<kms-key-arn>` placeholder should be replaced with the ARN of a KMS key that exists in your environment.

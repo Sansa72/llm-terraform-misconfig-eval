@@ -1,0 +1,24 @@
+The scanner flagged a missing Customer Managed Key (CMK) on the `aws_appflow_flow` resource named `"fail"`. Here’s why that matters and how to fix it.
+
+**General principle: encryption key control**  
+When AWS services process or transfer data, they encrypt that data at rest and in transit. By default, many services use AWS-owned or AWS-managed keys, which are automatically rotated and managed by AWS but give you no control over key lifecycle, access policy, or audit trail. Using a Customer Managed Key (CMK) in AWS KMS puts you in control: you define who can use the key, you can rotate it on your own schedule, and you get full visibility into every encrypt/decrypt operation via CloudTrail. This is a core data protection and least-privilege control—you are not relying on a key that could be shared across accounts or services without your knowledge.
+
+**How this resource violates the principle**  
+The `aws_appflow_flow` named `"fail"` does not include the optional `kms_arn` argument. As a result, Amazon AppFlow will use an AWS-managed key to encrypt the data it processes during the flow. You lose the ability to set granular key policies, to revoke the key independently of the service, or to audit its usage in the same way you can with a CMK. The companion resource `"pass"` in the same file shows the correct pattern: it sets `kms_arn = aws_kms_key.example.arn`, explicitly assigning a CMK.
+
+**Why this matters here**  
+AppFlow moves data between sources and destinations (in this case, S3 buckets). If the flow handles sensitive or regulated data, using an AWS-managed key means you cannot prove to auditors that you control the encryption key, nor can you enforce separation of duties (e.g., preventing the AppFlow service from decrypting data outside the flow’s intended scope). A CMK gives you that control and auditability.
+
+**Required change**  
+Add a `kms_arn` argument to the `aws_appflow_flow "fail"` resource, pointing to a valid KMS key ARN. For example:
+
+```hcl
+resource "aws_appflow_flow" "fail" {
+  name    = "example"
+  kms_arn = aws_kms_key.example.arn   # <-- add this line
+
+  # ... rest of configuration unchanged
+}
+```
+
+Ensure the KMS key policy grants the AppFlow service principal (`appflow.amazonaws.com`) permission to use the key for encryption and decryption.

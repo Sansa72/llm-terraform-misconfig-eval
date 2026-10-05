@@ -1,0 +1,19 @@
+1. **Misconfiguration**  
+   `aws_appflow_flow.fail` does not set the `kms_arn` argument. The companion `aws_appflow_flow.pass` resource does set `kms_arn = aws_kms_key.example.arn`, showing the expected configuration. This means the failing AppFlow flow is not configured to use a customer-managed KMS key.
+
+2. **Why it matters**  
+   Without `kms_arn`, encryption for this AppFlow flow is not under a customer-managed key. You lose direct control over key policy, access grants, rotation, revocation, and auditability of key usage. If this flow processes sensitive data, the absence of a CMK can violate security or compliance requirements that mandate customer-managed encryption keys.
+
+3. **How to fix safely**  
+   Add a `kms_arn` argument to `aws_appflow_flow.fail` that references a valid customer-managed KMS key ARN, for example:
+
+   ```hcl
+   resource "aws_appflow_flow" "fail" {
+     name    = "example"
+     kms_arn = aws_kms_key.example.arn
+
+     # ... rest of configuration unchanged
+   }
+   ```
+
+   Ensure the referenced KMS key exists and its key policy grants the Amazon AppFlow service principal the necessary permissions to use the key for encryption/decryption. Apply least-privilege access to the key.

@@ -1,0 +1,136 @@
+The scanner flagged seven security misconfigurations across two resources: the IAM account password policy and the S3 bucket. Below, each finding is explained by contrasting the current configuration with a compliant one, focusing on the exact property or resource that must change and why that change matters.
+
+---
+
+### CKV_AWS_9 – Password expiration
+
+**Current state**  
+The `aws_iam_account_password_policy` resource sets `minimum_password_length`, character requirements, and `allow_users_to_change_password`, but does **not** include a `max_password_age` argument. This means passwords never expire, which violates the check.
+
+**Compliant state**  
+A compliant configuration would add `max_password_age = 90` (or any value ≤ 90). This forces all IAM users to change their password at least every 90 days.
+
+**Difference**  
+Adding the `max_password_age` property. Without it, a compromised password remains valid indefinitely, giving an attacker persistent access. A 90-day rotation window limits the exposure window.
+
+---
+
+### CKV_AWS_13 – Password reuse prevention
+
+**Current state**  
+The policy lacks a `password_reuse_prevention` argument. IAM therefore allows users to reuse any previous password immediately.
+
+**Compliant state**  
+A compliant configuration would include `password_reuse_prevention = 24` (or any value ≥ 1). This prevents users from cycling through a small set of passwords, which would defeat the purpose of forced rotation.
+
+**Difference**  
+Adding the `password_reuse_prevention` property. Without it, a user forced to change a password could simply set it back to the old one, nullifying the security benefit of expiration.
+
+---
+
+### CKV2_AWS_61 – S3 lifecycle configuration
+
+**Current state**  
+The `aws_s3_bucket` resource has no associated lifecycle configuration. Objects in the bucket will never be automatically transitioned or expired.
+
+**Compliant state**  
+A compliant setup would include an `aws_s3_bucket_lifecycle_configuration` resource attached to the bucket, defining rules for object expiration or transition to cheaper storage classes.
+
+**Difference**  
+The presence of a lifecycle configuration. Without it, data can accumulate indefinitely, increasing storage costs and the potential blast radius of a breach. Lifecycle rules help enforce data retention policies and reduce the amount of stale, sensitive data.
+
+---
+
+### CKV_AWS_18 – S3 access logging
+
+**Current state**  
+The bucket definition has no `logging` block and no separate `aws_s3_bucket_logging` resource. Server access logs are not being captured.
+
+**Compliant state**  
+A logging configuration (either an inline `logging` block or a separate `aws_s3_bucket_logging` resource) would be added, pointing to a target bucket where detailed access logs are delivered.
+
+**Difference**  
+Enabling access logging. Without it, there is no record of who accessed the bucket and when, making forensic investigation and security monitoring impossible.
+
+---
+
+### CKV2_AWS_62 – S3 event notifications
+
+**Current state**  
+No `aws_s3_bucket_notification` resource is present. The bucket does not send event notifications for object-level operations.
+
+**Compliant state**  
+A notification configuration would be added (e.g., sending events to an SNS topic, SQS queue, or Lambda function) to alert on important bucket activities like object creation or deletion.
+
+**Difference**  
+The presence of event notifications. They enable real-time detection of suspicious or unintended changes, which is critical for incident response and data integrity monitoring.
+
+---
+
+### CKV2_AWS_6 – Public Access Block
+
+**Current state**  
+The bucket has no `aws_s3_bucket_public_access_block` resource and no inline public access block settings. The bucket’s ACL is set via a variable (`var.acl`), which could potentially allow public access.
+
+**Compliant state**  
+A public access block configuration would be added (as a separate resource or inline) with all four settings enabled: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` set to `true`. This ensures that no public access is granted, regardless of the bucket ACL or policy.
+
+**Difference**  
+The explicit public access block. Even if the bucket ACL is set to `private`, a misconfigured bucket policy could accidentally grant public access. The block settings override any such policy, providing a hard guardrail against unintended public exposure.
+
+---
+
+### CKV_AWS_145 – KMS encryption
+
+**Current state**  
+The bucket has no `server_side_encryption_configuration` block. Objects are stored with default Amazon S3-managed keys (SSE-S3) or no encryption, depending on the account default.
+
+**Compliant state**  
+A `server_side_encryption_configuration` block would be added, specifying `sse_algorithm = "aws:kms"` and optionally a KMS key ARN. This ensures every object is encrypted with a customer-managed KMS key.
+
+**Difference**  
+The use of KMS-managed keys (SSE-KMS) instead of S3-managed keys (SSE-S3). KMS provides greater control over key rotation, access auditing, and the ability to enforce separation of duties through key policies. It also ensures that encryption is applied even if the bucket’s default encryption is later changed.
+
+---
+
+### CKV_AWS_144 – Cross-region replication
+
+**Current state**  
+No replication configuration exists. The bucket is not replicated to any other region.
+
+**Compliant state**  
+A replication configuration would be added (via `aws_s3_bucket_replication_configuration` resource) to automatically replicate objects to a bucket in another region, with appropriate IAM roles.
+
+**Difference**  
+The presence of cross-region replication. This protects data against regional outages and provides a geographically separate copy for disaster recovery and compliance purposes.
+
+---
+
+### CKV_AWS_21 – Versioning
+
+**Current state**  
+The bucket resource does not include a `versioning` block. Object versioning is therefore disabled.
+
+**Compliant state**  
+A `versioning` block with `enabled = true` would be added. This preserves every version of an object, allowing recovery from accidental overwrites or deletions.
+
+**Difference**  
+Enabling versioning. Without it, a single `DELETE` or `PUT` operation can permanently destroy data. Versioning provides a safety net against both human error and malicious actions.
+
+---
+
+## Summary for the engineer
+
+The password policy resource is missing two arguments: `max_password_age` (set to 90 or less) and `password_reuse_prevention` (set to 24, for example). Add them to enforce rotation and prevent immediate reuse.
+
+The S3 bucket is missing several security-critical configurations. You need to add:
+
+- A **lifecycle configuration** (via `aws_s3_bucket_lifecycle_configuration`) to manage object retention.
+- **Access logging** (via `aws_s3_bucket_logging`) to record all requests.
+- **Event notifications** (via `aws_s3_bucket_notification`) to alert on changes.
+- **Public access block** (via `aws_s3_bucket_public_access_block` with all four settings `true`) to prevent accidental public exposure.
+- **Server-side encryption with KMS** (via `server_side_encryption_configuration` block) to enforce customer-managed keys.
+- **Cross-region replication** (via `aws_s3_bucket_replication_configuration`) for disaster recovery.
+- **Versioning** (via `versioning` block set to `Enabled`) to protect against data loss.
+
+Each missing configuration directly addresses a specific security or compliance risk, from unauthorized access and data loss to lack of auditability and resilience.

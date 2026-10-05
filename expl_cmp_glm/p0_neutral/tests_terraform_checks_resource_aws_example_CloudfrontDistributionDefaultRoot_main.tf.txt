@@ -1,0 +1,24 @@
+### 1. What the misconfiguration is
+The Checkov findings highlight multiple issues across both `aws_cloudfront_distribution.pass` and `aws_cloudfront_distribution.fail`:
+- **HTTP Allowed (CKV_AWS_34):** The `default_cache_behavior` sets `viewer_protocol_policy = "allow-all"`, permitting plaintext HTTP.
+- **Weak TLS (CKV_AWS_174, CKV2_AWS_42):** The `viewer_certificate` block sets `cloudfront_default_certificate = true` but omits the `minimum_protocol_version`, defaulting to a TLS version older than 1.2 and relying on the default CloudFront certificate rather than a custom SSL/TLS certificate.
+- **No WAF (CKV_AWS_68, CKV2_AWS_47):** Neither distribution defines the `web_acl_id` property, meaning no AWS WAF Web ACL is attached.
+- **No Origin Failover (CKV_AWS_310):** Both distributions define only a single `origin` block and lack an `origin_group` configuration.
+- **Missing Root Object (CKV_AWS_305):** The `aws_cloudfront_distribution.fail` resource omits the `default_root_object` argument.
+- **No Response Headers Policy (CKV2_AWS_32):** Neither distribution includes a `response_headers_policy_id` in its cache behaviors.
+
+### 2. Why it matters
+- **Allow-all protocol:** Permitting HTTP exposes transmitted data (such as query strings or cookies if forwarded) to network interception.
+- **Weak TLS:** Allowing clients to negotiate TLSv1.0 or TLSv1.1 exposes the distribution to known cryptographic vulnerabilities (e.g., POODLE, BEAST).
+- **No WAF:** Without a WAF, the distribution lacks a primary layer of defense to inspect and block malicious HTTP requests or specific vulnerability patterns (like Log4j).
+- **No Origin Failover:** If the single configured S3 origin becomes unavailable, the entire CloudFront distribution will fail to serve content.
+- **Missing Root Object:** Without a default root object, CloudFront will return an Access Denied or listing response when a user requests the root path (`/`) instead of a specified index file.
+- **No Security Headers:** Omitting a response headers policy means the distribution is not enforcing standard security headers (e.g., `Strict-Transport-Security`, `X-Content-Type-Options`).
+
+### 3. How to fix it safely
+1. **Enforce HTTPS:** Change `viewer_protocol_policy = "allow-all"` to `"https-only"` or `"redirect-to-https"` in the `default_cache_behavior`.
+2. **Harden TLS:** In the `viewer_certificate` block, add `minimum_protocol_version = "TLSv1.2_2021"`. If serving custom domains (as indicated by the `aliases` block), replace `cloudfront_default_certificate = true` with `acm_certificate_arn = "<ACM_CERT_ARN>"` and `ssl_support_method = "sni-only"`.
+3. **Attach a WAF:** Create a `aws_wafv2_web_acl` resource and reference its ARN via the `web_acl_id` argument at the top level of the distribution.
+4. **Configure Origin Failover:** Define an `origin_group` block containing both the primary and a secondary `origin` block, setting `failover_criteria` and `status_codes`. Update the cache behavior's `target_origin_id` to point to the origin group ID.
+5. **Set Default Root Object:** Add `default_root_object = "index.html"` to the `aws_cloudfront_distribution.fail` resource.
+6. **Add Response Headers:** Create an `aws_cloudfront_response_headers_policy` and reference its ID using the `response_headers_policy_id` argument in the `default_cache_behavior` and `ordered_cache_behavior` blocks.

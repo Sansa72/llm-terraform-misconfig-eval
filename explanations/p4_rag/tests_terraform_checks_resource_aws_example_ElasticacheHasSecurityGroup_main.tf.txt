@@ -1,0 +1,85 @@
+The scanner flagged three issues in your Terraform file. Here’s what each means in the context of your configuration, and how to fix them.
+
+---
+
+### 1. `CKV_AWS_196` on `aws_elasticache_security_group.exists` – **Deprecated resource type**
+
+**What the rule says:**  
+This resource type (`aws_elasticache_security_group`) should not exist. It is used only for ElastiCache clusters running in **EC2‑Classic** (the legacy, non‑VPC networking mode). EC2‑Classic is deprecated and no longer available for new AWS accounts. All modern ElastiCache deployments use **VPC security groups** instead.
+
+**What it means for your file:**  
+You have defined an `aws_elasticache_security_group` that references `aws_security_group.bar`. This entire resource is a no‑op in a VPC‑only environment and will either fail to apply or create an unusable artifact. The correct approach is to attach a VPC security group directly to the ElastiCache cluster (or replication group) via the `security_group_ids` argument.
+
+**Fix:**  
+Remove the `aws_elasticache_security_group` resource entirely. When you define your `aws_elasticache_cluster` (or `aws_elasticache_replication_group`), reference the VPC security group there:
+
+```hcl
+resource "aws_elasticache_cluster" "example" {
+  cluster_id           = "my-cluster"
+  engine               = "redis"
+  ...
+  security_group_ids   = [aws_security_group.bar.id]
+}
+```
+
+---
+
+### 2. `CKV_AWS_23` on both `aws_elasticache_security_group.exists` and `aws_security_group.bar` – **Missing rule descriptions**
+
+**What the rule says:**  
+Every security group rule (ingress and egress) must have a `description`. Descriptions improve auditability, help teams understand the purpose of each rule, and reduce the risk of overly permissive access being left in place unintentionally.
+
+**What it means for your file:**
+- **`aws_elasticache_security_group.exists`** – This resource is deprecated and will be removed (see above), so the description issue disappears with it.
+- **`aws_security_group.bar`** – This security group currently has **no rules defined at all**. In Terraform, if you omit `ingress` and `egress` blocks, AWS applies a default egress rule that allows all outbound traffic, but that rule has no description. The scanner flags this because the implicit rule lacks a description. Even if you don’t need custom rules, you should explicitly define the egress rule with a description to satisfy the policy and make the intent clear.
+
+**Fix:**  
+After removing the deprecated resource, define the required rules for `aws_security_group.bar` with descriptions. For example, if this group is for ElastiCache Redis, you might allow inbound from your application servers:
+
+```hcl
+resource "aws_security_group" "bar" {
+  name        = "security-group"
+  description = "Security group for ElastiCache Redis"
+
+  ingress {
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Allow Redis from application subnets"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
+  }
+}
+```
+
+If the security group truly needs no rules, you can still satisfy the scanner by explicitly adding a self‑referencing rule with a description, but that’s rarely useful. Better to define the actual required rules.
+
+---
+
+### 3. `CKV2_AWS_5` on `aws_security_group.bar` – **Unattached security group**
+
+**What the rule says:**  
+Security groups should be attached to at least one resource (EC2 instance, ENI, RDS, ElastiCache cluster, etc.). An unattached security group is dead code – it provides no security benefit, clutters the environment, and may indicate a misconfiguration where a resource was intended to be protected but isn’t.
+
+**What it means for your file:**  
+Your `aws_security_group.bar` is defined but never referenced by any other resource (the `aws_elasticache_security_group` that references it is itself deprecated and will be removed). After removing the deprecated resource, `bar` will be completely orphaned.
+
+**Fix:**  
+Attach the security group to the resource it’s meant to protect. If it’s for ElastiCache, use `security_group_ids` in the `aws_elasticache_cluster` or `aws_elasticache_replication_group` resource. If it’s for EC2, reference it in the `vpc_security_group_ids` of an instance or launch template. If the group is no longer needed, delete it from the configuration.
+
+---
+
+### Summary of required changes
+
+1. **Delete** the `aws_elasticache_security_group` resource – it’s incompatible with modern VPC‑based AWS.
+2. **Add rules with descriptions** to `aws_security_group.bar` (or any other security group you keep).
+3. **Attach** `aws_security_group.bar` to the actual resource it’s meant to protect (e.g., an ElastiCache cluster, EC2 instance, etc.), or remove it if it serves no purpose.
+
+These changes will resolve all four findings and align your configuration with AWS best practices.

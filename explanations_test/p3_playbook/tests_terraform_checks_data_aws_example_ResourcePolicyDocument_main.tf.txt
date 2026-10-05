@@ -1,0 +1,19 @@
+**Remediation Briefing: CKV_AWS_356 on `aws_iam_policy_document.fail`**
+
+---
+
+### 1. CKV_AWS_356 – `aws_iam_policy_document.fail` (lines 1–13)
+
+**What is wrong**  
+The policy statement grants `s3:Describe*` actions with a wildcard resource `"*"`.
+
+**Why it matters**  
+Using `"*"` as the resource for actions that support resource‑level permissions (restrictable actions) violates the principle of least privilege. It allows the attached principal to perform those actions on **every** S3 resource in the account, unnecessarily expanding the blast radius if the credentials are misused or compromised.
+
+**Change needed**  
+Replace the wildcard `"*"` with the specific ARN(s) of the S3 resources that the principal actually needs to access. For example, if the policy is meant to allow describing a particular bucket, use `"arn:aws:s3:::bucket-name"`. If multiple resources are required, list each ARN explicitly. Verify that the chosen `s3:Describe*` actions (e.g., `s3:DescribeJob`, `s3:DescribeMultiRegionAccessPointOperation`) are appropriate for the resource type you specify; some of these actions operate on job or access point ARNs, not bucket ARNs. Adjust the action list or resource ARNs so that the policy grants only the intended, minimal permissions.
+
+---
+
+**Interactions with other fixes**  
+No other failing checks are present; the remaining policy documents (`pass2`, `pass`, `pass_unrestrictable`, `pass_condition`) already satisfy the check and require no changes.

@@ -1,0 +1,78 @@
+The scanner flagged several security misconfigurations across your ElastiCache resources. Here’s what each finding means and how to fix it in your Terraform.
+
+## CKV_AWS_323: ElastiCache clusters should not use the default subnet group
+
+**What it checks**  
+The cluster is not assigned a custom subnet group, so it falls back to the AWS default subnet group for the VPC. The default group often includes subnets in all Availability Zones without deliberate network segmentation, which can expose the cache to broader network access than intended.
+
+**Where it applies in your file**  
+All four resources (`aws_elasticache_cluster.pass`, `pass2`, `fail`, `memcached`) are missing the `subnet_group_name` argument. They will therefore use the default subnet group.
+
+**Why it matters**  
+Using the default subnet group means you haven’t explicitly defined which subnets the cache nodes should reside in. This can lead to:
+- Cache nodes being placed in public subnets or subnets with overly permissive route tables.
+- Inability to apply fine-grained network controls (e.g., restricting inbound traffic to specific application subnets).
+- Compliance violations in environments that require explicit network segmentation.
+
+**How to fix**  
+Create a dedicated ElastiCache subnet group (via `aws_elasticache_subnet_group`) that includes only the private subnets where your cache should live, then reference it in each cluster resource:
+```hcl
+subnet_group_name = aws_elasticache_subnet_group.my_cache_subnets.name
+```
+
+---
+
+## CKV_AWS_134: Redis clusters must have automatic backup turned on
+
+**What it checks**  
+For Redis clusters, the `snapshot_retention_limit` must be set to a value greater than 0. This enables automatic daily snapshots and retains them for the specified number of days.
+
+**Where it applies in your file**  
+- `aws_elasticache_cluster.pass` – **compliant** (retention = 5).  
+- `aws_elasticache_cluster.pass2` – **non‑compliant** (no `snapshot_retention_limit` set, defaults to 0).  
+- `aws_elasticache_cluster.fail` – **non‑compliant** (explicitly set to 0).  
+- `memcached` – not applicable (rule is Redis‑specific).
+
+**Why it matters**  
+Without automatic backups, you lose the ability to recover from data corruption, accidental deletion, or cluster failure. Redis is often used as a primary data store; losing it without backups can cause significant data loss and downtime.
+
+**How to fix**  
+Add `snapshot_retention_limit` with a value ≥ 1 (e.g., 5 days) to `pass2` and change the value in `fail` from 0 to a positive number. Example:
+```hcl
+snapshot_retention_limit = 5
+```
+
+---
+
+## CKV_AWS_322: Redis clusters should have auto minor version upgrades enabled
+
+**What it checks**  
+The `auto_minor_version_upgrade` argument must be set to `true`. This allows AWS to automatically apply minor engine version upgrades (e.g., security patches) during the maintenance window.
+
+**Where it applies in your file**  
+- `aws_elasticache_cluster.pass` – **compliant** (set to `true`).  
+- `aws_elasticache_cluster.pass2` – not flagged (the attribute is absent, which defaults to `true` in the AWS provider, so it’s effectively compliant).  
+- `aws_elasticache_cluster.fail` – **non‑compliant** (explicitly set to `false`).  
+- `memcached` – not applicable (rule is Redis‑specific).
+
+**Why it matters**  
+Disabling auto minor version upgrades leaves the cluster on an outdated engine version that may contain known vulnerabilities. Even if you patch the OS, the Redis engine itself could be exploitable. Automatic upgrades ensure you receive security fixes without manual intervention.
+
+**How to fix**  
+In the `fail` resource, change `auto_minor_version_upgrade` to `true` (or simply remove the line, as the default is `true`). For consistency, explicitly set it to `true`:
+```hcl
+auto_minor_version_upgrade = true
+```
+
+---
+
+## Summary of required changes
+
+| Resource | Missing/Incorrect Setting | Fix |
+|----------|--------------------------|-----|
+| `pass` | No `subnet_group_name` | Add a custom subnet group |
+| `pass2` | No `subnet_group_name`, no `snapshot_retention_limit` | Add subnet group, set `snapshot_retention_limit` ≥ 1 |
+| `fail` | No `subnet_group_name`, `snapshot_retention_limit = 0`, `auto_minor_version_upgrade = false` | Add subnet group, set retention ≥ 1, set auto upgrade to `true` |
+| `memcached` | No `subnet_group_name` | Add a custom subnet group |
+
+After applying these changes, all four resources will pass the security checks.

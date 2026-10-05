@@ -1,0 +1,60 @@
+**Remediation briefing: CKV_AWS_204 – Ensure AMIs are encrypted using KMS CMKs**
+
+The scanner flagged three `aws_ami` resources for not having encrypted EBS block devices. Below is the evidence and the required change for each.
+
+---
+
+### 1. CKV_AWS_204 on `aws_ami.fail` (lines 31–47)
+
+**What the file shows**  
+- The resource contains two `ebs_block_device` blocks.  
+- The first block (lines 37–41) has `snapshot_id` but no `encrypted` attribute.  
+- The second block (lines 43–47) has `encrypted = false`.
+
+**What is wrong**  
+Neither block device is encrypted. The check requires that AMI block devices be encrypted.
+
+**Why it matters**  
+The scanner expects all EBS block devices in an AMI to be encrypted. Unencrypted block devices do not meet the policy enforced by CKV_AWS_204.
+
+**Change needed**  
+Set `encrypted = true` on every `ebs_block_device` block in this resource. If the check also expects a customer-managed KMS key (CMK), add `kms_key_id` with a valid CMK ARN; however, the passing resource `aws_ami.pass2` uses only `encrypted = true` and was not flagged, so setting `encrypted = true` is sufficient to satisfy the check as evidenced.
+
+---
+
+### 2. CKV_AWS_204 on `aws_ami.fail2` (lines 49–59)
+
+**What the file shows**  
+- The resource has a single `ebs_block_device` block (lines 54–58).  
+- That block sets `encrypted = false`.
+
+**What is wrong**  
+The sole block device is explicitly unencrypted, violating the requirement.
+
+**Why it matters**  
+The check requires encryption on AMI block devices. An explicit `false` value fails the check.
+
+**Change needed**  
+Change `encrypted = false` to `encrypted = true`. Optionally, if a CMK is required, add `kms_key_id`; the passing resource `aws_ami.pass2` does not include it, so `encrypted = true` alone should make the check pass.
+
+---
+
+### 3. CKV_AWS_204 on `aws_ami.fail3` (lines 61–70)
+
+**What the file shows**  
+- The resource has one `ebs_block_device` block (lines 66–69).  
+- The `encrypted` attribute is absent.
+
+**What is wrong**  
+When `encrypted` is omitted, it defaults to `false`, so the block device is unencrypted.
+
+**Why it matters**  
+The check requires encryption; an absent `encrypted` attribute is treated as unencrypted and triggers the finding.
+
+**Change needed**  
+Add `encrypted = true` to the `ebs_block_device` block. As with the other resources, adding `kms_key_id` is optional based on the passing examples, but `encrypted = true` is the minimum required to pass.
+
+---
+
+**Additional note**  
+The passing resource `aws_ami.pass` (lines 2–17) contains one unencrypted block device (lines 6–10) and one encrypted block device (lines 12–16). The scanner did not flag it, which suggests the check may only require that *at least one* block device is encrypted, or that the root device is not the sole focus. To be safe and align with the check’s intent, encrypt all block devices in each AMI.

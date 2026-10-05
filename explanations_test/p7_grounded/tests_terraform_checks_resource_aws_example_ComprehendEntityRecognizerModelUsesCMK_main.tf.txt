@@ -1,0 +1,28 @@
+The scanner flagged two separate issues on the `aws_comprehend_entity_recognizer` resources in your file. Here is what the findings tell you, based strictly on the evidence provided.
+
+## 1. CKV_AWS_268 – Volume encryption missing on both resources
+
+**Check ID:** `CKV_AWS_268`  
+**Finding:** *Ensure that Comprehend Entity Recognizer's volume is encrypted by KMS using a customer managed Key (CMK)*  
+**Affected resources:**
+- `aws_comprehend_entity_recognizer.pass` (lines 2–29)
+- `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What the file shows:**  
+Neither resource contains a `volume_kms_key_id` argument. The `pass` resource does have a `model_kms_key_id` (line 4), but that is a different setting. The `fail` resource has no KMS key argument at all. The scanner therefore reports that the volume encryption requirement is not met for either resource.
+
+## 2. CKV_AWS_267 – Model encryption missing on the `fail` resource
+
+**Check ID:** `CKV_AWS_267`  
+**Finding:** *Ensure that Comprehend Entity Recognizer's model is encrypted by KMS using a customer managed Key (CMK)*  
+**Affected resource:** `aws_comprehend_entity_recognizer.fail` (lines 40–66)
+
+**What the file shows:**  
+The `fail` resource does not include a `model_kms_key_id` argument. The `pass` resource does include `model_kms_key_id = aws_kms_key.test.id` (line 4), which is why this check was **not** raised against `pass`.
+
+## Summary of required changes
+
+- **For `aws_comprehend_entity_recognizer.pass`:** Add a `volume_kms_key_id` argument (e.g., `volume_kms_key_id = aws_kms_key.test.id`) to satisfy CKV_AWS_268.
+- **For `aws_comprehend_entity_recognizer.fail`:** Add both a `model_kms_key_id` argument (to satisfy CKV_AWS_267) and a `volume_kms_key_id` argument (to satisfy CKV_AWS_268).
+
+The scanner does not indicate any other missing encryption settings. The `data_access_role_arn`, `input_data_config`, and `depends_on` blocks are not related to these findings.

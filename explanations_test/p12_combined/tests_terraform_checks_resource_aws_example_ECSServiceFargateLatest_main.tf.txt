@@ -1,0 +1,14 @@
+**Check ID:** CKV_AWS_332  
+**Resource:** `aws_ecs_service.fail` (lines 12–16)
+
+**What the file shows**  
+The resource `aws_ecs_service.fail` is configured with `launch_type = "FARGATE"` and an explicit `platform_version = "1.4.0"` (lines 14–15). The other Fargate service `pass` sets `platform_version = "LATEST"`, and `pass2` omits the argument entirely (which also defaults to `LATEST` for Fargate).
+
+**What is wrong**  
+The service is pinned to a specific, older Fargate platform version (`1.4.0`) instead of using the latest available version. This means the service will not automatically receive platform updates that include security patches, bug fixes, and feature improvements.
+
+**Why it matters**  
+The check ensures that ECS Fargate services run on the latest Fargate platform version. Running a fixed older version prevents the service from benefiting from the most current platform-level protections and enhancements.
+
+**Remediation**  
+Change the `platform_version` argument from `"1.4.0"` to `"LATEST"`, or remove the `platform_version` line entirely. Both approaches will cause the service to use the latest Fargate platform version at each deployment, satisfying the check. No other resource in the file requires modification for this finding.

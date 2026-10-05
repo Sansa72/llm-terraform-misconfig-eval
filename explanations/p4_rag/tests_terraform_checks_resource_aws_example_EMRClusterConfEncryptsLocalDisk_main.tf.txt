@@ -1,0 +1,86 @@
+The scanner flagged multiple encryption gaps across your three EMR security configurations. Even the one named `pass` isn’t fully compliant. Let’s walk through what each rule requires, why it matters, and exactly what needs to change in your Terraform.
+
+---
+
+## What the rules are checking
+
+| Rule | Requirement | Why it matters |
+|------|-------------|----------------|
+| **CKV_AWS_351** | `EnableInTransitEncryption` must be `true` | Protects data moving between EMR nodes and services from eavesdropping or tampering. |
+| **CKV_AWS_171** | S3 encryption must use `SSE-KMS`, not `SSE-S3` | SSE-S3 uses Amazon-managed keys with limited audit and control; SSE-KMS gives you customer-managed keys, key rotation, and CloudTrail logging of usage. |
+| **CKV_AWS_350** | EBS volumes must be encrypted (`EnableEbsEncryption: true` with a KMS key) | Ensures data on attached EBS volumes is encrypted at rest using a key you control. |
+| **CKV_AWS_349** | Local disks must be encrypted (`LocalDiskEncryptionConfiguration` with a KMS key) | Protects data on instance store volumes (local disks) that are physically attached to the cluster nodes. |
+
+All four must be satisfied for a fully secure configuration.
+
+---
+
+## What’s happening in your file
+
+### `aws_emr_security_configuration.pass` (lines 1–22)
+**Fails:** CKV_AWS_351, CKV_AWS_171  
+**Passes:** CKV_AWS_350, CKV_AWS_349
+
+This configuration already has local disk and EBS encryption with a KMS key, so the at‑rest disk rules are happy. However:
+
+- **In‑transit encryption is disabled** (`"EnableInTransitEncryption": false`).  
+  *Fix:* Set it to `true`.
+
+- **S3 encryption uses `SSE-S3`** (`"EncryptionMode": "SSE-S3"`).  
+  *Fix:* Change the mode to `"SSE-KMS"` and provide a KMS key ARN (you can reuse the same key used for local disks or specify a different one). The S3 block should look like:
+  ```json
+  "S3EncryptionConfiguration": {
+    "EncryptionMode": "SSE-KMS",
+    "AwsKmsKey": "arn:aws:kms:eu-west-2:680235478471:key/27b6fd31-ca6d-4c71-8dca-06ebd0f94174"
+  }
+  ```
+
+### `aws_emr_security_configuration.fail` (lines 24–40)
+**Fails:** CKV_AWS_351, CKV_AWS_171, CKV_AWS_350, CKV_AWS_349
+
+This one has `EnableAtRestEncryption: true` but only defines S3 encryption (with the wrong mode). It completely omits `LocalDiskEncryptionConfiguration`, so neither local disks nor EBS volumes are encrypted.
+
+- **In‑transit:** `false` → set to `true`.
+- **S3:** change to `SSE-KMS` with a KMS key ARN.
+- **Local disks & EBS:** add a `LocalDiskEncryptionConfiguration` block with `"EnableEbsEncryption": true`, `"EncryptionKeyProviderType": "AwsKms"`, and a valid KMS key ARN. This single block satisfies both CKV_AWS_349 and CKV_AWS_350.
+
+### `aws_emr_security_configuration.fail2` (lines 43–54)
+**Fails:** CKV_AWS_351, CKV_AWS_171, CKV_AWS_350, CKV_AWS_349
+
+This one has **at‑rest encryption completely disabled** (`"EnableAtRestEncryption": false`). There is no S3, local disk, or EBS encryption defined. In‑transit is also `false`.
+
+- **Enable at‑rest encryption:** set `"EnableAtRestEncryption": true`.
+- **Add the full `AtRestEncryptionConfiguration`** with:
+  - `S3EncryptionConfiguration` using `SSE-KMS` and a KMS key.
+  - `LocalDiskEncryptionConfiguration` with `EnableEbsEncryption: true`, `EncryptionKeyProviderType: "AwsKms"`, and a KMS key.
+- **Enable in‑transit encryption:** set `"EnableInTransitEncryption": true`.
+
+---
+
+## Summary of required changes
+
+For all three resources, the final `configuration` JSON must include:
+
+```json
+{
+  "EncryptionConfiguration": {
+    "EnableInTransitEncryption": true,
+    "EnableAtRestEncryption": true,
+    "AtRestEncryptionConfiguration": {
+      "S3EncryptionConfiguration": {
+        "EncryptionMode": "SSE-KMS",
+        "AwsKmsKey": "<your-kms-key-arn>"
+      },
+      "LocalDiskEncryptionConfiguration": {
+        "EnableEbsEncryption": true,
+        "EncryptionKeyProviderType": "AwsKms",
+        "AwsKmsKey": "<your-kms-key-arn>"
+      }
+    }
+  }
+}
+```
+
+You can use the same KMS key for both S3 and local disks, or separate keys if your key management policy requires it. The key must exist in the same region as the EMR cluster and have a policy that allows EMR to use it for encryption.
+
+Once you apply these changes, all four rules will pass for every security configuration.

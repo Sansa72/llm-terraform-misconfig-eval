@@ -1,0 +1,61 @@
+The scanner flagged two types of misconfigurations in your Terraform file, both related to CloudWatch Log Group security and compliance. Here’s what’s wrong and how to fix it.
+
+---
+
+### 1. CKV_AWS_158 – Missing KMS encryption on all log groups
+
+**What the rule requires**  
+CloudWatch Log Groups should be encrypted using a customer-managed KMS key (or an AWS-managed key, but the policy expects explicit configuration). Without it, log data is encrypted at rest using the default AWS-managed key, which may not meet organizational security requirements for key control, rotation, and access auditing.
+
+**What’s happening in your file**  
+Every `aws_cloudwatch_log_group` resource (`pass_365`, `pass_0`, `fail`, `unknown`) is missing the `kms_key_id` argument. This means none of them are explicitly associated with a KMS key, so they fall back to the default encryption. The scanner therefore flags all four.
+
+**How to fix**  
+Add a `kms_key_id` attribute to each log group, pointing to a KMS key ARN (or alias). For example:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass_365" {
+  name            = "pass_365"
+  retention_in_days = 365
+  kms_key_id      = aws_kms_key.logs.arn   # or a specific key ARN
+}
+```
+
+If you want to use the same key across multiple groups, define a `aws_kms_key` resource and reference it. If you have a key already created outside Terraform, use its ARN directly.
+
+---
+
+### 2. CKV_AWS_338 – Retention less than 1 year on `aws_cloudwatch_log_group.fail`
+
+**What the rule requires**  
+CloudWatch Log Groups must retain logs for at least 365 days (1 year). This is a logging best practice for auditing, incident investigation, and compliance (e.g., SOC2, PCI-DSS). A retention of 0 means logs never expire, which also satisfies the rule.
+
+**What’s happening in your file**  
+- `pass_365` has `retention_in_days = 365` – compliant.  
+- `pass_0` has `retention_in_days = 0` (never expire) – compliant.  
+- `fail` has `retention_in_days = 5` – **non‑compliant** because logs are deleted after 5 days.  
+- `unknown` uses a variable (`var.retention`). The scanner cannot evaluate the variable’s value, so it doesn’t flag it here, but you must ensure that variable is set to `0` or `>= 365` in your input variables, otherwise it would also fail.
+
+**How to fix**  
+Change the `fail` resource’s retention to at least 365 days, or to 0 if you want indefinite retention:
+
+```hcl
+resource "aws_cloudwatch_log_group" "fail" {
+  retention_in_days = 365   # or 0
+}
+```
+
+For the `unknown` resource, verify that the variable `var.retention` is set to a compliant value (0 or >=365) in your `.tfvars` or default value.
+
+---
+
+### Summary of required changes
+
+| Resource          | Issue                                                                 | Fix                                                                                     |
+|-------------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| `pass_365`        | No KMS encryption                                                     | Add `kms_key_id`                                                                        |
+| `pass_0`          | No KMS encryption                                                     | Add `kms_key_id`                                                                        |
+| `fail`            | No KMS encryption **and** retention = 5 days (less than 1 year)        | Add `kms_key_id` and set `retention_in_days` to 365 (or 0)                               |
+| `unknown`         | No KMS encryption                                                     | Add `kms_key_id`; also ensure the variable `var.retention` is compliant (0 or >=365)      |
+
+After applying these changes, the log groups will be encrypted with a KMS key under your control, and the `fail` group will retain logs for at least a year, satisfying both policies.

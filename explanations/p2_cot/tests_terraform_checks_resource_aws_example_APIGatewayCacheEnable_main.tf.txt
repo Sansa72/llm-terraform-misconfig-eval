@@ -1,0 +1,70 @@
+The Terraform file defines two `aws_api_gateway_stage` resources, `pass` and `fail`. Both are missing several security-relevant configurations. Below is a breakdown of each finding, why it matters, and how to fix it while preserving the stage’s purpose.
+
+### 1. X-Ray tracing (CKV_AWS_73)
+- **What’s missing:** The `xray_tracing_enabled` argument is not set (defaults to `false`).
+- **Why it matters:** Without X-Ray tracing, you lose end‑to‑end visibility into requests flowing through API Gateway to downstream services. This hampers debugging, performance analysis, and anomaly detection.
+- **Fix:** Add `xray_tracing_enabled = true` to both `aws_api_gateway_stage` resources.
+
+### 2. Access logging (CKV_AWS_76)
+- **What’s missing:** No `access_log_settings` block is defined.
+- **Why it matters:** Access logs record every request to the stage, providing an audit trail for security investigations, compliance, and operational troubleshooting.
+- **Fix:** Add an `access_log_settings` block to each stage, referencing a CloudWatch log group ARN and a log format. For example:
+  ```hcl
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format          = "$context.identity.sourceIp ..." # choose a format
+  }
+  ```
+  You’ll need to create the CloudWatch log group separately and ensure the API Gateway has permission to write to it.
+
+### 3. Logging level (CKV2_AWS_4)
+- **What’s missing:** The stage does not have a `logging_level` defined (defaults to `OFF`).
+- **Why it matters:** Execution logging captures detailed information about API Gateway processing, including errors and authorisation results. Without it, you lose visibility into potential misconfigurations or attacks.
+- **Fix:** Set `logging_level` to `INFO` or `ERROR` on both stages. For example:
+  ```hcl
+  logging_level = "INFO"
+  ```
+
+### 4. Client certificate authentication (CKV2_AWS_51)
+- **What’s missing:** No `client_certificate_id` is specified.
+- **Why it matters:** Client certificates enable mutual TLS (mTLS), ensuring that only clients presenting a valid certificate can connect. This prevents unauthorised access to the API.
+- **Fix:** Generate a client certificate resource and reference its ID in the stage:
+  ```hcl
+  resource "aws_api_gateway_client_certificate" "example" {
+    description = "Client certificate for API Gateway stage"
+  }
+  ```
+  Then in the stage:
+  ```hcl
+  client_certificate_id = aws_api_gateway_client_certificate.example.id
+  ```
+
+### 5. WAF protection (CKV2_AWS_29)
+- **What’s missing:** The stage is not associated with a WAF web ACL.
+- **Why it matters:** A public API without a WAF is exposed to common web attacks (SQL injection, XSS, etc.). WAF provides a layer of defence by filtering malicious requests.
+- **Fix:** Associate a WAF Regional or WAFv2 web ACL with the stage. For example, using a WAFv2 web ACL:
+  ```hcl
+  resource "aws_wafv2_web_acl_association" "example" {
+    resource_arn = aws_api_gateway_stage.pass.arn
+    web_acl_arn = aws_wafv2_web_acl.example.arn
+  }
+  ```
+  (Do the same for the `fail` stage.) You’ll need to create the web ACL separately.
+
+### 6. API Gateway caching (CKV_AWS_120) – `fail` stage only
+- **What’s missing:** The `fail` stage does not have `cache_cluster_enabled = true` (the `pass` stage already has it).
+- **Why it matters:** Caching reduces backend load and improves latency. While primarily a performance concern, it also helps mitigate some denial‑of‑service scenarios by absorbing repeated requests.
+- **Fix:** Add `cache_cluster_enabled = true` to the `fail` stage. Optionally, set `cache_cluster_size` to a value appropriate for your workload (e.g., `"0.5"` for 0.5 GB).
+
+### Summary of changes
+Both `aws_api_gateway_stage` resources need:
+- `xray_tracing_enabled = true`
+- `access_log_settings { … }` (with a valid log group ARN)
+- `logging_level = "INFO"` (or `"ERROR"`)
+- `client_certificate_id = aws_api_gateway_client_certificate.example.id`
+- A WAF web ACL association (via a separate `aws_wafv2_web_acl_association` resource)
+
+Additionally, the `fail` stage needs:
+- `cache_cluster_enabled = true`
+
+Implementing these changes will satisfy all flagged checks while maintaining the stages’ intended functionality.

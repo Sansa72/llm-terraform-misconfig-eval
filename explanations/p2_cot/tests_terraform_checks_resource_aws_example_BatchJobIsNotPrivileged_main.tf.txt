@@ -1,0 +1,24 @@
+The scanner flagged the `aws_batch_job_definition.fail` resource because its container properties explicitly enable privileged mode (`"privileged": true`). The check requires that containers do not run with elevated privileges unless absolutely necessary.
+
+**What’s happening now**  
+The job definition launches a container with the `privileged` flag set to `true`. This gives the container full access to the host’s devices and capabilities, effectively running as root with almost no restrictions. The job’s actual workload is a simple `ls -la` command, which does not need this level of access.
+
+**Why it matters**  
+Privileged mode disables many of the isolation mechanisms that protect the host from the container. If the container were compromised (for example, through a malicious image or command injection), an attacker could escape the container, access the underlying host, or interfere with other processes. Removing unnecessary privileges reduces the blast radius of any potential breach.
+
+**How to fix it**  
+Set `"privileged": false` in the container properties, or remove the `privileged` field entirely (the default is `false`). The job’s functionality—listing a directory—does not require privileged access, so this change is safe and aligns with the principle of least privilege.
+
+Example fix for the `fail` resource:
+```hcl
+container_properties = <<CONTAINER_PROPERTIES
+{
+    "command": ["ls", "-la"],
+    "image": "busybox",
+    "memory": 1024,
+    "vcpus": 1,
+    "privileged": false,
+    ...
+}
+CONTAINER_PROPERTIES
+```

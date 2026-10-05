@@ -1,0 +1,14 @@
+The `aws_connect_instance_storage_config.fail` resource is missing a customer managed key (CMK) for its Kinesis Video Stream encryption configuration. The `encryption_config` block sets `encryption_type = "KMS"` but does not provide a `key_id`. Without an explicit key, Amazon Connect will use an AWS managed key, which does not meet the policy requirement for a CMK. This is correctly flagged by rule **CKV_AWS_269** (Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK).
+
+The `aws_connect_instance_storage_config.pass` resource is correctly configured: it specifies both `encryption_type = "KMS"` and a `key_id` pointing to a customer managed KMS key. The scanner also raised **CKV_AWS_270** (Ensure Connect Instance S3 Storage Config uses CMK) against this resource, but that is a false positive because the resource is a `MEDIA_STREAMS` / `KINESIS_VIDEO_STREAM` storage config, not an S3 storage config. No S3-related misconfiguration exists here.
+
+**Fix**: Add the `key_id` argument to the `encryption_config` block in the `fail` resource, referencing a valid KMS key ARN, just as done in the `pass` resource. For example:
+
+```hcl
+encryption_config {
+  encryption_type = "KMS"
+  key_id          = aws_kms_key.your_key.arn
+}
+```
+
+If the scanner’s CKV_AWS_270 finding on the `pass` resource is unwanted, suppress it for that resource (e.g., via a skip comment) because the resource is not an S3 storage configuration.

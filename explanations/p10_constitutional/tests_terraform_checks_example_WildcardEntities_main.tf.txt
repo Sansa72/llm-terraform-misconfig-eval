@@ -1,0 +1,41 @@
+Explanation of scanner findings:
+
+The following checks failed because the Terraform configuration does not include the required settings.
+
+1. **CKV_AWS_9** on `aws_iam_account_password_policy.password-policy` (lines 28-35):  
+   The resource does not set a maximum password age. The rule requires that passwords expire within 90 days or less. Without `max_password_age`, passwords never expire, increasing the risk of long-term credential exposure.  
+   *To fix:* Add `max_password_age = 90` (or a value ≤90) to the `aws_iam_account_password_policy.password-policy` block.
+
+2. **CKV_AWS_13** on `aws_iam_account_password_policy.password-policy` (lines 28-35):  
+   The resource lacks `password_reuse_prevention`. The rule requires preventing password reuse (e.g., remembering a number of previous passwords). Without it, users can cycle through old passwords, weakening the policy.  
+   *To fix:* Add `password_reuse_prevention = 5` (or a value that enforces no reuse) to the same block.
+
+3. **CKV2_AWS_61** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket has no lifecycle configuration. The rule requires a lifecycle policy to manage object expiration or transition. Without it, objects may accumulate indefinitely, increasing costs and compliance risk.  
+   *To fix:* Add a `lifecycle_rule` block inside the `aws_s3_bucket.template_bucket` resource.
+
+4. **CKV_AWS_18** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket does not have access logging enabled. The rule requires server access logging for auditability.  
+   *To fix:* Add a `logging` block to the bucket resource, specifying a target bucket and prefix.
+
+5. **CKV2_AWS_62** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket does not have event notifications configured. The rule requires event notifications to alert on bucket events.  
+   *To fix:* Add an `event_notification` configuration (e.g., using `aws_s3_bucket_notification` or inline) to the bucket resource.
+
+6. **CKV2_AWS_6** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket does not have a Public Access Block. The rule requires blocking all public access to prevent unintended exposure.  
+   *To fix:* Add a `public_access_block` configuration block to the bucket resource, setting `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` to `true`.
+
+7. **CKV_AWS_145** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket is not configured to use KMS encryption by default. The rule requires default encryption with AWS KMS (SSE-KMS).  
+   *To fix:* Add a `server_side_encryption_configuration` block with a rule that applies `aws:kms` and specifies a KMS key ID (or uses the default `aws/s3` key).
+
+8. **CKV_AWS_144** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket does not have cross-region replication enabled. The rule requires replication to another region for durability and disaster recovery.  
+   *To fix:* Add a `replication_configuration` block to the bucket resource, specifying a destination bucket and IAM role.
+
+9. **CKV_AWS_21** on `aws_s3_bucket.template_bucket` (lines 57-62):  
+   The bucket does not have versioning enabled. The rule requires versioning to protect against accidental deletion or overwrite.  
+   *To fix:* Add a `versioning` block with `enabled = true` to the bucket resource.
+
+All changes should be made directly in the respective resource blocks in the file. The exact values (e.g., `max_password_age`, `password_reuse_prevention` count, KMS key ARN, replication destination) should align with your organization's security policies.

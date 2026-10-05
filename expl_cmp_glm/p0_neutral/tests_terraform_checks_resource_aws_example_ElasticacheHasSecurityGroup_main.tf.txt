@@ -1,0 +1,14 @@
+**1. What the misconfiguration is**
+*   **Deprecated Resource Usage:** The file defines an `aws_elasticache_security_group`, which is a legacy resource type designed for older EC2-Classic environments, rather than a standard VPC security group.
+*   **Orphaned Resource:** The standard `aws_security_group.bar` is defined but not attached to any Elasticache or compute resource in this file.
+*   **Missing Descriptions:** The security groups lack `description` fields, failing to document their intended purpose and rules.
+
+**2. Why it matters (Risk / Blast Radius)**
+*   **Limited Network Control:** Using a legacy `aws_elasticache_security_group` restricts access to modern VPC security group features (like inline reference rules and VPC-specific isolation), increasing operational complexity and reducing security posture.
+*   **Configuration Drift:** An unattached security group (`aws_security_group.bar`) does not enforce any actual network boundaries, creating orphaned infrastructure that complicates environment management and auditing.
+*   **Audit Failure:** Missing descriptions obscure the intent of the security group. If rules are added later, the lack of documentation increases the risk of unintended access exposure and slows down security reviews.
+
+**3. How to fix it safely**
+*   **Remove the legacy resource:** Delete the `aws_elasticache_security_group.exists` block entirely.
+*   **Attach the standard SG:** Assign `aws_security_group.bar` to your intended Elasticache resource (outside this snippet) using its `security_group_ids` argument.
+*   **Add descriptions:** Add a `description` argument to `aws_security_group.bar`, and ensure any ingress or egress rules you define within it also include `description` arguments.

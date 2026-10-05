@@ -1,0 +1,51 @@
+## Remediation Briefing
+
+Below are the required fixes for each failing check, in the order reported by the scanner. All changes are described in prose; no ready-to-paste Terraform blocks are provided.
+
+---
+
+### 1. CKV_AWS_65 on `aws_ecs_cluster.fail` (lines 1–19)
+**What is wrong:** Container Insights is not enabled on this ECS cluster.  
+**Why it matters:** Container Insights provides CPU, memory, network, and disk metrics that are essential for monitoring cluster health, troubleshooting performance issues, and setting up auto-scaling. Without it, you lose visibility into the cluster’s operational state.  
+**Change needed:** Add a `setting` block inside the `aws_ecs_cluster` resource with `name = "containerInsights"` and `value = "enabled"`. This block is currently missing entirely.
+
+---
+
+### 2. CKV_AWS_223 on `aws_ecs_cluster.fail` (lines 1–19)
+**What is wrong:** ECS Exec logging is explicitly disabled (`logging = "NONE"`).  
+**Why it matters:** ECS Exec allows interactive command execution inside containers. Without logging, all commands run via ECS Exec are invisible, making auditing, security investigations, and compliance impossible.  
+**Change needed:** Set `logging` to `"DEFAULT"` (or `"OVERRIDE"` if you need a custom log configuration). Then uncomment the `log_configuration` block and provide a valid CloudWatch log group name (and set `cloud_watch_encryption_enabled = true`) or, alternatively, configure an S3 bucket with encryption enabled. This ensures that all ECS Exec sessions are recorded.
+
+---
+
+### 3. CKV_AWS_65 on `aws_ecs_cluster.pass` (lines 21–39)
+**What is wrong:** Container Insights is not enabled on this ECS cluster.  
+**Why it matters:** Same as above – missing operational metrics reduce your ability to monitor and troubleshoot the cluster.  
+**Change needed:** Add a `setting` block with `name = "containerInsights"` and `value = "enabled"` to the resource definition.
+
+---
+
+### 4. CKV_AWS_224 on `aws_ecs_cluster.pass` (lines 21–39)
+**What is wrong:** The ECS Exec configuration does not specify a customer-managed KMS key (`kms_key_id` is commented out).  
+**Why it matters:** ECS Exec sessions are encrypted by default, but using a customer-managed CMK gives you control over key rotation, access policies, and auditing. Without it, you rely on an AWS-managed key, which may not meet your security or compliance requirements.  
+**Change needed:** Uncomment the `kms_key_id` line inside the `execute_command_configuration` block and provide the ARN of a valid KMS key. Ensure the key policy grants the necessary permissions to the ECS service.
+
+---
+
+### 5. CKV_AWS_65 on `aws_ecs_cluster.pass2` (lines 41–59)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same as the other clusters – missing monitoring and diagnostics.  
+**Change needed:** Add a `setting` block with `name = "containerInsights"` and `value = "enabled"`.
+
+---
+
+### 6. CKV_AWS_224 on `aws_ecs_cluster.pass2` (lines 41–59)
+**What is wrong:** The `kms_key_id` is commented out, so no customer-managed key is used for ECS Exec session encryption.  
+**Why it matters:** Same as above – lack of CMK reduces control over encryption and auditing.  
+**Change needed:** Uncomment the `kms_key_id` line and supply a valid KMS key ARN.
+
+---
+
+### Interactions between fixes
+- In `aws_ecs_cluster.fail`, enabling ECS Exec logging (CKV_AWS_223) requires uncommenting the `log_configuration` block. If you later decide to also use a CMK for log encryption (not currently flagged), you would need to ensure the chosen log group or S3 bucket is encrypted with a CMK. The current fix for CKV_AWS_223 does not force that, but the uncommented block provides the place to set encryption settings.
+- The `kms_key_id` attribute is shared across all three resources; if you use the same KMS key ARN for all, ensure the key policy allows access from each cluster’s IAM role. No other cross-resource dependencies exist in the supplied file.

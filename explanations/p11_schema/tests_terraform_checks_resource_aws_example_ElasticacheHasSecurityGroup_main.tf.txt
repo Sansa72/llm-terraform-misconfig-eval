@@ -1,0 +1,44 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_196",
+      "resource": "aws_elasticache_security_group.exists",
+      "evidence": [
+        "resource \"aws_elasticache_security_group\" \"exists\" {\n  name                 = \"elasticache-security-group\"\n  security_group_names = [aws_security_group.bar.name]\n}"
+      ],
+      "risk": "The aws_elasticache_security_group resource is for EC2-Classic which is deprecated and not available for new accounts, leading to a non-functional or unsupported security configuration.",
+      "remediation": "Replace the aws_elasticache_security_group with a VPC security group and reference it in the aws_elasticache_cluster resource using the security_group_ids argument.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_23",
+      "resource": "aws_elasticache_security_group.exists",
+      "evidence": [
+        "resource \"aws_elasticache_security_group\" \"exists\" {\n  name                 = \"elasticache-security-group\"\n  security_group_names = [aws_security_group.bar.name]\n}"
+      ],
+      "risk": "The security group rules lack descriptions, making it harder to audit and understand the intended access controls.",
+      "remediation": "Use aws_security_group_rule resources with the description field set to document the purpose of each rule, instead of relying on the deprecated aws_elasticache_security_group resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_23",
+      "resource": "aws_security_group.bar",
+      "evidence": [
+        "resource \"aws_security_group\" \"bar\" {\n  name = \"security-group\"\n}"
+      ],
+      "risk": "The security group has no description, making it difficult to understand its intended purpose and increasing the chance of misconfiguration.",
+      "remediation": "Add a description argument to the aws_security_group resource to document its purpose.",
+      "confidence": "medium"
+    },
+    {
+      "check_id": "CKV2_AWS_5",
+      "resource": "aws_security_group.bar",
+      "evidence": [
+        "resource \"aws_security_group\" \"bar\" {\n  name = \"security-group\"\n}"
+      ],
+      "risk": "The security group is not attached to any resource, meaning it is unused and could lead to management overhead or accidental exposure if later attached without review.",
+      "remediation": "Attach the security group to a resource such as an EC2 instance, ELB, or RDS instance, or remove the security group if it is not needed.",
+      "confidence": "high"
+    }
+  ]
+}

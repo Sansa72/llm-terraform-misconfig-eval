@@ -1,0 +1,84 @@
+The scanner identified three types of misconfigurations across the four DynamoDB table resources in the provided Terraform file. Below is a breakdown of each issue, which resources are affected, and how to fix them.
+
+---
+
+### 1. Point-in-time recovery (PITR) is not enabled – CKV_AWS_28
+
+**Affected resources:**  
+`aws_dynamodb_table.cmk`, `aws_dynamodb_table.default`, `aws_dynamodb_table.encrypted_false`, `aws_dynamodb_table.encrypted_no_cmk`
+
+**Problem:**  
+None of the tables include a `point_in_time_recovery` block. Without PITR, you cannot restore a table to any point in the last 35 days, increasing the risk of data loss from accidental writes or deletes.
+
+**Fix:**  
+Add the following block inside each `aws_dynamodb_table` resource:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+---
+
+### 2. Tables are not encrypted with a Customer Managed CMK – CKV_AWS_119
+
+**Affected resources:**  
+`aws_dynamodb_table.default`, `aws_dynamodb_table.encrypted_false`, `aws_dynamodb_table.encrypted_no_cmk`
+
+**Problem:**  
+- `default` has no `server_side_encryption` block, so it uses the default AWS owned CMK.  
+- `encrypted_false` explicitly sets `enabled = false`, disabling encryption entirely.  
+- `encrypted_no_cmk` sets `enabled = true` but does not provide a `kms_key_arn`, so it also falls back to the AWS owned CMK.  
+
+The check requires a customer managed CMK (i.e., a KMS key that you control). The `cmk` resource is compliant because it specifies both `enabled = true` and a valid `kms_key_arn`.
+
+**Fix:**  
+For each non-compliant table, ensure the `server_side_encryption` block is present with `enabled = true` and a `kms_key_arn` pointing to a customer managed key. Example:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = aws_kms_key.my_key.arn   # or a hardcoded ARN
+}
+```
+
+---
+
+### 3. Auto Scaling is not enabled – CKV2_AWS_16
+
+**Affected resources:**  
+All four tables (`cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`)
+
+**Problem:**  
+All tables use `billing_mode = "PROVISIONED"` but have no associated auto scaling configuration. Without auto scaling, the provisioned read/write capacity remains static, which can lead to throttling under load or wasted spend during idle periods.
+
+**Fix:**  
+Create `aws_appautoscaling_target` and `aws_appautoscaling_policy` resources to enable auto scaling for the table’s read and write capacity. A minimal setup for one table looks like this:
+
+```hcl
+resource "aws_appautoscaling_target" "example" {
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.example.name}"
+  scalable_dimension = "dynamodb:table:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "example" {
+  name               = "DynamoDBWriteCapacityUtilization:${aws_appautoscaling_target.example.resource_id}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.example.resource_id
+  scalable_dimension = aws_appautoscaling_target.example.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.example.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+```
+
+Repeat for the read capacity dimension (`dynamodb:table:ReadCapacityUnits`) and for each table that requires auto scaling.

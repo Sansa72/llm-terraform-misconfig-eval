@@ -1,0 +1,5 @@
+The `aws_dlm_lifecycle_policy.fail` resource defines a cross‑region copy action with an empty `encryption_configuration` block. Because the `encrypted` argument defaults to `false` when omitted, cross‑region snapshot copies are not encrypted at all. This triggers both CKV_AWS_253 (encryption required) and CKV_AWS_254 (customer managed key required).
+
+The `aws_dlm_lifecycle_policy.fail2` resource enables encryption (`encryption = true`) but does not provide a `cmk_arn`, so the copies are encrypted with the default AWS managed key instead of a customer managed key. This triggers CKV_AWS_254.
+
+To fix `fail`, set `encryption = true` and supply a `cmk_arn` pointing to a customer managed KMS key. To fix `fail2`, add the `cmk_arn` argument with a valid KMS key ARN. The `aws_dlm_lifecycle_policy.pass` resource shows the correct configuration: `encryption_configuration { encrypted = true; cmk_arn = aws_kms_key.test.arn }`.

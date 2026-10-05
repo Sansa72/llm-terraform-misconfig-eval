@@ -1,0 +1,81 @@
+**Remediation briefing: CKV_AWS_153 and CKV_AWS_315 on three Auto Scaling groups**
+
+Below are the failing checks in the order they appear in the scanner output. Each section identifies the resource, the exact lines that trigger the failure, a one-line statement of the problem grounded in the file, and a prose description of the change required.
+
+---
+
+### 1. CKV_AWS_153 on `aws_autoscaling_group.fail` (lines 27–33)
+
+**What triggers it:**  
+The resource block `aws_autoscaling_group.fail` (lines 27–33) contains no `tag` block.
+
+**What is wrong and why it matters:**  
+The Auto Scaling group does not supply any tags to its instances. CKV_AWS_153 requires that tags be supplied so that instances launched by the group are tagged, which is essential for cost allocation, access control, and operational visibility.
+
+**Change needed:**  
+Add at least one `tag` block inside the resource, with `propagate_at_launch = true`, so that the tag is applied to EC2 instances when they are launched. The existing `aws_autoscaling_group.pass` resource (lines 1–25) shows a compliant example of a `tag` block.
+
+---
+
+### 2. CKV_AWS_315 on `aws_autoscaling_group.fail` (lines 27–33)
+
+**What triggers it:**  
+Line 31: `launch_configuration = aws_launch_configuration.foobar.name` – the resource uses a launch configuration.
+
+**What is wrong and why it matters:**  
+The group is configured with a launch configuration instead of an EC2 launch template. CKV_AWS_315 requires launch templates because they support versioning, instance refresh, and other modern capabilities that launch configurations do not.
+
+**Change needed:**  
+Replace the `launch_configuration` argument with a `launch_template` block that references a valid launch template (e.g., `aws_launch_template.example`). The `aws_autoscaling_group.pass` resource (lines 7–10) demonstrates the correct `launch_template` block structure.
+
+---
+
+### 3. CKV_AWS_153 on `aws_autoscaling_group.pass_mixed` (lines 35–59)
+
+**What triggers it:**  
+The resource block `aws_autoscaling_group.pass_mixed` (lines 35–59) contains no `tag` block.
+
+**What is wrong and why it matters:**  
+The group does not supply any tags to its instances. As with the first finding, this means instances will lack tags that are important for management, billing, and security.
+
+**Change needed:**  
+Add a `tag` block (with `propagate_at_launch = true`) inside the resource, following the same pattern as the `aws_autoscaling_group.pass` resource. The presence of a mixed instances policy does not remove the need for instance tags.
+
+---
+
+### 4. CKV_AWS_315 on `aws_autoscaling_group.pass_mixed` (lines 35–59)
+
+**What triggers it:**  
+The resource does not have a top-level `launch_template` block. It uses a `mixed_instances_policy` block (lines 36–58) that contains a nested `launch_template` block, but no `launch_template` block exists directly under the resource.
+
+**What is wrong and why it matters:**  
+CKV_AWS_315 expects the Auto Scaling group to declare a `launch_template` block at the top level. The current configuration relies on a launch template inside a mixed instances policy, which the check does not recognise as satisfying the requirement. The scanner therefore reports that the group is not using an EC2 launch template.
+
+**Change needed:**  
+If the mixed instances policy is not strictly required, replace the entire `mixed_instances_policy` block with a top-level `launch_template` block (as in `aws_autoscaling_group.pass`). If the mixed instances policy must be kept, the check will continue to fail; in that case, add a `checkov:skip=CKV_AWS_315` comment inside the resource block to acknowledge that a launch template is in use through the mixed instances policy and that the check is not applicable.
+
+---
+
+### 5. CKV_AWS_153 on `aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)
+
+**What triggers it:**  
+The resource block `aws_autoscaling_group.pass_mixed_multiple` (lines 61–90) has no `tag` block.
+
+**What is wrong and why it matters:**  
+Same as the previous CKV_AWS_153 findings: no tags are supplied to instances, so launched instances will be untagged.
+
+**Change needed:**  
+Add a `tag` block with `propagate_at_launch = true` inside the resource, identical in concept to the tag block in `aws_autoscaling_group.pass`.
+
+---
+
+### 6. CKV_AWS_315 on `aws_autoscaling_group.pass_mixed_multiple` (lines 61–90)
+
+**What triggers it:**  
+The resource lacks a top-level `launch_template` block. It uses a `mixed_instances_policy` block (lines 62–89) that contains a nested `launch_template` block, but no direct `launch_template` block.
+
+**What is wrong and why it matters:**  
+As with `pass_mixed`, the check expects a top-level `launch_template` block. The current structure does not satisfy the check, even though launch templates are used inside the mixed instances policy.
+
+**Change needed:**  
+If the mixed instances policy is not essential, replace it with a top-level `launch_template` block. If the mixed instances policy is required, suppress the check with a `checkov:skip=CKV_AWS_315` comment inside the resource block, because the group already uses launch templates through the mixed instances policy.

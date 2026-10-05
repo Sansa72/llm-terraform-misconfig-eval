@@ -1,0 +1,69 @@
+**Remediation briefing: security misconfigurations in Terraform**
+
+Below are the failing checks in the order reported, with the required changes described in prose. Where the supplied configuration allows, interactions between fixes are noted.
+
+---
+
+### 1. CKV_AWS_9 on `aws_iam_account_password_policy.password-policy` (lines 28–35)
+**What is wrong:** The password policy does not set a maximum password age, so passwords never expire.  
+**Why it matters:** Without forced rotation, compromised credentials remain valid indefinitely, increasing the window of opportunity for an attacker.  
+**Change needed:** Add the `max_password_age` argument to the `aws_iam_account_password_policy` resource and set it to a value of 90 or fewer days (e.g., `max_password_age = 90`). This will cause IAM to require users to change their password after the specified number of days.
+
+---
+
+### 2. CKV_AWS_13 on `aws_iam_account_password_policy.password-policy` (lines 28–35)
+**What is wrong:** The policy does not prevent password reuse; users can recycle old passwords.  
+**Why it matters:** If a previously used password is exposed, an attacker could reuse it even after a forced rotation, defeating the purpose of expiration.  
+**Change needed:** Add the `password_reuse_prevention` argument and set it to a value of at least 1 (e.g., `password_reuse_prevention = 5`). This tells IAM to remember the last N passwords and disallow their reuse.
+
+---
+
+### 3. CKV2_AWS_61 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** The bucket has no lifecycle configuration.  
+**Why it matters:** Without lifecycle rules, objects accumulate indefinitely, increasing storage costs and making it harder to manage data retention requirements. Lifecycle rules can also automatically delete expired or incomplete multipart uploads.  
+**Change needed:** Add an `aws_s3_bucket_lifecycle_configuration` resource that references `template_bucket`. Define at least one rule—for example, a rule that expires current versions of objects after a certain number of days, or that cleans up incomplete multipart uploads.  
+**Interaction note:** If versioning is enabled (see CKV_AWS_21), also include a rule to manage noncurrent versions (e.g., permanently delete noncurrent versions after a retention period) to avoid unbounded growth of old versions.
+
+---
+
+### 4. CKV_AWS_18 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** Access logging is not enabled on the bucket.  
+**Why it matters:** Without server access logs, you lose visibility into who is accessing the bucket and what actions they are performing, hindering security investigations and compliance audits.  
+**Change needed:** Create a separate target bucket for logs (or use an existing one) and then add an `aws_s3_bucket_logging` resource that references `template_bucket` and points to the log bucket. Ensure the log bucket has appropriate permissions to receive logs.
+
+---
+
+### 5. CKV2_AWS_62 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** No event notifications are configured for the bucket.  
+**Why it matters:** Event notifications allow real-time triggering of workflows (e.g., Lambda functions, SQS queues) when objects are created or deleted. This is often required for security monitoring, data processing pipelines, or compliance controls.  
+**Change needed:** Add an `aws_s3_bucket_notification` resource linked to `template_bucket`. Define at least one notification configuration (e.g., send events to an SNS topic or Lambda function) for relevant bucket events such as `s3:ObjectCreated:*`.
+
+---
+
+### 6. CKV2_AWS_6 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** The bucket does not have a public access block configuration.  
+**Why it matters:** Without a public access block, the bucket could accidentally be made public through ACLs or bucket policies, exposing data to the internet.  
+**Change needed:** Add an `aws_s3_bucket_public_access_block` resource that references `template_bucket` and sets all four block options (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets`) to `true`. This provides a hard guard against unintended public access.
+
+---
+
+### 7. CKV_AWS_145 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** The bucket does not enforce default encryption with AWS KMS; it likely relies on SSE-S3 or no encryption.  
+**Why it matters:** KMS encryption gives you control over key rotation, access policies, and audit trails via CloudTrail, which is often required for regulatory compliance and defense in depth.  
+**Change needed:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource for the bucket. In its rule, set `apply_server_side_encryption_by_default` with `sse_algorithm = "aws:kms"` and optionally specify a KMS key ARN. This ensures all objects are encrypted with KMS by default.
+
+---
+
+### 8. CKV_AWS_144 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** Cross-region replication is not configured.  
+**Why it matters:** Replication to another region provides geographic redundancy and can be critical for disaster recovery and compliance with data residency requirements.  
+**Change needed:** Create a destination bucket in a different region, then add an `aws_s3_bucket_replication_configuration` resource for the source bucket. The configuration must include an IAM role with permissions to replicate objects, and the source bucket must have versioning enabled (see CKV_AWS_21).  
+**Interaction note:** If you enable default KMS encryption (CKV_AWS_145), the replication configuration must also specify KMS keys for the destination bucket and grant the replication role appropriate KMS permissions.
+
+---
+
+### 9. CKV_AWS_21 on `aws_s3_bucket.template_bucket` (lines 57–62)
+**What is wrong:** Versioning is not enabled on the bucket.  
+**Why it matters:** Without versioning, you cannot preserve, retrieve, or restore every version of every object. This is essential for protecting against accidental deletions and for compliance with data retention policies.  
+**Change needed:** Add an `aws_s3_bucket_versioning` resource for the bucket and set `versioning_configuration.status` to `"Enabled"`.  
+**Interaction note:** Once versioning is enabled, consider adding lifecycle rules (CKV2_AWS_61) to manage noncurrent versions and avoid excessive storage costs. Also, cross-region replication (CKV_AWS_144) requires versioning to be enabled on both source and destination buckets.

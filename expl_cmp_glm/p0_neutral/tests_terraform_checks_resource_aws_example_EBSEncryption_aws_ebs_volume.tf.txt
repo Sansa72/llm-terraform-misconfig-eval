@@ -1,0 +1,13 @@
+### 1. What the misconfiguration is
+*   **`aws_ebs_volume.default`**: Missing the `encrypted` attribute entirely, defaulting to unencrypted.
+*   **`aws_ebs_volume.disabled`**: Explicitly sets `encrypted = False`, disabling encryption.
+*   **`aws_ebs_volume.enabled`**: Sets `encrypted = True` but omits `kms_key_id`. It uses the default AWS managed key instead of a Customer Managed Key (CMK).
+
+### 2. Why it matters (security risk / blast radius)
+*   **Unencrypted Data (`default`, `disabled`)**: Data on the volume is stored in plaintext. If an unauthorized user gains access to the underlying EBS storage, or if an unencrypted volume snapshot is leaked or shared, they can directly read the data.
+*   **Lack of CMK (`enabled`)**: Relying on the default AWS managed key prevents you from enforcing granular IAM key policies, custom key rotation schedules, and independent CloudTrail auditing specific to this workload's data access. 
+
+### 3. How to fix it safely
+*   **Configuration Update**: Define an `aws_kms_key` resource (a CMK) in your Terraform code. Update all three EBS volume resources to include `encrypted = true` and `kms_key_id = aws_kms_key.your_key.arn`.
+*   **Safe Application (Existing Infrastructure)**: Terraform cannot enable encryption or change the KMS key on an existing EBS volume in-place; it will attempt to destroy and recreate the resource, causing data loss. 
+    *   To apply this safely to existing volumes: manually snapshot the current volumes, create new volumes from those snapshots using your CMK via the AWS console/CLI, detach the old volumes, attach the new encrypted volumes, and finally update your Terraform state to reflect the new volumes before applying.

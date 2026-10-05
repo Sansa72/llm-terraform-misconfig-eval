@@ -1,0 +1,14 @@
+**1. What the misconfiguration is**
+* **Default Subnet Group (CKV_AWS_323):** All four `aws_elasticache_cluster` resources omit the `subnet_group_name` argument. This defaults the clusters to the AWS default ElastiCache subnet group.
+* **No Automatic Backup (CKV_AWS_134):** The `pass2` and `fail` Redis clusters do not have automatic backups enabled. `pass2` omits the `snapshot_retention_limit` attribute, and `fail` explicitly sets it to `0`.
+* **Auto Minor Version Upgrades Disabled (CKV_AWS_322):** The `fail` Redis cluster explicitly sets `auto_minor_version_upgrade = false`.
+
+**2. Why it matters (the concrete security risk / blast radius)**
+* **Default Subnet Group:** Relying on the default subnet group deploys the clusters into default VPC subnets (or all availability zones if no VPC is specified). This bypasses network isolation controls, potentially exposing the cache nodes to broader, unintended network paths.
+* **No Automatic Backup:** Without a `snapshot_retention_limit` greater than 0, there are no automated backups. If the cluster fails or data is corrupted, the cached data cannot be restored, resulting in permanent data loss for those workloads. 
+* **Disabled Auto Upgrades:** Disabling `auto_minor_version_upgrade` prevents the cluster from automatically receiving security patches and bug fixes. The `fail` cluster will remain on its current engine version, leaving it exposed to known vulnerabilities that have been addressed in later minor releases.
+
+**3. How to fix it safely**
+* **Subnet Group:** Create an explicit `aws_elasticache_subnet_group` resource (bound to your private subnets) and add the `subnet_group_name` attribute to all four cluster resources.
+* **Automatic Backup:** Add `snapshot_retention_limit = 5` (or an appropriate number of days) to the `pass2` and `fail` Redis clusters.
+* **Auto Upgrades:** Change `auto_minor_version_upgrade = false` to `true` on the `fail` Redis cluster (or remove the attribute, as it defaults to true).

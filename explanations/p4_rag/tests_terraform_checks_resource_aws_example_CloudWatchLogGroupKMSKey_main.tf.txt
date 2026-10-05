@@ -1,0 +1,44 @@
+The scanner flagged two security issues in your Terraform configuration. Both relate to how CloudWatch log groups are set up, and they affect the two resources defined in the file.
+
+## What’s wrong
+
+1. **CKV_AWS_338 – Log retention is too short**  
+   Both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail` have `retention_in_days = 1`. The policy requires logs to be kept for **at least 365 days (1 year)**. A 1‑day retention means logs are deleted almost immediately, which breaks auditability, incident investigation, and compliance requirements.
+
+2. **CKV_AWS_158 – Missing KMS encryption**  
+   The `aws_cloudwatch_log_group.fail` resource does **not** specify a `kms_key_id`. The policy mandates that CloudWatch Log Groups be encrypted using a customer-managed KMS key. Without it, log data is only encrypted with the default AWS-managed key, which may not meet your security or compliance standards for data protection and access control.
+
+> **Note:** The resource named `pass` still fails the retention check, so it’s not actually compliant. The naming is misleading.
+
+## Why it matters
+
+- **Retention (CKV_AWS_338):** Logs are essential for security monitoring, forensics, and meeting regulatory requirements. If logs are deleted after just one day, you lose visibility into past events and cannot investigate incidents that are discovered later. The Prisma Cloud policy enforces a minimum 365‑day retention to align with common compliance frameworks (e.g., PCI DSS, SOC 2, HIPAA).
+
+- **KMS Encryption (CKV_AWS_158):** Using a customer-managed KMS key gives you control over key rotation, access policies, and auditing of key usage. The default AWS‑owned key does not provide the same level of control or visibility. This policy ensures that sensitive log data is protected with a key you manage.
+
+## How to fix it
+
+Update the Terraform file so that:
+
+- Both log groups have `retention_in_days` set to **365 or more** (e.g., 365, 400, 545, etc.).
+- The `fail` log group includes a `kms_key_id` pointing to a valid KMS key ARN or alias.
+
+Here’s a corrected version:
+
+```hcl
+resource "aws_cloudwatch_log_group" "pass" {
+  name              = "pass"  # consider a more descriptive name
+  retention_in_days = 365
+  kms_key_id        = "someKey"
+}
+
+resource "aws_cloudwatch_log_group" "fail" {
+  name              = "fail"
+  retention_in_days = 365
+  kms_key_id        = "someKey"  # or a different key ARN/alias
+}
+```
+
+If you intend to use different KMS keys for each log group, replace `"someKey"` with the appropriate key identifier. Also, ensure the KMS key exists and the log group’s IAM role has permissions to use it.
+
+After making these changes, the scanner should no longer report CKV_AWS_338 or CKV_AWS_158 for these resources.

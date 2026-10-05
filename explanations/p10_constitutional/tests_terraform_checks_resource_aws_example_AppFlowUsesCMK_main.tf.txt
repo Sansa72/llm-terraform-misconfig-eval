@@ -1,0 +1,4 @@
+The `aws_appflow_flow.fail` resource (lines 1–42) is missing the `kms_arn` argument.  
+The triggered rule **CKV_AWS_263** requires that an AppFlow flow be encrypted with a customer-managed key (CMK).  
+In the same file, the `aws_appflow_flow.pass` resource (line 44) satisfies the rule by including `kms_arn = aws_kms_key.example.arn`.  
+To resolve the finding, add a `kms_arn` argument that references a valid KMS key to the `aws_appflow_flow.fail` resource block.

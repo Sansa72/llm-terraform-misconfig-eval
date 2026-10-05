@@ -1,0 +1,15 @@
+1. **What the misconfiguration is**  
+   `aws_batch_job_definition.fail` sets `"privileged": true` in its `container_properties`. Checkov policy `CKV_AWS_210` flags this because AWS Batch job containers should not run in privileged mode.
+
+2. **Why it matters**  
+   A privileged container has elevated access to the underlying compute host, weakening the normal container isolation boundary. If the job is compromised or processes untrusted input, an attacker could potentially escape the container, access the host filesystem, or affect the Batch compute environment. In this file, the definition also mounts the host’s `/tmp` as writable, which increases the exposure of the host filesystem.
+
+3. **How to fix it safely**  
+   Set `"privileged": false` in the JSON, or remove the `privileged` field entirely. For this job, the command is only `ls -la`, so privileged mode is not required.
+
+   Example:
+   ```json
+   "privileged": false,
+   ```
+
+   Apply the same change to any external `job_definition.json` used by other job definitions. Enable privileged mode only if a job has a strict, validated requirement for host-level access.

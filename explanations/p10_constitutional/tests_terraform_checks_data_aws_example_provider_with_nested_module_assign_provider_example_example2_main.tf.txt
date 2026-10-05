@@ -1,0 +1,11 @@
+The aws_s3_bucket.bucket resource defined at lines 1–3 contains only a bucket name. Each scanner check failed because the required configuration is absent from this resource block:
+
+- **CKV2_AWS_61 (lifecycle)**: No `lifecycle_rule` block is present to manage object expiration or transitions.
+- **CKV_AWS_18 (access logging)**: No `logging` block is present to enable access logging.
+- **CKV2_AWS_62 (event notifications)**: No `aws_s3_bucket_notification` resource or equivalent inline configuration is attached to send event notifications.
+- **CKV2_AWS_6 (Public Access Block)**: No `block_public_acls`, `block_public_policy`, `ignore_public_acls`, or `restrict_public_buckets` settings are defined.
+- **CKV_AWS_145 (KMS encryption)**: No `server_side_encryption_configuration` block with a KMS key is present; default encryption is not set to KMS.
+- **CKV_AWS_144 (cross-region replication)**: No `replication_configuration` block is defined.
+- **CKV_AWS_21 (versioning)**: No `versioning` block is present to enable versioning.
+
+To resolve these findings, add the missing configuration blocks directly inside the `aws_s3_bucket.bucket` resource block (lines 1–3).

@@ -1,0 +1,117 @@
+Below is a breakdown of each failing check, contrasting the current configuration with a compliant one, followed by a summary of exactly what must change.
+
+---
+
+### CKV_AWS_73 – Ensure API Gateway has X-Ray Tracing enabled
+
+**Current configuration**  
+Neither `aws_api_gateway_stage` resource includes the `xray_tracing_enabled` argument. The default is `false`, so tracing is off.
+
+**Compliant configuration**  
+Both resources would set `xray_tracing_enabled = true`.
+
+**Difference**  
+Adding `xray_tracing_enabled = true` to the stage resource.
+
+**Why it matters**  
+X-Ray provides end-to-end tracing of requests through your API, making it easier to debug performance issues and identify security anomalies. Without it, you lose visibility into the full request lifecycle.
+
+---
+
+### CKV_AWS_76 – Ensure API Gateway has Access Logging enabled
+
+**Current configuration**  
+Neither stage defines an `access_log_settings` block. No access logs are sent to CloudWatch.
+
+**Compliant configuration**  
+Each stage would include an `access_log_settings` block with a `destination_arn` pointing to a CloudWatch Logs log group (and optionally a log format).
+
+**Difference**  
+Adding the `access_log_settings` block (with a valid log group ARN) to the stage resource.
+
+**Why it matters**  
+Access logs record every request to the API, including caller identity, IP address, and response status. This is essential for security auditing, incident investigation, and compliance.
+
+---
+
+### CKV_AWS_120 – Ensure API Gateway caching is enabled
+
+**Current configuration**  
+The `aws_api_gateway_stage.fail` resource does not set `cache_cluster_enabled`, so it defaults to `false`. (The `pass` resource already has `cache_cluster_enabled = true` and passes this check.)
+
+**Compliant configuration**  
+The `fail` resource would set `cache_cluster_enabled = true`.
+
+**Difference**  
+Adding `cache_cluster_enabled = true` to the `fail` stage resource.
+
+**Why it matters**  
+Caching reduces backend load and improves response times. From a security perspective, it can also help absorb traffic spikes that might otherwise overwhelm the backend, acting as a layer of resilience.
+
+---
+
+### CKV2_AWS_51 – Ensure API Gateway endpoints use client certificate authentication
+
+**Current configuration**  
+Neither stage specifies a `client_certificate_id`. The API does not require clients to present a certificate for mutual TLS.
+
+**Compliant configuration**  
+Each stage would set `client_certificate_id` to the ID of an AWS API Gateway client certificate (e.g., `aws_api_gateway_client_certificate.example.id`).
+
+**Difference**  
+Adding the `client_certificate_id` argument to the stage resource, referencing a valid client certificate.
+
+**Why it matters**  
+Client certificate authentication enforces mutual TLS, ensuring that only clients possessing a trusted certificate can invoke the API. This prevents unauthorised access even if the endpoint is publicly reachable.
+
+---
+
+### CKV2_AWS_4 – Ensure API Gateway stage has logging level defined as appropriate
+
+**Current configuration**  
+Neither stage includes a `method_settings` block with a `logging_level`. Execution logging (CloudWatch Logs) is effectively disabled.
+
+**Compliant configuration**  
+Each stage would include a `method_settings` block where `logging_level` is set to `ERROR` or `INFO` (not `OFF`) and `metrics_enabled` is `true`.
+
+**Difference**  
+Adding a `method_settings` block with `logging_level = "ERROR"` (or `"INFO"`) and `metrics_enabled = true` to the stage resource.
+
+**Why it matters**  
+Execution logs capture detailed information about API calls, including errors and latency. Without a defined logging level, you lose the ability to monitor and troubleshoot issues in production, which can hide security incidents.
+
+---
+
+### CKV2_AWS_29 – Ensure public API Gateway is protected by WAF
+
+**Current configuration**  
+Neither stage is associated with a WAF Web ACL. There is no `aws_wafv2_web_acl_association` (or regional equivalent) resource linking the stage to a WAF.
+
+**Compliant configuration**  
+A separate `aws_wafv2_web_acl_association` resource would be created for each stage, referencing the stage’s ARN and the ARN of a WAF Web ACL.
+
+**Difference**  
+Adding an `aws_wafv2_web_acl_association` resource (not a property on the stage itself) that binds the stage to a WAF Web ACL.
+
+**Why it matters**  
+A WAF protects your API from common web exploits like SQL injection and cross-site scripting. Without it, a public API Gateway endpoint is exposed to these attacks.
+
+---
+
+## What the engineer must change
+
+Both `aws_api_gateway_stage` resources (`pass` and `fail`) are missing the same security controls, except that `pass` already has caching enabled. To fix all findings, make these changes:
+
+1. **Add to both stage resources** (directly inside the resource block):
+   - `xray_tracing_enabled = true`
+   - `client_certificate_id = <id of a created client certificate>`
+   - An `access_log_settings` block with `destination_arn` set to a CloudWatch log group ARN.
+   - A `method_settings` block with `logging_level = "ERROR"` (or `"INFO"`) and `metrics_enabled = true`.
+
+2. **Add to the `fail` stage resource only**:
+   - `cache_cluster_enabled = true` (the `pass` resource already has this).
+
+3. **Create a new resource** (outside the stage blocks) for each stage:
+   - `resource "aws_wafv2_web_acl_association" "example"` that links the stage’s ARN to a WAF Web ACL ARN. This is not a property on the stage itself; it is a separate association resource.
+
+These changes will enable tracing, access logging, execution logging, client certificate authentication, caching (where missing), and WAF protection, satisfying all the flagged checks.

@@ -1,0 +1,175 @@
+The scanner evaluated your Terraform file against several security best practices. Below is a breakdown of each finding, the specific resource and lines it references, and exactly what is missing from the configuration.
+
+---
+
+### CKV_AWS_79 – Ensure Instance Metadata Service Version 1 is not enabled
+
+**What it means:**  
+The EC2 instance or launch template must explicitly require IMDSv2 by setting `metadata_options { http_tokens = "required" }`. Without this, IMDSv1 (which is vulnerable to certain request forgery attacks) remains available.
+
+**Flagged resources and evidence:**
+
+- `aws_instance.default` (lines 5‑8)  
+- `aws_instance.private` (lines 10‑15)  
+- `aws_launch_template.default` (lines 19‑22)  
+- `aws_launch_template.private` (lines 24‑31)  
+- `aws_instance.public` (lines 37‑42)  
+- `aws_launch_template.public` (lines 46‑53)  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68)  
+- `aws_instance.public_foreach["key2"]` (lines 62‑68)  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)  
+- `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+
+**Why it’s flagged:**  
+None of the above resource blocks contain a `metadata_options` block. The default behavior allows IMDSv1. The scanner sees no configuration that disables it.
+
+---
+
+### CKV_AWS_126 – Ensure that detailed monitoring is enabled for EC2 instances
+
+**What it means:**  
+The instance should have `monitoring = true` to enable 1‑minute CloudWatch detailed monitoring.
+
+**Flagged resources and evidence:**
+
+- `aws_instance.default` (lines 5‑8)  
+- `aws_instance.private` (lines 10‑15)  
+- `aws_instance.public` (lines 37‑42)  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68)  
+- `aws_instance.public_foreach["key2"]` (lines 62‑68)  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)  
+- `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+
+**Why it’s flagged:**  
+The `monitoring` attribute is not set in any of these `aws_instance` resources. The default is `false`, so detailed monitoring is off.
+
+---
+
+### CKV_AWS_135 – Ensure that EC2 is EBS optimized
+
+**What it means:**  
+The instance should have `ebs_optimized = true` to enable dedicated throughput between the instance and its EBS volumes.
+
+**Flagged resources and evidence:**
+
+- `aws_instance.default` (lines 5‑8)  
+- `aws_instance.private` (lines 10‑15)  
+- `aws_instance.public` (lines 37‑42)  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68)  
+- `aws_instance.public_foreach["key2"]` (lines 62‑68)  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)  
+- `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+
+**Why it’s flagged:**  
+The `ebs_optimized` attribute is not set in any of these `aws_instance` resources. The default is `false`.
+
+---
+
+### CKV_AWS_8 – Ensure all data stored in the Launch configuration or instance Elastic Blocks Store is securely encrypted
+
+**What it means:**  
+EBS volumes attached to the instance or defined in the launch template must have encryption enabled, typically by adding `root_block_device { encrypted = true }` and/or `ebs_block_device { encrypted = true }`.
+
+**Flagged resources and evidence:**
+
+- `aws_instance.default` (lines 5‑8)  
+- `aws_instance.private` (lines 10‑15)  
+- `aws_instance.public` (lines 37‑42)  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68)  
+- `aws_instance.public_foreach["key2"]` (lines 62‑68)  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)  
+- `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+
+**Why it’s flagged:**  
+None of the `aws_instance` or `aws_launch_template` resources contain a `root_block_device` or `ebs_block_device` block with `encrypted = true`. The default is unencrypted EBS volumes.
+
+---
+
+### CKV_AWS_88 – EC2 instance should not have public IP
+
+**What it means:**  
+The instance or launch template should not be configured to automatically receive a public IP address. This is controlled by `associate_public_ip_address` (for instances) or `network_interfaces { associate_public_ip_address }` (for launch templates).
+
+**Flagged resources and evidence:**
+
+- `aws_instance.public` (lines 37‑42) – `associate_public_ip_address = true` is explicitly set.  
+- `aws_launch_template.public` (lines 46‑53) – `network_interfaces { associate_public_ip_address = true }` is set.  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68) – `associate_public_ip_address = each.value` where `each.value` is `true` (from `var.public`).  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89) – `associate_public_ip_address = each.value` where `each.value` is hardcoded to `true` in the `for` expression.  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89) – same as above, `each.value` is `true`.  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96) – `associate_public_ip_address = each.value` where `each.value` is the string `"k"`. This is a type mismatch (bool expected), but the attribute is set, and the scanner flags it as a potential public IP assignment.  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96) – same situation with string `"v"`.  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125) – `associate_public_ip_address = each.value.public_ip` where `public_ip` is `true`.
+
+**Why it’s flagged:**  
+In each case, the configuration explicitly enables a public IP address. The check requires that this attribute either be omitted (defaulting to the subnet setting) or set to `false`.
+
+---
+
+### CKV2_AWS_41 – Ensure an IAM role is attached to EC2 instance
+
+**What it means:**  
+Every EC2 instance should have an IAM instance profile attached via `iam_instance_profile`.
+
+**Flagged resources and evidence:**
+
+- `aws_instance.default` (lines 5‑8)  
+- `aws_instance.private` (lines 10‑15)  
+- `aws_instance.public` (lines 37‑42)  
+- `aws_instance.public_foreach["key1"]` (lines 62‑68)  
+- `aws_instance.public_foreach["key2"]` (lines 62‑68)  
+- `aws_instance.public_foreach_loop["key3"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop["key4"]` (lines 83‑89)  
+- `aws_instance.public_foreach_loop_list["k"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list["v"]` (lines 91‑96)  
+- `aws_instance.public_foreach_loop_list_of_dicts["public"]` (lines 120‑125)  
+- `aws_instance.public_foreach_loop_list_of_dicts["private"]` (lines 120‑125)
+
+**Why it’s flagged:**  
+None of the `aws_instance` resources include the `iam_instance_profile` argument. The instances will launch without an IAM role.
+
+---
+
+### Summary of required changes
+
+For every flagged resource, you need to add the missing attributes/blocks. For example, a compliant `aws_instance` might look like:
+
+```hcl
+resource "aws_instance" "example" {
+  ami           = "ami-12345"
+  instance_type = "t3.micro"
+
+  monitoring    = true
+  ebs_optimized = true
+  iam_instance_profile = "your-instance-profile"
+
+  metadata_options {
+    http_tokens = "required"
+  }
+
+  root_block_device {
+    encrypted = true
+  }
+
+  # Only set if a public IP is explicitly not wanted:
+  associate_public_ip_address = false
+}
+```
+
+For launch templates, apply the equivalent settings (`metadata_options`, `monitoring` is not applicable, but `ebs_optimized` is an instance-level setting; encryption goes in `block_device_mappings`). The scanner findings point to every location that currently lacks these controls.

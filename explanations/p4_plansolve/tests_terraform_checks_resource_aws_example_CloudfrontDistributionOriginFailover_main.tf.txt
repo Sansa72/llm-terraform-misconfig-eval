@@ -1,0 +1,78 @@
+The provided Terraform file defines four CloudFront distributions (`pass`, `fail`, `fail2`, `fail3`), each with multiple security misconfigurations. Below is a breakdown of the required changes, grouped by resource, to resolve all flagged findings.
+
+---
+
+### General notes
+- **WAF association (CKV_AWS_68, CKV2_AWS_47):**  
+  To pass both checks, you must create a WAFv2 Web ACL (or use an existing one) that includes the AWS managed rule group `AWSManagedRulesKnownBadInputsRuleSet` (which contains the Log4j vulnerability rule) and attach it to each distribution via the `web_acl_id` argument.  
+- **Response headers policy (CKV2_AWS_32):**  
+  Create an `aws_cloudfront_response_headers_policy` (or use an existing one) and reference its ID in the `response_headers_policy_id` argument of every cache behavior (including the default cache behavior).  
+- **Custom SSL certificate (CKV2_AWS_42):**  
+  Request or import a certificate in AWS Certificate Manager (ACM) in the `us-east-1` region, then reference its ARN in the `viewer_certificate` block using `acm_certificate_arn` and set `cloudfront_default_certificate = false`.  
+- **Access logging (CKV_AWS_86):**  
+  Create an S3 bucket for logs (with appropriate permissions) and add a `logging_config` block to each distribution specifying the bucket and an optional prefix.
+
+---
+
+### Resource `aws_cloudfront_distribution.pass`
+**Failing checks:**  
+CKV_AWS_216, CKV_AWS_86, CKV_AWS_174, CKV_AWS_68, CKV_AWS_305, CKV2_AWS_42, CKV2_AWS_32, CKV2_AWS_47
+
+**Required changes:**
+1. **Enable the distribution:** Set `enabled = true`.  
+2. **Add access logging:** Include a `logging_config` block with a valid S3 bucket and prefix.  
+3. **Enforce TLS v1.2:** In the `viewer_certificate` block, set `minimum_protocol_version = "TLSv1.2_2021"` (or a similar TLS 1.2 variant) and replace the default certificate with an ACM certificate ARN (`acm_certificate_arn`).  
+4. **Attach a WAF Web ACL:** Add `web_acl_id` pointing to a WAFv2 Web ACL that contains the Log4j managed rule.  
+5. **Set a default root object:** Add `default_root_object = "index.html"` (or your desired file).  
+6. **Attach a response headers policy:** In the `default_cache_behavior` block, add `response_headers_policy_id` referencing a policy that includes security headers (e.g., `SecurityHeadersPolicy`).  
+7. **Origin failover is already configured** (origin group with failover criteria), so no change needed for CKV_AWS_310.
+
+---
+
+### Resource `aws_cloudfront_distribution.fail`
+**Failing checks:**  
+CKV_AWS_86, CKV_AWS_174, CKV_AWS_68, CKV_AWS_310, CKV2_AWS_42, CKV2_AWS_32, CKV2_AWS_47
+
+**Required changes:**
+1. **Add access logging:** Insert a `logging_config` block.  
+2. **Enforce TLS v1.2 and custom certificate:** In `viewer_certificate`, set `cloudfront_default_certificate = false`, provide `acm_certificate_arn`, and set `minimum_protocol_version = "TLSv1.2_2021"`.  
+3. **Attach a WAF Web ACL:** Add `web_acl_id`.  
+4. **Configure origin failover:** Define an `origin_group` with `failover_criteria` and at least two member origins, then point the default cache behavior’s `target_origin_id` to the group.  
+5. **Attach a response headers policy:** Add `response_headers_policy_id` to the `default_cache_behavior`.  
+6. **Default root object is already set** (`default_root_object = "index.html"`), so CKV_AWS_305 passes.  
+7. **Fix the empty `viewer_protocol_policy`:** The current value `""` is invalid; set it to `"redirect-to-https"` or `"https-only"`.
+
+---
+
+### Resource `aws_cloudfront_distribution.fail2`
+**Failing checks:**  
+CKV_AWS_216, CKV_AWS_86, CKV_AWS_174, CKV_AWS_68, CKV_AWS_310, CKV_AWS_305, CKV2_AWS_42, CKV2_AWS_32, CKV2_AWS_47
+
+**Required changes:**
+1. **Enable the distribution:** Set `enabled = true`.  
+2. **Add access logging:** Include a `logging_config` block.  
+3. **Enforce TLS v1.2 and custom certificate:** Update `viewer_certificate` with `acm_certificate_arn`, `cloudfront_default_certificate = false`, and `minimum_protocol_version = "TLSv1.2_2021"`.  
+4. **Attach a WAF Web ACL:** Add `web_acl_id`.  
+5. **Set a default root object:** Add `default_root_object = "index.html"`.  
+6. **Attach a response headers policy:** Add `response_headers_policy_id` to the `default_cache_behavior`.  
+7. **Origin failover is partially configured** (origin group exists but lacks `failover_criteria`). Add a `failover_criteria` block inside the `origin_group` with appropriate `status_codes` (e.g., `[403, 404, 500, 502]`).
+
+---
+
+### Resource `aws_cloudfront_distribution.fail3`
+**Failing checks:**  
+CKV_AWS_216, CKV_AWS_86, CKV_AWS_174, CKV_AWS_68, CKV_AWS_310, CKV_AWS_305, CKV2_AWS_42, CKV2_AWS_32, CKV2_AWS_47
+
+**Required changes:**
+1. **Enable the distribution:** Set `enabled = true`.  
+2. **Add access logging:** Include a `logging_config` block.  
+3. **Enforce TLS v1.2 and custom certificate:** Update `viewer_certificate` with `acm_certificate_arn`, `cloudfront_default_certificate = false`, and `minimum_protocol_version = "TLSv1.2_2021"`.  
+4. **Attach a WAF Web ACL:** Add `web_acl_id`.  
+5. **Set a default root object:** Add `default_root_object = "index.html"`.  
+6. **Attach a response headers policy:** Add `response_headers_policy_id` to the `default_cache_behavior`.  
+7. **Origin failover is missing member origins:** The `origin_group` block has `failover_criteria` but no `member` blocks. Add two `member` blocks referencing the existing origin IDs (`primaryS3` and `failoverS3`).
+
+---
+
+### Additional note on `viewer_protocol_policy`
+In the `fail` resource, the `default_cache_behavior` contains `viewer_protocol_policy = ""`, which is invalid and will cause a plan error. Set it to `"redirect-to-https"` or `"https-only"` to enforce secure connections. This is not directly flagged by the listed checks but must be fixed for the configuration to be valid.

@@ -1,0 +1,22 @@
+**CKV_AWS_215 on `aws_appsync_api_cache.fail` (lines 10–17)**  
+- **What is wrong:** The `transit_encryption_enabled` argument is explicitly set to `false`.  
+- **Why it matters:** Disabling encryption in transit means that data moving between the AppSync API and the cache is sent in plaintext, exposing it to interception and tampering on the network.  
+- **Remediation:** Change the value of `transit_encryption_enabled` from `false` to `true` in the `fail` resource block. This will ensure all cache traffic is encrypted using TLS.
+
+**CKV_AWS_214 on `aws_appsync_api_cache.fail` (lines 10–17)**  
+- **What is wrong:** The `at_rest_encryption_enabled` argument is explicitly set to `false`.  
+- **Why it matters:** Without at‑rest encryption, the cached data stored on disk is not protected. If the underlying storage media is compromised, the data is readable.  
+- **Remediation:** Set `at_rest_encryption_enabled` to `true` in the same `fail` resource block. This enables server‑side encryption of the cache contents.
+
+**CKV_AWS_215 on `aws_appsync_api_cache.fail2` (lines 19–24)**  
+- **What is wrong:** The `transit_encryption_enabled` argument is missing entirely; the default value is `false`.  
+- **Why it matters:** Without explicit enabling, the cache traffic is not encrypted in transit, leaving it vulnerable to eavesdropping and manipulation.  
+- **Remediation:** Add `transit_encryption_enabled = true` to the `fail2` resource block. This will override the default and enforce TLS for all cache communications.
+
+**CKV_AWS_214 on `aws_appsync_api_cache.fail2` (lines 19–24)**  
+- **What is wrong:** The `at_rest_encryption_enabled` argument is missing; the default is `false`.  
+- **Why it matters:** The cache data will be stored unencrypted, which could lead to data exposure if the storage layer is breached.  
+- **Remediation:** Add `at_rest_encryption_enabled = true` to the `fail2` resource block. This enables encryption of the cached data at rest.
+
+**Interactions:**  
+Both `fail` and `fail2` require the same two arguments to be set to `true`. The `pass` resource already demonstrates the correct configuration. No dependency between the fixes exists; each resource can be updated independently.

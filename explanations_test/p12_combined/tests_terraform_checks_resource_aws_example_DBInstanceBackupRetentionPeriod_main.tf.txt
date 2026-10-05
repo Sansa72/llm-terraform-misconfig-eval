@@ -1,0 +1,434 @@
+**Remediation Briefing: RDS Security Misconfigurations**
+
+The scanner flagged multiple checks against the RDS cluster and instance resources in the provided Terraform file. Each finding is addressed below in the order reported. For every check, the evidence is limited to the file content and the check description; no additional attack scenarios or impacts are assumed.
+
+---
+
+### 1. CKV_AWS_313 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** The resource does not set `copy_tags_to_snapshot`.  
+- **Why it matters:** Snapshots will not inherit the cluster’s tags, making cost allocation, identification, and compliance tracking harder.  
+- **Change needed:** Add `copy_tags_to_snapshot = true` inside the `aws_rds_cluster` block.
+
+### 2. CKV_AWS_96 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Data at rest is not encrypted, exposing it if the underlying storage is compromised.  
+- **Change needed:** Add `storage_encrypted = true` to the resource.
+
+### 3. CKV_AWS_162 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `iam_database_authentication_enabled` is not set.  
+- **Why it matters:** Without IAM authentication, database access relies solely on static credentials, which are harder to manage and rotate securely.  
+- **Change needed:** Add `iam_database_authentication_enabled = true`.
+
+### 4. CKV_AWS_326 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `backtrack_window` is not set.  
+- **Why it matters:** Backtracking is unavailable; you cannot quickly rewind the cluster to a previous point in time without a full restore, increasing recovery time.  
+- **Change needed:** Set `backtrack_window` to a non‑zero value (e.g., `86400` for 24 hours).
+
+### 5. CKV_AWS_327 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `kms_key_id` is not set.  
+- **Why it matters:** Encryption uses the default AWS‑managed key, which offers less control over key rotation, access policies, and auditing than a customer‑managed key (CMK).  
+- **Change needed:** Provide a CMK ARN in `kms_key_id` (e.g., `aws_kms_key.rds.arn`).
+
+### 6. CKV_AWS_325 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` does not include `"audit"`.  
+- **Why it matters:** Audit logging for MySQL engine is not captured, hindering security investigations and compliance.  
+- **Change needed:** Add `enabled_cloudwatch_logs_exports = ["audit"]` (or include other required log types).
+
+### 7. CKV_AWS_139 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** The cluster can be deleted accidentally or maliciously, leading to permanent data loss.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 8. CKV_AWS_324 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** No database engine logs are exported to CloudWatch, removing visibility for monitoring and troubleshooting.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types (e.g., `["audit","error","general","slowquery"]`).
+
+### 9. CKV_AWS_313 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** Same as check #1 – `copy_tags_to_snapshot` is missing.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Add `copy_tags_to_snapshot = true` to this resource.
+
+### 10. CKV_AWS_96 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #2.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 11. CKV_AWS_162 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `iam_database_authentication_enabled` is missing.  
+- **Why it matters:** Same as check #3.  
+- **Change needed:** Add `iam_database_authentication_enabled = true`.
+
+### 12. CKV_AWS_326 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `backtrack_window` is not set.  
+- **Why it matters:** Same as check #4.  
+- **Change needed:** Set `backtrack_window` to a non‑zero value.
+
+### 13. CKV_AWS_327 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `kms_key_id` is missing.  
+- **Why it matters:** Same as check #5.  
+- **Change needed:** Provide a CMK ARN in `kms_key_id`.
+
+### 14. CKV_AWS_325 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` does not include `"audit"`.  
+- **Why it matters:** Same as check #6.  
+- **Change needed:** Add `enabled_cloudwatch_logs_exports` with `"audit"`.
+
+### 15. CKV_AWS_139 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #7.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 16. CKV_AWS_324 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #8.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 17. CKV_AWS_313 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `copy_tags_to_snapshot` is missing.  
+- **Why it matters:** Same as check #1.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 18. CKV_AWS_96 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #2.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 19. CKV_AWS_162 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `iam_database_authentication_enabled` is missing.  
+- **Why it matters:** Same as check #3.  
+- **Change needed:** Add `iam_database_authentication_enabled = true`.
+
+### 20. CKV_AWS_133 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `backup_retention_period` is set to `0`, which disables automated backups.  
+- **Why it matters:** No automated snapshots are taken, risking data loss if a failure occurs.  
+- **Change needed:** Change `backup_retention_period` to a value between 1 and 35 (e.g., `35`).
+
+### 21. CKV_AWS_326 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `backtrack_window` is not set.  
+- **Why it matters:** Same as check #4.  
+- **Change needed:** Set `backtrack_window` to a non‑zero value.
+
+### 22. CKV_AWS_327 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `kms_key_id` is missing.  
+- **Why it matters:** Same as check #5.  
+- **Change needed:** Provide a CMK ARN in `kms_key_id`.
+
+### 23. CKV_AWS_325 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` does not include `"audit"`.  
+- **Why it matters:** Same as check #6.  
+- **Change needed:** Add `enabled_cloudwatch_logs_exports` with `"audit"`.
+
+### 24. CKV_AWS_139 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #7.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 25. CKV_AWS_324 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #8.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 26. CKV_AWS_313 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `copy_tags_to_snapshot` is missing.  
+- **Why it matters:** Same as check #1.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 27. CKV_AWS_96 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #2.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 28. CKV_AWS_162 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `iam_database_authentication_enabled` is missing.  
+- **Why it matters:** Same as check #3.  
+- **Change needed:** Add `iam_database_authentication_enabled = true`.
+
+### 29. CKV_AWS_133 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `backup_retention_period` is set to `36`, which is outside the allowed range (0‑35). This makes the backup configuration invalid.  
+- **Why it matters:** The invalid value effectively means no valid backup policy is in place, risking data loss.  
+- **Change needed:** Change `backup_retention_period` to a valid value between 1 and 35 (e.g., `35`).
+
+### 30. CKV_AWS_326 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `backtrack_window` is not set.  
+- **Why it matters:** Same as check #4.  
+- **Change needed:** Set `backtrack_window` to a non‑zero value.
+
+### 31. CKV_AWS_327 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `kms_key_id` is missing.  
+- **Why it matters:** Same as check #5.  
+- **Change needed:** Provide a CMK ARN in `kms_key_id`.
+
+### 32. CKV_AWS_325 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` does not include `"audit"`.  
+- **Why it matters:** Same as check #6.  
+- **Change needed:** Add `enabled_cloudwatch_logs_exports` with `"audit"`.
+
+### 33. CKV_AWS_139 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #7.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 34. CKV_AWS_324 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #8.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 35. CKV_AWS_354 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `performance_insights_kms_key_id` is not set (and performance insights itself is not enabled).  
+- **Why it matters:** Performance Insights data, which may contain sensitive query information, would be encrypted with the default AWS key, reducing control over key management.  
+- **Change needed:** Enable performance insights with `performance_insights_enabled = true` and set `performance_insights_kms_key_id` to a CMK ARN.
+
+### 36. CKV_AWS_293 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** The instance can be deleted accidentally, causing data loss.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 37. CKV_AWS_353 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `performance_insights_enabled` is not set.  
+- **Why it matters:** Without Performance Insights, you lack visibility into database load and query performance, hindering troubleshooting and optimization.  
+- **Change needed:** Add `performance_insights_enabled = true`.
+
+### 38. CKV_AWS_157 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `multi_az` is not set.  
+- **Why it matters:** The instance does not have automatic failover to a standby in another availability zone, reducing availability during outages.  
+- **Change needed:** Add `multi_az = true`.
+
+### 39. CKV_AWS_129 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Database logs (audit, error, general, slow query) are not exported, removing critical security and performance monitoring data.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types (e.g., `["audit","error","general","slowquery"]`).
+
+### 40. CKV_AWS_226 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `auto_minor_version_upgrade` is not set.  
+- **Why it matters:** The instance may miss important security patches and bug fixes delivered in minor version upgrades.  
+- **Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 41. CKV_AWS_118 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `monitoring_interval` is not set (defaults to 0, disabled).  
+- **Why it matters:** Enhanced monitoring provides OS‑level metrics (CPU, memory, disk I/O) at a granular level; without it, performance issues are harder to detect.  
+- **Change needed:** Set `monitoring_interval` to a non‑zero value (e.g., `60`) and provide a valid `monitoring_role_arn`.
+
+### 42. CKV_AWS_16 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Data at rest is not encrypted, risking exposure if storage is compromised.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 43. CKV_AWS_354 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** Same as check #35 – `performance_insights_kms_key_id` missing and performance insights not enabled.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Enable performance insights and set a CMK ARN.
+
+### 44. CKV_AWS_293 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #36.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 45. CKV_AWS_353 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `performance_insights_enabled` is not set.  
+- **Why it matters:** Same as check #37.  
+- **Change needed:** Add `performance_insights_enabled = true`.
+
+### 46. CKV_AWS_157 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `multi_az` is not set.  
+- **Why it matters:** Same as check #38.  
+- **Change needed:** Add `multi_az = true`.
+
+### 47. CKV_AWS_129 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #39.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 48. CKV_AWS_226 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `auto_minor_version_upgrade` is not set.  
+- **Why it matters:** Same as check #40.  
+- **Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 49. CKV_AWS_118 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `monitoring_interval` is not set.  
+- **Why it matters:** Same as check #41.  
+- **Change needed:** Set `monitoring_interval` to a non‑zero value and provide `monitoring_role_arn`.
+
+### 50. CKV_AWS_16 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #42.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 51. CKV_AWS_354 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** Same as check #35 – missing performance insights KMS key.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Enable performance insights and set a CMK ARN.
+
+### 52. CKV_AWS_293 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #36.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 53. CKV_AWS_353 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `performance_insights_enabled` is not set.  
+- **Why it matters:** Same as check #37.  
+- **Change needed:** Add `performance_insights_enabled = true`.
+
+### 54. CKV_AWS_157 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `multi_az` is not set.  
+- **Why it matters:** Same as check #38.  
+- **Change needed:** Add `multi_az = true`.
+
+### 55. CKV_AWS_129 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #39.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 56. CKV_AWS_133 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `backup_retention_period` is set to `0`, disabling automated backups.  
+- **Why it matters:** No automated snapshots are taken, risking data loss.  
+- **Change needed:** Change `backup_retention_period` to a value between 1 and 35.
+
+### 57. CKV_AWS_226 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `auto_minor_version_upgrade` is not set.  
+- **Why it matters:** Same as check #40.  
+- **Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 58. CKV_AWS_118 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `monitoring_interval` is not set.  
+- **Why it matters:** Same as check #41.  
+- **Change needed:** Set `monitoring_interval` to a non‑zero value and provide `monitoring_role_arn`.
+
+### 59. CKV_AWS_16 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #42.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 60. CKV_AWS_354 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** Same as check #35 – missing performance insights KMS key.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Enable performance insights and set a CMK ARN.
+
+### 61. CKV_AWS_293 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #36.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 62. CKV_AWS_353 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `performance_insights_enabled` is not set.  
+- **Why it matters:** Same as check #37.  
+- **Change needed:** Add `performance_insights_enabled = true`.
+
+### 63. CKV_AWS_157 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `multi_az` is not set.  
+- **Why it matters:** Same as check #38.  
+- **Change needed:** Add `multi_az = true`.
+
+### 64. CKV_AWS_129 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #39.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 65. CKV_AWS_133 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `backup_retention_period` is set to `36`, which is outside the allowed range (0‑35).  
+- **Why it matters:** The invalid value means no valid backup policy is in effect, risking data loss.  
+- **Change needed:** Change `backup_retention_period` to a valid value between 1 and 35 (e.g., `35`).
+
+### 66. CKV_AWS_226 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `auto_minor_version_upgrade` is not set.  
+- **Why it matters:** Same as check #40.  
+- **Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 67. CKV_AWS_118 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `monitoring_interval` is not set.  
+- **Why it matters:** Same as check #41.  
+- **Change needed:** Set `monitoring_interval` to a non‑zero value and provide `monitoring_role_arn`.
+
+### 68. CKV_AWS_16 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #42.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 69. CKV_AWS_354 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** Same as check #35 – missing performance insights KMS key.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Enable performance insights and set a CMK ARN.
+
+### 70. CKV_AWS_293 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `deletion_protection` is not set.  
+- **Why it matters:** Same as check #36.  
+- **Change needed:** Add `deletion_protection = true`.
+
+### 71. CKV_AWS_353 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `performance_insights_enabled` is not set.  
+- **Why it matters:** Same as check #37.  
+- **Change needed:** Add `performance_insights_enabled = true`.
+
+### 72. CKV_AWS_157 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `multi_az` is not set.  
+- **Why it matters:** Same as check #38.  
+- **Change needed:** Add `multi_az = true`.
+
+### 73. CKV_AWS_129 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `enabled_cloudwatch_logs_exports` is not set.  
+- **Why it matters:** Same as check #39.  
+- **Change needed:** Set `enabled_cloudwatch_logs_exports` with appropriate log types.
+
+### 74. CKV_AWS_226 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `auto_minor_version_upgrade` is not set.  
+- **Why it matters:** Same as check #40.  
+- **Change needed:** Add `auto_minor_version_upgrade = true`.
+
+### 75. CKV_AWS_118 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `monitoring_interval` is not set.  
+- **Why it matters:** Same as check #41.  
+- **Change needed:** Set `monitoring_interval` to a non‑zero value and provide `monitoring_role_arn`.
+
+### 76. CKV_AWS_16 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `storage_encrypted` is not set.  
+- **Why it matters:** Same as check #42.  
+- **Change needed:** Add `storage_encrypted = true`.
+
+### 77. CKV2_AWS_60 on aws_db_instance.pass (lines 17‑19)
+- **What is wrong:** `copy_tags_to_snapshot` is not set.  
+- **Why it matters:** Snapshots will not inherit instance tags, complicating cost tracking and compliance.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 78. CKV2_AWS_60 on aws_db_instance.pass2 (lines 21‑22)
+- **What is wrong:** Same as check #77 – `copy_tags_to_snapshot` missing.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 79. CKV2_AWS_60 on aws_db_instance.fail2 (lines 24‑26)
+- **What is wrong:** `copy_tags_to_snapshot` is not set.  
+- **Why it matters:** Same as check #77.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 80. CKV2_AWS_60 on aws_db_instance.fail (lines 29‑31)
+- **What is wrong:** `copy_tags_to_snapshot` is not set.  
+- **Why it matters:** Same as check #77.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 81. CKV2_AWS_60 on aws_db_instance.unknown (lines 33‑35)
+- **What is wrong:** `copy_tags_to_snapshot` is not set.  
+- **Why it matters:** Same as check #77.  
+- **Change needed:** Add `copy_tags_to_snapshot = true`.
+
+### 82. CKV2_AWS_8 on aws_rds_cluster.pass (lines 1‑3)
+- **What is wrong:** The cluster is not associated with an AWS Backup plan.  
+- **Why it matters:** Relying solely on automated snapshots may not meet backup policy requirements; an AWS Backup plan provides centralized management, cross‑region copies, and retention policies.  
+- **Change needed:** Create an `aws_backup_plan` and an `aws_backup_selection` that includes this cluster’s ARN, or use the `aws_backup_plan` resource to define a backup rule and attach the cluster.
+
+### 83. CKV2_AWS_8 on aws_rds_cluster.pass2 (lines 5‑6)
+- **What is wrong:** Same as check #82 – no AWS Backup plan association.  
+- **Why it matters:** Same rationale.  
+- **Change needed:** Include this cluster in an AWS Backup plan.
+
+### 84. CKV2_AWS_8 on aws_rds_cluster.fail2 (lines 8‑10)
+- **What is wrong:** No AWS Backup plan association.  
+- **Why it matters:** Same as check #82.  
+- **Change needed:** Include this cluster in an AWS Backup plan.
+
+### 85. CKV2_AWS_8 on aws_rds_cluster.fail (lines 13‑15)
+- **What is wrong:** No AWS Backup plan association.  
+- **Why it matters:** Same as check #82.  
+- **Change needed:** Include this cluster in an AWS Backup plan.
+
+---
+
+All checks have been addressed. The required changes are additive and do not conflict; they can be applied together to each resource block.

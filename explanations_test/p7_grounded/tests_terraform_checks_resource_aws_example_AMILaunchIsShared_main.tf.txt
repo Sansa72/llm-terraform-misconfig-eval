@@ -1,0 +1,19 @@
+The scanner flagged resource `aws_ami_launch_permission.fail` (lines 1–4) with check **CKV_AWS_205**, which requires that AMI launch permissions be limited.
+
+**What the file shows**  
+The resource grants AMI launch permission to a specific AWS account:
+
+```terraform
+resource "aws_ami_launch_permission" "fail" {
+  image_id   = "ami-2345678"
+  account_id = "987654321"
+}
+```
+
+- **Line 3** sets `account_id` to `"987654321"`, meaning the AMI `ami-2345678` can be launched by that external account.
+
+**Why the check fired**  
+CKV_AWS_205 is a policy that flags any `aws_ami_launch_permission` resource that does not sufficiently restrict who can launch the AMI. The presence of this resource—sharing the AMI with an account outside your own—is what triggered the finding. The check does not assess whether the specific account ID is trusted; it only identifies that a launch permission exists and requires that such permissions be limited.
+
+**What the engineer needs to address**  
+The configuration as written shares the AMI with account `987654321`. To resolve the finding, you must ensure that this sharing is intentional and that the permission is as restrictive as required by your organization’s policy. The scanner’s evidence does not indicate whether the account ID is authorized or whether additional restrictions (such as conditions) are needed—only that the current resource is flagged as overly permissive under the CKV_AWS_205 rule.

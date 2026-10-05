@@ -1,0 +1,60 @@
+The scanner flagged a security misconfiguration in the `aws_batch_job_definition` resource named `"fail"` (lines 8–46). The check **CKV_AWS_210** ensures that AWS Batch job containers do not run in privileged mode. Your resource explicitly sets `"privileged": true` in the container properties, which violates this policy.
+
+## What’s the problem?
+
+A **privileged container** runs with almost all the capabilities of the host machine. It can access host devices, modify kernel parameters, and bypass many of the isolation mechanisms that normally protect the host and other containers. If an attacker compromises a privileged container, they could potentially escape to the underlying host, access sensitive data, or disrupt other workloads. For this reason, privileged mode should be avoided unless absolutely necessary.
+
+## How to fix it
+
+Set `"privileged": false` in the container properties JSON, or simply remove the `"privileged"` key entirely (the default is `false`). For example, change the `container_properties` block to:
+
+```hcl
+container_properties = <<CONTAINER_PROPERTIES
+{
+    "command": ["ls", "-la"],
+    "image": "busybox",
+    "memory": 1024,
+    "vcpus": 1,
+    "privileged": false,
+    "volumes": [
+      {
+        "host": {
+          "sourcePath": "/tmp"
+        },
+        "name": "tmp"
+      }
+    ],
+    "environment": [
+        {"name": "VARNAME", "value": "VARVAL"}
+    ],
+    "mountPoints": [
+        {
+          "sourceVolume": "tmp",
+          "containerPath": "/tmp",
+          "readOnly": false
+        }
+    ],
+    "ulimits": [
+      {
+        "hardLimit": 1024,
+        "name": "nofile",
+        "softLimit": 1024
+      }
+    ]
+}
+CONTAINER_PROPERTIES
+```
+
+Alternatively, you can use the `jsonencode` function as shown in the `pass3` resource, which is cleaner and less error‑prone.
+
+## Why the other resources passed
+
+- `pass` explicitly sets `"privileged": false` → compliant.
+- `pass2` omits the `"privileged"` key entirely → default is `false` → compliant.
+- `pass3` uses `jsonencode` without a `privileged` key → default is `false` → compliant.
+
+The `unknown` resources are not flagged because they either have no container properties or use a non‑standard format that the scanner cannot evaluate.
+
+## Summary
+
+Remove the `"privileged": true` line from the `fail` resource’s container properties to ensure the container runs without elevated privileges. This will resolve the CKV_AWS_210 finding and align the job definition with security best practices.

@@ -1,0 +1,61 @@
+The two S3 buckets defined in this file are missing several essential security and data-protection configurations. Below is a breakdown of each failing check, why it matters, and what needs to be added to make the check pass.
+
+---
+
+### CKV2_AWS_61 – Lifecycle configuration missing
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** Every S3 bucket must have a lifecycle configuration that defines rules for transitioning or expiring objects.  
+**Why it matters:** Without lifecycle rules, data can accumulate indefinitely, increasing storage costs and making it harder to manage retention. Lifecycle policies also help automatically delete outdated or sensitive data.  
+**Fix:** For each bucket, add an `aws_s3_bucket_lifecycle_configuration` resource that references the bucket. Include at least one rule—for example, a rule that transitions objects to a cheaper storage class after a certain number of days, or expires old object versions. The rule must have a unique `id` and a `status` of `Enabled`.
+
+---
+
+### CKV_AWS_18 – Access logging not enabled
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 bucket access logging must be enabled, sending logs to a designated target bucket.  
+**Why it matters:** Access logs provide an audit trail of all requests made to the bucket, which is critical for security monitoring, forensics, and compliance.  
+**Fix:** For each bucket, add an `aws_s3_bucket_logging` resource. The `target_bucket` should be an existing bucket (often a central logging bucket) and `target_prefix` can be set to a meaningful path (e.g., `"logs/bucket-name/"`). Ensure the target bucket has the correct permissions to receive logs.
+
+---
+
+### CKV2_AWS_62 – Event notifications missing
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 buckets must have at least one event notification configured.  
+**Why it matters:** Event notifications allow you to trigger workflows (e.g., via Lambda, SQS, or SNS) when objects are created or modified. This is essential for real-time processing, security alerting, and maintaining data integrity.  
+**Fix:** Add an `aws_s3_bucket_notification` resource for each bucket. Define at least one notification configuration—for example, a `lambda_function` or `sns_topic` entry that triggers on `s3:ObjectCreated:*` events. The destination resource (Lambda, SNS, SQS) must already exist and have the necessary permissions.
+
+---
+
+### CKV2_AWS_6 – Public access block not enabled
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 buckets must have a public access block configuration that blocks all public access.  
+**Why it matters:** Without this, bucket policies or ACLs could accidentally grant public access, leading to data leaks. The public access block overrides any permissive settings.  
+**Fix:** For each bucket, add an `aws_s3_bucket_public_access_block` resource. Set all four arguments to `true`: `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets`.
+
+---
+
+### CKV_AWS_145 – Default encryption not using KMS
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 buckets must have default encryption configured to use AWS KMS (SSE-KMS), not just SSE-S3.  
+**Why it matters:** KMS encryption provides stronger security controls, including customer-managed keys, key rotation, and detailed audit trails via CloudTrail. SSE-S3 is less granular and harder to audit.  
+**Fix:** Add an `aws_s3_bucket_server_side_encryption_configuration` resource for each bucket. In the `rule` block, set `apply_server_side_encryption_by_default.sse_algorithm` to `"aws:kms"` and provide a KMS key ARN (either an AWS managed key or a customer-managed key).
+
+---
+
+### CKV_AWS_144 – Cross-region replication not enabled
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 buckets must have cross-region replication configured.  
+**Why it matters:** Cross-region replication ensures data durability and availability by automatically copying objects to a bucket in a different AWS region. This protects against regional outages and helps meet disaster recovery requirements.  
+**Fix:** For each bucket, add an `aws_s3_bucket_replication_configuration` resource. The configuration must include an IAM role with appropriate permissions, a destination bucket in a different region, and at least one rule. Note that versioning must be enabled on both the source and destination buckets.
+
+---
+
+### CKV_AWS_21 – Versioning not enabled
+**Buckets:** `aws_s3_bucket.bucket` and `aws_s3_bucket.bucket_2`  
+**Requirement:** S3 bucket versioning must be enabled.  
+**Why it matters:** Versioning preserves every version of an object, protecting against accidental deletions and overwrites. It is a prerequisite for replication and a fundamental data-protection measure.  
+**Fix:** Add an `aws_s3_bucket_versioning` resource for each bucket, with `versioning_configuration.status` set to `"Enabled"`.
+
+---
+
+**Additional note:** The second provider block has an empty `region` string. While not flagged by the scanner, this is likely a mistake and should be set to a valid region (e.g., `"us-west-1"`) to ensure the bucket is created in the intended location.

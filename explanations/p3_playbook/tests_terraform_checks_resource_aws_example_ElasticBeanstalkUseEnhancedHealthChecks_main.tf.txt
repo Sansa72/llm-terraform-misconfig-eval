@@ -1,0 +1,87 @@
+**Remediation Briefing: Elastic Beanstalk Security Misconfigurations**
+
+Below is a finding-by-finding breakdown of the required changes. All resources are of type `aws_elastic_beanstalk_environment`. The fixes are independent except where noted; each resource must be updated individually.
+
+---
+
+### 1. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail` (lines 1‑10)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Without managed platform updates, the environment’s underlying platform (OS, runtime, etc.) will not receive automatic patches and minor version upgrades, leaving it exposed to known vulnerabilities and missing performance improvements.  
+**Change needed:** Add a `setting` block with namespace `"aws:elasticbeanstalk:managedactions"`, name `"ManagedActionsEnabled"`, and value `"true"`. This enables AWS to automatically apply platform updates during the configured maintenance window.
+
+---
+
+### 2. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail` (lines 1‑10)
+**What is wrong:** Enhanced health reporting is not enabled.  
+**Why it matters:** Basic health reporting provides only rudimentary instance‑level checks. Enhanced health reporting gives deeper insight into application and environment health, enabling faster detection and diagnosis of issues.  
+**Change needed:** Add a `setting` block with namespace `"aws:elasticbeanstalk:healthreporting:system"`, name `"SystemType"`, and value `"enhanced"`. This activates the enhanced health monitoring agent.
+
+---
+
+### 3. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail2` (lines 12‑26)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Same risk as finding #1.  
+**Change needed:** Add a `setting` block for `"aws:elasticbeanstalk:managedactions"` with `ManagedActionsEnabled = "true"`.  
+**Interaction:** This resource already has a `setting` block for health reporting (see next finding). The new block can be added alongside it.
+
+---
+
+### 4. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail2` (lines 12‑26)
+**What is wrong:** The existing health reporting setting uses `SystemType = "basic"`, which is not enhanced.  
+**Why it matters:** Basic health reporting is insufficient for production‑grade monitoring.  
+**Change needed:** Modify the existing `setting` block (namespace `"aws:elasticbeanstalk:healthreporting:system"`) to change the `value` from `"basic"` to `"enhanced"`. No new block is required; just correct the value.
+
+---
+
+### 5. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail3` (lines 28‑48)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Same risk as finding #1.  
+**Change needed:** Add a `setting` block for `"aws:elasticbeanstalk:managedactions"` with `ManagedActionsEnabled = "true"`.  
+**Interaction:** This resource contains two existing `setting` blocks (one for `HealthStreamingEnabled` and one in a non‑standard namespace). The new block should be added; the irrelevant `"guff"` block can be removed for clarity but is not required for the check to pass.
+
+---
+
+### 6. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail3` (lines 28‑48)
+**What is wrong:** Enhanced health reporting is not enabled. The `HealthStreamingEnabled` setting is `"False"`, and the `"guff"` namespace block does not affect health reporting.  
+**Why it matters:** The environment is using basic health reporting, limiting visibility.  
+**Change needed:** Either modify the existing `HealthStreamingEnabled` block to set `value = "true"`, or replace it with a `SystemType = "enhanced"` block in the correct namespace. The simplest approach is to change the `HealthStreamingEnabled` value to `"true"` (which the scanner accepts as enhanced health reporting, as seen in the `pass` resources). The `"guff"` block can be removed.
+
+---
+
+### 7. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail4` (lines 50‑65)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Same risk as finding #1.  
+**Change needed:** Add a `setting` block for `"aws:elasticbeanstalk:managedactions"` with `ManagedActionsEnabled = "true"`.  
+**Interaction:** This resource already has a `setting` block for `HealthStreamingEnabled` with an empty value. The new block should be added; the existing block must be corrected for the next finding.
+
+---
+
+### 8. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail4` (lines 50‑65)
+**What is wrong:** The `HealthStreamingEnabled` setting is present but its value is empty, so enhanced health reporting is not active.  
+**Why it matters:** An empty value defaults to basic health reporting.  
+**Change needed:** Modify the existing `setting` block (namespace `"aws:elasticbeanstalk:healthreporting:system"`, name `"HealthStreamingEnabled"`) to set `value = "true"`. Alternatively, replace it with a `SystemType = "enhanced"` block. The empty `resource` attribute can be removed or left as is; it does not affect the check.
+
+---
+
+### 9. CKV_AWS_340 on `aws_elastic_beanstalk_environment.pass` (lines 68‑82)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Same risk as finding #1.  
+**Change needed:** Add a `setting` block for `"aws:elasticbeanstalk:managedactions"` with `ManagedActionsEnabled = "true"`.  
+**Interaction:** This resource already has enhanced health reporting enabled (`HealthStreamingEnabled = "true"`), so no change is needed for CKV_AWS_312. Only the managed updates setting is missing.
+
+---
+
+### 10. CKV_AWS_340 on `aws_elastic_beanstalk_environment.pass2` (lines 84‑98)
+**What is wrong:** Managed platform updates are not enabled.  
+**Why it matters:** Same risk as finding #1.  
+**Change needed:** Add a `setting` block for `"aws:elasticbeanstalk:managedactions"` with `ManagedActionsEnabled = "true"`.  
+**Interaction:** Like `pass`, this resource already satisfies CKV_AWS_312 (`HealthStreamingEnabled = true`). Only the managed updates setting is required.
+
+---
+
+**Summary of interactions across resources:**  
+- All resources need the managed platform updates setting (`ManagedActionsEnabled = "true"`).  
+- For `fail`, `fail2`, `fail3`, and `fail4`, the health reporting must be corrected to enhanced (either `SystemType = "enhanced"` or `HealthStreamingEnabled = "true"`).  
+- `fail2` already has a health reporting block that can be edited in place.  
+- `fail3` and `fail4` have existing blocks that can be modified; the irrelevant `"guff"` block in `fail3` can be removed.  
+- `pass` and `pass2` require no health reporting changes.

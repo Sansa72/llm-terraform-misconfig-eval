@@ -1,0 +1,20 @@
+The scanner flagged a misconfiguration in the resource `aws_ebs_encryption_by_default.disabled` on lines 16–18. The check ID is **CKV_AWS_106**, which requires that default EBS encryption be enabled.
+
+**What the file shows**  
+- Lines 16–18 define:
+  ```terraform
+  resource "aws_ebs_encryption_by_default" "disabled" {
+    enabled = false
+  }
+  ```
+- The `enabled` argument is explicitly set to `false`. This disables default encryption for newly created EBS volumes in the account/region.
+
+**Why it’s a problem**  
+The check’s purpose is to ensure that EBS volumes are encrypted by default. Setting `enabled = false` directly violates that requirement. The other resources in the file (`enabled` with `true`, `default` with no argument, `null` with `null`) are not flagged, because they either enable encryption or leave the setting unspecified (which may or may not be compliant, but the scanner only raised an issue on the explicit `false`).
+
+**What to fix**  
+Change the `disabled` resource so that it does not set `enabled = false`. The exact remediation depends on the intended configuration:
+- If you want default encryption, set `enabled = true`.
+- If the resource is not needed, remove it entirely (but ensure no other resource in the configuration disables encryption).
+
+The finding is limited to this single resource and the explicit `false` value. No other resources or lines are implicated.

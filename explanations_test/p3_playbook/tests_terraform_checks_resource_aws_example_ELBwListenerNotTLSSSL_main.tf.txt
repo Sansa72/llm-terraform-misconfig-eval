@@ -1,0 +1,55 @@
+Here is the remediation briefing for each scanner finding, in the order presented.
+
+---
+
+### 1. CKV_AWS_127 on `aws_elb.fail` (lines 2–34)
+**Check:** Ensure that Elastic Load Balancer(s) uses SSL certificates provided by AWS Certificate Manager  
+**What is wrong:** The HTTPS listener (port 443) is using a hardcoded certificate ID `"foo"` that is not an ACM certificate ARN.  
+**Why it matters:** Certificates from AWS Certificate Manager (ACM) are automatically renewed, centrally managed, and integrated with other AWS services. Using a non-ACM certificate risks expiration, manual rotation errors, and potential security incidents.  
+**Change needed:** Replace the `ssl_certificate_id` value in the second listener block with the ARN of a valid ACM certificate. The certificate must exist in ACM in the same region as the ELB. You can reference it directly as a string ARN or via a data source (e.g., `data.aws_acm_certificate.selected.arn`). The first listener (HTTP on port 80) does not require a certificate and can remain unchanged.
+
+---
+
+### 2. CKV_AWS_92 on `aws_elb.fail` (lines 2–34)
+**Check:** Ensure the ELB has access logging enabled  
+**What is wrong:** The ELB resource does not contain an `access_logs` block.  
+**Why it matters:** Access logs record detailed information about every request sent to the load balancer. They are essential for security auditing, traffic analysis, and meeting compliance requirements. Without them, you lose visibility into who is accessing your application and how.  
+**Change needed:** Add an `access_logs` block inside the `aws_elb.fail` resource definition. Set `enabled = true`, provide the name of an existing S3 bucket in `bucket`, and optionally set a `bucket_prefix` for log file organisation. The bucket must have the correct permissions (a bucket policy allowing the ELB principal to write logs). This change is independent of the certificate fix and can be applied simultaneously.
+
+---
+
+### 3. CKV_AWS_92 on `aws_elb.fail2` (lines 37–70)
+**Check:** Ensure the ELB has access logging enabled  
+**What is wrong:** The ELB resource is missing the `access_logs` block.  
+**Why it matters:** Same as above – lack of logging removes a critical audit trail for security and operational insight.  
+**Change needed:** Add an `access_logs` block with `enabled = true`, a valid S3 bucket name, and an optional prefix. The same bucket used for `aws_elb.fail` can be reused here (with a different prefix to separate logs) if desired. No other scanner findings apply to this resource, so only the logging block is required.
+
+---
+
+### 4. CKV_AWS_127 on `aws_elb.fail3` (lines 73–105)
+**Check:** Ensure that Elastic Load Balancer(s) uses SSL certificates provided by AWS Certificate Manager  
+**What is wrong:** The resource has two HTTPS listeners. The first (port 80) uses a non-ACM certificate ID `"foo"`; the second (port 443) is missing the `ssl_certificate_id` attribute entirely.  
+**Why it matters:** Any HTTPS listener without a valid ACM certificate will fail to establish trusted SSL/TLS connections, potentially exposing traffic or causing browser errors. Using ACM certificates ensures proper validation and automatic renewal.  
+**Change needed:** For the first listener, replace `ssl_certificate_id = "foo"` with the ARN of an ACM certificate. For the second listener, add `ssl_certificate_id` and set it to an ACM certificate ARN (the same or a different one, depending on the domain). Both listeners must reference ACM-managed certificates for the check to pass. This fix is independent of the logging requirement.
+
+---
+
+### 5. CKV_AWS_92 on `aws_elb.fail3` (lines 73–105)
+**Check:** Ensure the ELB has access logging enabled  
+**What is wrong:** The ELB resource lacks an `access_logs` block.  
+**Why it matters:** As with the other ELBs, missing access logs means no request-level logging, hindering security monitoring and compliance.  
+**Change needed:** Add an `access_logs` block with `enabled = true`, a valid S3 bucket, and an optional prefix. This can be the same bucket used for the other ELBs, with a distinct prefix to keep logs organised.
+
+---
+
+### 6. CKV_AWS_92 on `aws_elb.pass` (lines 108–133)
+**Check:** Ensure the ELB has access logging enabled  
+**What is wrong:** The ELB resource is missing the `access_logs` block.  
+**Why it matters:** Even though this resource passed the certificate check, it still lacks access logging, which is a separate security control.  
+**Change needed:** Add an `access_logs` block with `enabled = true`, a valid S3 bucket, and an optional prefix. The same bucket and prefix strategy can be applied here as for the other ELBs.
+
+---
+
+### Interactions between fixes
+- All four ELB resources require the same logging fix: adding an `access_logs` block. They can share a single S3 bucket (with different prefixes) to centralise log storage. There is no dependency between the logging and certificate fixes; both can be implemented independently.
+- The certificate fixes for `aws_elb.fail` and `aws_elb.fail3` both involve replacing or adding `ssl_certificate_id` with an ACM ARN. If the same domain is served, the same ACM certificate ARN can be reused across these resources. No other interactions are present in the supplied file.

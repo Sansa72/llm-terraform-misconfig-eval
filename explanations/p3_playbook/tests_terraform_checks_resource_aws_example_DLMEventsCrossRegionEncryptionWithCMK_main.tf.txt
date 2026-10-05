@@ -1,0 +1,35 @@
+Here is the remediation briefing for the flagged findings.
+
+---
+
+### Finding 1: CKV_AWS_253 on `aws_dlm_lifecycle_policy.fail`
+
+**What is wrong:** The cross-region copy action does not have encryption enabled.
+
+**Why it matters:** Without encryption, snapshots copied across regions are stored in plaintext. This violates data protection standards and could expose sensitive volume data if the destination region’s storage is compromised.
+
+**Remediation:** Inside the `cross_region_copy` block, the `encryption_configuration` block must have the `encrypted` argument set to `true`. This will ensure that the copied snapshot is encrypted at rest using the default AWS-managed key. If you also need to satisfy the next check (CKV_AWS_254), you can combine this with a customer-managed key in the same change.
+
+---
+
+### Finding 2: CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail`
+
+**What is wrong:** The cross-region copy encryption does not use a customer-managed key (CMK).
+
+**Why it matters:** Relying on the default AWS-managed key gives you less control over key rotation, access policies, and audit logging. A customer-managed key (CMK) allows you to enforce least privilege, monitor usage via CloudTrail, and revoke access if needed.
+
+**Remediation:** In the same `encryption_configuration` block, add the `cmk_arn` argument and set it to the ARN of a valid KMS customer-managed key. The `pass` resource in the same file already references `aws_kms_key.test.arn` – you can use the same key. This change, together with enabling encryption, will satisfy both CKV_AWS_253 and CKV_AWS_254 for this resource.
+
+---
+
+### Finding 3: CKV_AWS_254 on `aws_dlm_lifecycle_policy.fail2`
+
+**What is wrong:** The cross-region copy is encrypted, but it uses the default AWS-managed key instead of a customer-managed key.
+
+**Why it matters:** Same as above – a customer-managed key provides better security control, auditing, and compliance alignment.
+
+**Remediation:** In the `encryption_configuration` block of `fail2`, add a `cmk_arn` argument referencing a valid KMS key ARN. The same key used in the `pass` resource (`aws_kms_key.test.arn`) can be referenced here. No other changes are needed because encryption is already enabled.
+
+---
+
+**Interaction note:** The `fail` resource requires both enabling encryption and specifying a CMK. The `fail2` resource only needs the CMK ARN added. Both can reuse the KMS key already defined and used in the `pass` resource, ensuring consistency and avoiding unnecessary key creation.

@@ -1,0 +1,135 @@
+## Remediation Briefing: EKS Cluster Security Misconfigurations
+
+Below are the failing checks in the order reported by the scanner, with a description of the issue, its security impact, and the required change. Where fixes interact, this is noted.
+
+---
+
+### 1. CKV_AWS_58 on `aws_eks_cluster.disabled` (lines 3–12)
+**What is wrong:** The cluster does not have envelope encryption of Kubernetes secrets using a KMS key.  
+**Why it matters:** Without a KMS‑backed encryption configuration, Kubernetes secrets are stored in plaintext in etcd, increasing the risk of exposure if the underlying storage is compromised.  
+**Change needed:** Add an `encryption_config` block inside the `aws_eks_cluster` resource, referencing a valid KMS key ARN. The block must contain a `resources` list that includes `"secrets"`.
+
+---
+
+### 2. CKV_AWS_37 on `aws_eks_cluster.disabled` (lines 3–12)
+**What is wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Without comprehensive control plane logging (API server, audit, authenticator, controller manager, scheduler), you lose visibility into cluster operations, making it harder to detect malicious activity, troubleshoot issues, and meet compliance requirements.  
+**Change needed:** Add an `enabled_cluster_log_types` argument inside the resource, listing all five log types: `["api", "audit", "authenticator", "controllerManager", "scheduler"]`.
+
+---
+
+### 3. CKV_AWS_39 on `aws_eks_cluster.restricted` (lines 14–23)
+**What is wrong:** The cluster’s public endpoint is enabled (default behavior).  
+**Why it matters:** A publicly accessible endpoint exposes the Kubernetes API server to the internet, increasing the attack surface. Disabling it forces all API access through private networks, reducing the risk of unauthorised access.  
+**Change needed:** Set `endpoint_public_access = false` inside the `vpc_config` block.  
+**Interaction note:** This change will also implicitly satisfy CKV_AWS_38 (public endpoint not accessible to 0.0.0.0/0) because the public endpoint is turned off entirely, though that check was not flagged for this resource.
+
+---
+
+### 4. CKV_AWS_58 on `aws_eks_cluster.restricted` (lines 14–23)
+**What is wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as item 1 – Kubernetes secrets are stored unencrypted in etcd.  
+**Change needed:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+---
+
+### 5. CKV_AWS_37 on `aws_eks_cluster.restricted` (lines 14–23)
+**What is wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as item 2 – lack of full logging reduces operational visibility and security monitoring.  
+**Change needed:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+### 6. CKV_AWS_39 on `aws_eks_cluster.default` (lines 27–34)
+**What is wrong:** The public endpoint is enabled (default).  
+**Why it matters:** Same as item 3 – public exposure of the API server.  
+**Change needed:** Set `endpoint_public_access = false` inside the `vpc_config` block.  
+**Interaction note:** Disabling the public endpoint will also resolve the next finding (CKV_AWS_38) for this resource, because the public endpoint will no longer be accessible to any CIDR.
+
+---
+
+### 7. CKV_AWS_58 on `aws_eks_cluster.default` (lines 27–34)
+**What is wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+---
+
+### 8. CKV_AWS_38 on `aws_eks_cluster.default` (lines 27–34)
+**What is wrong:** The public endpoint is accessible to `0.0.0.0/0` (the default CIDR).  
+**Why it matters:** Even with a public endpoint, you should restrict access to specific trusted IP ranges. Allowing `0.0.0.0/0` means any internet host can attempt to connect to the API server.  
+**Change needed:** Either disable the public endpoint entirely (as recommended for CKV_AWS_39) or, if a public endpoint is absolutely required, set `public_access_cidrs` to a restrictive list of allowed CIDR blocks.  
+**Interaction note:** The remediation for CKV_AWS_39 (disabling the public endpoint) will automatically resolve this check. If you choose to keep the endpoint public, you must explicitly set `public_access_cidrs` to something other than `["0.0.0.0/0"]`.
+
+---
+
+### 9. CKV_AWS_37 on `aws_eks_cluster.default` (lines 27–34)
+**What is wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+### 10. CKV_AWS_39 on `aws_eks_cluster.empty` (lines 36–45)
+**What is wrong:** The public endpoint is enabled (default).  
+**Why it matters:** Same as item 3.  
+**Change needed:** Set `endpoint_public_access = false` inside the `vpc_config` block.  
+**Interaction note:** This will also resolve CKV_AWS_38 for this resource, because the public endpoint will be disabled.
+
+---
+
+### 11. CKV_AWS_58 on `aws_eks_cluster.empty` (lines 36–45)
+**What is wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+---
+
+### 12. CKV_AWS_38 on `aws_eks_cluster.empty` (lines 36–45)
+**What is wrong:** The public endpoint is accessible to `0.0.0.0/0` (the default CIDR, because `public_access_cidrs` is set to an empty list, which AWS treats as the default `0.0.0.0/0`).  
+**Why it matters:** Same as item 8.  
+**Change needed:** Either disable the public endpoint (preferred) or, if you must keep it public, set `public_access_cidrs` to a restrictive list.  
+**Interaction note:** Disabling the public endpoint (CKV_AWS_39) will resolve this check automatically.
+
+---
+
+### 13. CKV_AWS_37 on `aws_eks_cluster.empty` (lines 36–45)
+**What is wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+### 14. CKV_AWS_39 on `aws_eks_cluster.open` (lines 47–56)
+**What is wrong:** The public endpoint is enabled (default).  
+**Why it matters:** Same as item 3.  
+**Change needed:** Set `endpoint_public_access = false` inside the `vpc_config` block.  
+**Interaction note:** This will also resolve CKV_AWS_38 for this resource.
+
+---
+
+### 15. CKV_AWS_58 on `aws_eks_cluster.open` (lines 47–56)
+**What is wrong:** Secrets encryption is not enabled.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`.
+
+---
+
+### 16. CKV_AWS_38 on `aws_eks_cluster.open` (lines 47–56)
+**What is wrong:** The public endpoint is explicitly set to be accessible to `0.0.0.0/0`.  
+**Why it matters:** Same as item 8.  
+**Change needed:** Either disable the public endpoint (preferred) or change `public_access_cidrs` to a restrictive list of allowed IP ranges.  
+**Interaction note:** Disabling the public endpoint (CKV_AWS_39) will resolve this check automatically.
+
+---
+
+### 17. CKV_AWS_37 on `aws_eks_cluster.open` (lines 47–56)
+**What is wrong:** Control plane logging is not enabled for all log types.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add `enabled_cluster_log_types` with all five log types.
+
+---
+
+**Summary of interactions:**  
+- For any resource where both CKV_AWS_39 (public endpoint disabled) and CKV_AWS_38 (no 0.0.0.0/0 access) are flagged, setting `endpoint_public_access = false` will satisfy both checks.  
+- The `encryption_config` and `enabled_cluster_log_types` changes are independent and must be applied to every cluster that lacks them.

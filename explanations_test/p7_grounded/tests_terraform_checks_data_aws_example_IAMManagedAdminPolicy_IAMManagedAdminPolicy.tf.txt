@@ -1,0 +1,38 @@
+The scanner flagged two `data` sources because they reference the AWS-managed `AdministratorAccess` policy, which violates check **CKV_AWS_275**. This check exists to prevent any resource from using the built-in administrator policy, as it grants unrestricted access to all AWS services and resources.
+
+**Evidence in your file**
+
+- **`data "aws_iam_policy" "fail1"` (lines 3–5)**  
+  The `name` argument is set to `"AdministratorAccess"`. This directly selects the AWS-managed policy with full administrative permissions.
+
+- **`data "aws_iam_policy" "fail2"` (lines 7–9)**  
+  The `arn` argument is set to `"arn:aws:iam::aws:policy/AdministratorAccess"`. This is the explicit ARN of the same administrative policy.
+
+Both data sources are flagged because they resolve to the `AdministratorAccess` policy, which the check disallows.
+
+**Why the “pass” examples are not flagged**
+
+- `data.aws_iam_policy.pass1` references `AmazonS3ReadOnlyAccess` by name.  
+- `data.aws_iam_policy.pass2` references the same policy by ARN.  
+
+These are not flagged because they point to a policy with limited, read-only permissions, not the full administrator policy.
+
+**What to do**
+
+Replace the references to `AdministratorAccess` with a policy that grants only the permissions your workload actually needs. The pass examples show the pattern: use a managed policy like `AmazonS3ReadOnlyAccess` (or a customer-managed policy) that follows least privilege. For instance, change:
+
+```hcl
+data "aws_iam_policy" "fail1" {
+  name = "AdministratorAccess"
+}
+```
+
+to something like:
+
+```hcl
+data "aws_iam_policy" "fail1" {
+  name = "AmazonS3ReadOnlyAccess"
+}
+```
+
+or provide the ARN of a more restrictive policy. The exact replacement depends on what permissions the downstream IAM role or user truly requires; the file alone does not tell us that, so you’ll need to determine the appropriate policy for your use case.

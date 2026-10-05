@@ -1,0 +1,95 @@
+The scanner flagged three types of misconfigurations across your four DynamoDB table resources. Here’s what each policy requires, why it matters, and exactly what’s missing in your Terraform.
+
+---
+
+### 1. CKV_AWS_28 – Point‑in‑time recovery (PITR) is not enabled
+
+**Why it matters**  
+PITR provides continuous backups that let you restore a table to any point in time within the last 35 days. Without it, you’re exposed to data loss from accidental writes, deletes, or application bugs. The policy (based on AWS best practices) expects this safeguard to be active on every table.
+
+**What’s missing in your file**  
+None of the four tables (`cmk`, `default`, `encrypted_false`, `encrypted_no_cmk`) include a `point_in_time_recovery` block. You need to add:
+
+```hcl
+point_in_time_recovery {
+  enabled = true
+}
+```
+
+to each `aws_dynamodb_table` resource.
+
+---
+
+### 2. CKV_AWS_119 – Tables are not encrypted with a Customer Managed CMK
+
+**Why it matters**  
+DynamoDB always encrypts data at rest, but by default it uses an **AWS owned CMK** – a key you don’t control. Using a **customer managed CMK** (KMS key that you create and manage) gives you control over key rotation, access policies, and audit trails. The policy requires that you explicitly specify a customer managed key ARN.
+
+**What’s missing in your file**  
+- **`default`** – No `server_side_encryption` block at all → falls back to the AWS owned CMK.  
+- **`encrypted_false`** – Explicitly sets `enabled = false`, which disables encryption entirely (even the default).  
+- **`encrypted_no_cmk`** – Enables encryption but omits `kms_key_arn`, so it uses the AWS owned CMK.  
+- **`cmk`** – Already correctly configured with a customer managed key ARN; this resource passes the check.
+
+**Fix**  
+For the three failing tables, add a `server_side_encryption` block with `enabled = true` and a valid `kms_key_arn` pointing to a KMS key you own. Example:
+
+```hcl
+server_side_encryption {
+  enabled     = true
+  kms_key_arn = aws_kms_key.dynamo.arn   # or a specific ARN
+}
+```
+
+---
+
+### 3. CKV2_AWS_16 – Auto Scaling is not enabled
+
+**Why it matters**  
+All your tables use `billing_mode = "PROVISIONED"`. With provisioned capacity, you must manually set read/write capacity units. Auto Scaling automatically adjusts those units based on actual traffic, preventing throttling during spikes and saving cost during quiet periods. The policy requires that Auto Scaling be configured for every provisioned table.
+
+**What’s missing in your file**  
+No `aws_appautoscaling_target` or `aws_appautoscaling_policy` resources are defined for any table. The tables themselves have static `read_capacity` and `write_capacity` values, but no scaling mechanism.
+
+**Fix**  
+For each table, define an Auto Scaling target and a scaling policy. A minimal example for one table:
+
+```hcl
+resource "aws_appautoscaling_target" "dynamo_read" {
+  max_capacity       = 100
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.cmk.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "dynamo_read_policy" {
+  name               = "DynamoDBReadCapacityUtilization:${aws_appautoscaling_target.dynamo_read.resource_id}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.dynamo_read.resource_id
+  scalable_dimension = aws_appautoscaling_target.dynamo_read.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.dynamo_read.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+```
+
+Repeat for write capacity (change `scalable_dimension` to `dynamodb:table:WriteCapacityUnits`). Alternatively, if your workload is unpredictable and you don’t want to manage scaling, you could switch the table to `PAY_PER_REQUEST` billing mode – but the policy explicitly checks for Auto Scaling on provisioned tables, so you’d still need to implement it if you stay provisioned.
+
+---
+
+### Summary of required changes per resource
+
+| Resource            | Add PITR | Add CMK encryption | Add Auto Scaling |
+|---------------------|----------|-------------------|------------------|
+| `cmk`               | ✅       | Already done      | ✅               |
+| `default`           | ✅       | ✅                | ✅               |
+| `encrypted_false`   | ✅       | ✅ (and set `enabled = true`) | ✅ |
+| `encrypted_no_cmk`  | ✅       | ✅ (add `kms_key_arn`) | ✅ |
+
+Apply these additions to bring all tables into compliance with the flagged policies.

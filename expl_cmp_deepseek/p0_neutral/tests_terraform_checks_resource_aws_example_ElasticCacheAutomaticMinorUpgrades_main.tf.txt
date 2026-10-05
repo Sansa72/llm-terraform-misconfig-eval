@@ -1,0 +1,40 @@
+Checkov flagged three distinct issues across the `aws_elasticache_cluster` resources.
+
+---
+
+### 1. CKV_AWS_323 – Default subnet group in use  
+**Affected resources:** `pass`, `pass2`, `fail`, `memcached`
+
+- **What:** None of the resources set `subnet_group_name`, so they will use the VPC’s default subnet group.
+- **Why it matters:** The default subnet group includes all subnets in the VPC. Depending on the VPC configuration, this may include public subnets, causing cache nodes to be placed in publicly routable network segments. This removes control over network placement and expands the potential attack surface if associated security groups allow inbound access.
+- **Fix:** Create a dedicated `aws_elasticache_subnet_group` containing only private subnets and reference it with `subnet_group_name = aws_elasticache_subnet_group.<name>.name` on each cluster.  
+  **Note:** Changing `subnet_group_name` forces resource replacement; plan for migration (e.g., backup/restore or temporary cluster) to avoid data loss.
+
+---
+
+### 2. CKV_AWS_134 – Redis automatic backups disabled  
+**Affected resources:** `pass2`, `fail`
+
+- **What:** `pass2` omits `snapshot_retention_limit` (defaults to `0`) and `fail` sets it to `0`, disabling automatic snapshots for Redis.
+- **Why it matters:** Without automatic backups, Redis data cannot be recovered if the cluster fails, is accidentally deleted, or data becomes corrupted. The blast radius is complete data loss for the cluster.
+- **Fix:** Set `snapshot_retention_limit` to a value greater than `0` (e.g., `5`) for both Redis clusters. Optionally set `snapshot_window` to control when backups occur. This change is applied in-place without replacement.
+
+---
+
+### 3. CKV_AWS_322 – Auto minor version upgrade disabled  
+**Affected resource:** `fail` only
+
+- **What:** `fail` sets `auto_minor_version_upgrade = false`, preventing automatic minor engine upgrades.
+- **Why it matters:** The cluster will not receive minor Redis engine updates, including security patches and bug fixes. This leaves it vulnerable to known issues that are fixed in later minor versions.
+- **Fix:** Remove the `auto_minor_version_upgrade = false` line or set it to `true` (the Terraform default is already `true`). This change does not force replacement.
+
+---
+
+**Summary of required changes per resource:**
+
+| Resource      | Add/change `subnet_group_name` | Set `snapshot_retention_limit > 0` | Set `auto_minor_version_upgrade = true` |
+|---------------|-------------------------------|-----------------------------------|----------------------------------------|
+| `pass`        | Yes                           | Already set                       | Already set                            |
+| `pass2`       | Yes                           | Yes                               | Defaults to true, no change needed     |
+| `fail`        | Yes                           | Yes                               | Yes                                    |
+| `memcached`   | Yes                           | N/A (Memcached)                   | N/A                                    |

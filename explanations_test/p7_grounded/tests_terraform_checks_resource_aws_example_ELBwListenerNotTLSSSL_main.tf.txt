@@ -1,0 +1,73 @@
+The scanner flagged four findings across your `aws_elb` resources. Here’s what each one means, backed strictly by the file and the check descriptions.
+
+---
+
+### 1. `CKV_AWS_127` on `aws_elb.fail` (lines 2–34)
+**Check:** *Ensure that Elastic Load Balancer(s) uses SSL certificates provided by AWS Certificate Manager*
+
+**Trigger:** The resource defines an HTTPS listener at **lines 13–19**:
+```terraform
+listener {
+    instance_port      = 8000
+    instance_protocol  = "http"
+    lb_port            = 443
+    lb_protocol        = "https"
+    ssl_certificate_id = "foo"
+}
+```
+The `ssl_certificate_id` is set to the literal string `"foo"`. This is not a valid Amazon Resource Name (ARN) for a certificate issued by AWS Certificate Manager (ACM). The check expects any HTTPS listener to reference an ACM certificate. Because the value is a placeholder, the resource fails this control.
+
+---
+
+### 2. `CKV_AWS_92` on `aws_elb.fail` (lines 2–34)
+**Check:** *Ensure the ELB has access logging enabled*
+
+**Trigger:** The entire resource block (lines 2–34) contains **no `access_logs` block**. Access logging is not configured anywhere in this ELB definition. The check requires an `access_logs` sub-block (with an S3 bucket and optional prefix) to enable logging of requests sent to the load balancer.
+
+---
+
+### 3. `CKV_AWS_92` on `aws_elb.fail2` (lines 37–70)
+**Check:** *Ensure the ELB has access logging enabled*
+
+**Trigger:** Same as above – the resource `aws_elb.fail2` (lines 37–70) has **no `access_logs` block**. The finding does **not** include `CKV_AWS_127` for this resource, so we cannot assert a certificate issue here based on the scanner output alone.
+
+---
+
+### 4. `CKV_AWS_127` on `aws_elb.fail3` (lines 73–105)
+**Check:** *Ensure that Elastic Load Balancer(s) uses SSL certificates provided by AWS Certificate Manager*
+
+**Trigger:** The second listener in this resource, at **lines 90–96**, uses HTTPS but **omits `ssl_certificate_id` entirely**:
+```terraform
+listener {
+    instance_port      = 8000
+    instance_protocol  = "http"
+    lb_port            = 443
+    lb_protocol        = "https"
+}
+```
+An HTTPS listener without any certificate ID violates the requirement to use an ACM-provided certificate. (The first listener at lines 83–89 has `ssl_certificate_id = "foo"`, but the finding is raised on the resource as a whole due to the missing certificate in the second listener.)
+
+---
+
+### 5. `CKV_AWS_92` on `aws_elb.fail3` (lines 73–105)
+**Check:** *Ensure the ELB has access logging enabled*
+
+**Trigger:** Again, the resource block (lines 73–105) contains **no `access_logs` block**. Access logging is not enabled.
+
+---
+
+### 6. `CKV_AWS_92` on `aws_elb.pass` (lines 108–133)
+**Check:** *Ensure the ELB has access logging enabled*
+
+**Trigger:** The resource named `pass` (lines 108–133) also **lacks an `access_logs` block**. Despite the name, it fails this control. No `CKV_AWS_127` finding is reported for this resource, so the certificate configuration is not flagged by the scanner.
+
+---
+
+### Summary of required actions (based on findings)
+- **For `CKV_AWS_127`:** In `aws_elb.fail` and `aws_elb.fail3`, replace the placeholder or missing `ssl_certificate_id` with a valid ARN of an ACM certificate (e.g., `arn:aws:acm:region:account:certificate/...`).
+- **For `CKV_AWS_92`:** In all four resources (`fail`, `fail2`, `fail3`, `pass`), add an `access_logs` block specifying at least an S3 bucket name, for example:
+  ```terraform
+  access_logs {
+    bucket = "my-access-logs-bucket"
+  }
+  ```

@@ -1,0 +1,28 @@
+**Briefing: Remediation of CloudFront Response Headers Policy HSTS Findings**
+
+All three findings relate to check **CKV_AWS_259**, which requires that a CloudFront response headers policy enforces HTTP Strict Transport Security (HSTS) with a sufficiently long `max-age`. The failing resources are independent; fixing one does not affect the others.
+
+---
+
+### 1. CKV_AWS_259 on `aws_cloudfront_response_headers_policy.no_security_headers_config`
+**What is wrong:** The policy has no `security_headers_config` block at all, so HSTS is completely absent.  
+**Why it matters:** Without HSTS, browsers may still connect to the origin over plain HTTP, leaving users vulnerable to man-in-the-middle attacks and SSL stripping.  
+**Change needed:** Add a `security_headers_config` block containing a `strict_transport_security` sub-block. Set `access_control_max_age_sec` to at least `31536000` (one year), and enable `include_subdomains`, `preload`, and `override` to match the passing example. This ensures the policy instructs browsers to always use HTTPS for the domain and all subdomains.
+
+---
+
+### 2. CKV_AWS_259 on `aws_cloudfront_response_headers_policy.no_strict_transport_security`
+**What is wrong:** The policy has a `security_headers_config` block but it only contains `content_type_options`; the `strict_transport_security` block is missing.  
+**Why it matters:** The policy is applied but does not set the `Strict-Transport-Security` header, so browsers receive no HSTS directive. The risk of protocol downgrade attacks remains.  
+**Change needed:** Inside the existing `security_headers_config` block, add a `strict_transport_security` block with the same recommended settings: `access_control_max_age_sec = 31536000`, `include_subdomains = true`, `preload = true`, and `override = true`. The existing `content_type_options` block can stay unchanged.
+
+---
+
+### 3. CKV_AWS_259 on `aws_cloudfront_response_headers_policy.incorrect_strict_transport_security`
+**What is wrong:** The `strict_transport_security` block is present, but `access_control_max_age_sec` is set to `1` second, which is far too short.  
+**Why it matters:** HSTS relies on a long `max-age` to ensure the browser remembers to enforce HTTPS for future visits. A value of 1 second effectively disables the protection, as the browser will forget the directive almost immediately.  
+**Change needed:** Increase `access_control_max_age_sec` to at least `31536000` (one year). The other parameters (`include_subdomains`, `preload`, `override`) are already correctly set to `true` and do not need modification.
+
+---
+
+No interactions between these fixes; each resource can be updated independently. After applying the changes, re-run the scanner to confirm all three policies pass CKV_AWS_259.

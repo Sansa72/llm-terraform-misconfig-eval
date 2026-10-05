@@ -1,0 +1,14 @@
+The scanner flagged two resources for the same issue: **CKV_AWS_292 – “Ensure DocDB Global Cluster is encrypted at rest (default is unencrypted)”**.
+
+Here’s what the file shows and why each resource was flagged:
+
+1. **`aws_docdb_global_cluster.fail` (lines 1–5)**  
+   This resource does **not** include the `storage_encrypted` argument. Because the default value for `storage_encrypted` is `false`, the cluster will be created **without** encryption at rest. The check triggers on this missing (or defaulted) setting.
+
+2. **`aws_docdb_global_cluster.fail2` (lines 7–12)**  
+   This resource explicitly sets `storage_encrypted = false` on line 11, which directly violates the requirement for encryption at rest.
+
+In both cases, the finding is supported by the Terraform code: the first omits the setting entirely, the second sets it to `false`. The check expects `storage_encrypted` to be `true`, as demonstrated by the passing resource `aws_docdb_global_cluster.pass` (lines 14–19).
+
+**What to fix**  
+For each flagged resource, set `storage_encrypted = true` (or remove the explicit `false` and rely on a default of `true` if your provider version supports it—but explicitly setting `true` is the safest, most readable approach).

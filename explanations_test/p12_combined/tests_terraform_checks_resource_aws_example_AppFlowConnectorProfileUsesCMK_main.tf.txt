@@ -1,0 +1,9 @@
+**Check ID:** CKV_AWS_264  
+**Resource:** `aws_appflow_connector_profile.fail`  
+**Lines:** 1–23 (the entire resource block)  
+
+**What is wrong:**  
+The connector profile does not specify a `kms_arn` attribute, so it will use the default AWS-managed key instead of a customer-managed CMK. The scanner requires a CMK for encryption.
+
+**Remediation:**  
+Add a `kms_arn` argument to the `aws_appflow_connector_profile` resource, referencing the ARN of a customer-managed KMS key. The `pass` resource (lines 25–47) demonstrates the correct pattern: `kms_arn = aws_kms_key.example.arn`. Apply the same change to the failing resource.

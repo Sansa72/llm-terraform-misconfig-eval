@@ -1,0 +1,28 @@
+### 1. What the misconfiguration is
+
+Checkov flagged three distinct misconfigurations across the EKS clusters (`disabled`, `default`, and `enabled`):
+
+1. **Public API Endpoint Exposed (CKV_AWS_38, CKV_AWS_39)**: In the `default` cluster, `endpoint_public_access` is omitted (defaulting to `true`) with no `public_access_cidrs` restriction. In the `enabled` cluster, `endpoint_public_access` is explicitly set to `True`. Both configurations expose the EKS API server endpoint to the entire internet (`0.0.0.0/0`).
+2. **Secrets Encryption Disabled (CKV_AWS_58)**: None of the three clusters include an `encryption_config` block. By default, EKS does not encrypt Kubernetes secrets at rest using a customer-managed KMS key.
+3. **Control Plane Logging Disabled (CKV_AWS_37)**: None of the clusters specify `enabled_cluster_log_types`. Control plane logs (API, audit, authenticator, controller manager, scheduler) are not being sent to CloudWatch.
+
+### 2. Why it matters (Security Risk / Blast Radius)
+
+- **Public API Endpoint**: Allowing unrestricted public access to the Kubernetes API server means anyone on the internet can discover the endpoint and attempt to authenticate. If an attacker obtains valid IAM credentials or compromises a pod with excessive permissions, they can execute commands against the cluster control plane from anywhere, potentially leading to total cluster compromise and unauthorized access to workloads and data.
+- **Unencrypted Secrets**: Without `encryption_config`, Kubernetes secrets stored in the cluster's etcd database are only protected by default AWS EBS encryption (if configured), not by a dedicated, customer-managed KMS key. If an attacker gains access to the underlying AWS infrastructure or etcd backups, they can read sensitive secrets (like API keys, passwords, and tokens) in plaintext.
+- **Disabled Logging**: Without control plane logs, you have no visibility into API requests, authentication failures, or administrative actions. This eliminates the ability to detect malicious activity, perform forensic analysis, or audit compliance, significantly delaying incident response.
+
+### 3. How to fix it safely
+
+Update the Terraform resources to apply the following controls safely:
+
+1. **Restrict Endpoint Access**:
+   - Ensure `endpoint_private_access = true` is set within the `vpc_config` block so your worker nodes and internal users can communicate with the control plane over the AWS private network.
+   - Set `endpoint_public_access = false` to disable public internet exposure entirely (recommended for production). 
+   - *Alternative*: If public access is absolutely required for operational reasons, keep `endpoint_public_access = true` but explicitly restrict access by providing a list of trusted CIDR blocks in `public_access_cidrs`.
+2. **Enable Secrets Encryption**:
+   - Create or reference an AWS KMS Key.
+   - Add an `encryption_config` block to the EKS cluster resource, specifying the KMS key ARN and `secrets` as the resource type to encrypt.
+3. **Enable Control Plane Logs**:
+   - Add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]` to the cluster resource.
+   - Ensure you have a corresponding CloudWatch log group configured to receive these logs, keeping in mind the associated storage costs.

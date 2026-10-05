@@ -1,0 +1,5 @@
+**Check:** CKV_AWS_186  
+**Resource:** `aws_s3_bucket_object.this_file_2` (lines 2–5)  
+**What is wrong:** The S3 object is not configured to use KMS encryption with a customer-managed key (CMK).  
+**Why it matters:** Without specifying a customer-managed KMS key, the object may be stored unencrypted or with default S3-managed keys (SSE-S3). Using a CMK gives you control over key rotation, access policies, and audit logging, which is essential for meeting compliance requirements and protecting sensitive data.  
+**Change needed:** Add the `server_side_encryption` argument set to `"aws:kms"` and the `kms_key_id` argument pointing to the ARN of a customer-managed KMS key. The key can be an existing key or one created in the same Terraform configuration (e.g., via `aws_kms_key`). Ensure the IAM role used by Terraform has permissions to use the key for encryption (`kms:GenerateDataKey` and `kms:Decrypt`). No other resources in the supplied file interact with this object, so no additional coordination is required.

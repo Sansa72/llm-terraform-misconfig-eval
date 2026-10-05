@@ -1,0 +1,27 @@
+The scanner flagged three `aws_ami` resources because their EBS block device mappings are not configured to use encryption. The check **CKV_AWS_204** requires that all block devices in an AMI be encrypted using KMS CMKs.
+
+Here is the evidence for each flagged resource:
+
+**1. `aws_ami.fail` (lines 31–47)**
+- The second `ebs_block_device` block (lines 43–46) explicitly sets `encrypted = false` (line 45).  
+- This directly violates the requirement that every block device be encrypted.
+
+**2. `aws_ami.fail2` (lines 49–59)**
+- The single `ebs_block_device` block (lines 54–58) explicitly sets `encrypted = false` (line 57).  
+- Again, this is a direct violation.
+
+**3. `aws_ami.fail3` (lines 61–70)**
+- The `ebs_block_device` block (lines 66–69) does not include an `encrypted` argument.  
+- In Terraform’s AWS provider, the `encrypted` attribute defaults to `false` when omitted. Therefore, this block device is effectively unencrypted, triggering the same check.
+
+**Why the “pass” resources are not flagged**  
+- `aws_ami.pass` (lines 1–17) has two block devices; the second one (lines 12–16) sets `encrypted = true`. The first block device (lines 7–11) does not set `encrypted`, but the scanner did not flag this resource. This suggests the check may only require that *at least one* block device is encrypted, or it may have a different evaluation logic. However, the finding only lists the three `fail` resources, so we can only speak to those.  
+- `aws_ami.pass2` (lines 19–29) sets `encrypted = true` on its single block device (line 26), satisfying the check.
+
+**What to fix**  
+For each flagged resource, ensure every `ebs_block_device` block has `encrypted = true` (or is omitted if the default were true, but the default is `false`). Specifically:
+- In `aws_ami.fail`, change line 45 to `encrypted = true`.
+- In `aws_ami.fail2`, change line 57 to `encrypted = true`.
+- In `aws_ami.fail3`, add `encrypted = true` inside the block (e.g., after line 68).
+
+No other misconfigurations are evidenced by this scan output.

@@ -1,0 +1,69 @@
+The scanner flagged three resources in your Terraform file. Here’s what each finding means, based strictly on the provided file and check descriptions.
+
+---
+
+### 1. `aws_ecs_cluster.fail` (lines 1–19)
+
+**Findings:**
+- **CKV_AWS_65** – Ensure container insights are enabled on ECS cluster
+- **CKV_AWS_223** – Ensure ECS Cluster enables logging of ECS Exec
+
+**Evidence in the file:**
+
+- **Container insights (CKV_AWS_65):**  
+  The resource block (lines 1–19) contains no `setting` block. To enable container insights, you need a block like:
+  ```
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+  ```
+  Its absence triggers the check.
+
+- **ECS Exec logging (CKV_AWS_223):**  
+  Line 6 explicitly sets `logging = "NONE"` inside the `execute_command_configuration` block. This disables logging for ECS Exec sessions. The check requires logging to be enabled (i.e., `logging` must be set to `"DEFAULT"` or `"OVERRIDE"`).
+
+---
+
+### 2. `aws_ecs_cluster.pass` (lines 21–39)
+
+**Findings:**
+- **CKV_AWS_65** – Ensure container insights are enabled on ECS cluster
+- **CKV_AWS_224** – Ensure ECS Cluster logging uses CMK
+
+**Evidence in the file:**
+
+- **Container insights (CKV_AWS_65):**  
+  Same as above—no `setting` block is present in this resource (lines 21–39).
+
+- **CMK for logging (CKV_AWS_224):**  
+  The `execute_command_configuration` block (lines 24–33) does not specify a `kms_key_id`. The line that would provide it is commented out (line 24: `# kms_key_id = aws_kms_key.example.arn`). Additionally, the `log_configuration` block (lines 26–32) contains only comments; no `cloud_watch_encryption_enabled` or `s3_bucket_encryption_enabled` is set. Because the `logging` argument is omitted, it defaults to `"DEFAULT"` (logging enabled), but without a KMS key, the check fails.
+
+---
+
+### 3. `aws_ecs_cluster.pass2` (lines 41–59)
+
+**Findings:**
+- **CKV_AWS_65** – Ensure container insights are enabled on ECS cluster
+- **CKV_AWS_224** – Ensure ECS Cluster logging uses CMK
+
+**Evidence in the file:**
+
+- **Container insights (CKV_AWS_65):** Again, no `setting` block is present.
+- **CMK for logging (CKV_AWS_224):**  
+  Line 46 sets `logging = "DEFAULT"`, so logging is enabled. However, the `kms_key_id` on line 44 is commented out, and the `log_configuration` block (lines 47–52) contains only comments—no encryption key is specified. The check therefore fails.
+
+---
+
+### Summary of required fixes (based on findings and file content)
+
+| Resource | Check ID | Issue | Location in file |
+|----------|----------|-------|------------------|
+| `fail`   | CKV_AWS_65 | Missing `setting` block for container insights | Lines 1–19 (no `setting` block) |
+| `fail`   | CKV_AWS_223 | `logging = "NONE"` disables ECS Exec logging | Line 6 |
+| `pass`   | CKV_AWS_65 | Missing `setting` block for container insights | Lines 21–39 (no `setting` block) |
+| `pass`   | CKV_AWS_224 | No KMS key specified for ECS Exec logging | Line 24 commented out; no encryption in `log_configuration` (lines 26–32) |
+| `pass2`  | CKV_AWS_65 | Missing `setting` block for container insights | Lines 41–59 (no `setting` block) |
+| `pass2`  | CKV_AWS_224 | No KMS key specified for ECS Exec logging | Line 44 commented out; no encryption in `log_configuration` (lines 47–52) |
+
+The file already contains commented-out hints for the required configurations (e.g., `kms_key_id`, `cloud_watch_encryption_enabled`), but they are not active. The fixes involve uncommenting and correctly setting those values, and adding the missing `setting` block for container insights.

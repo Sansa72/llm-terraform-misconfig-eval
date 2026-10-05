@@ -1,0 +1,85 @@
+## Remediation Briefing
+
+Below are the failing checks in the order they appear in the scanner output. For each, I identify the resource, the triggering lines, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_79 on `aws_launch_configuration.fail` (lines 1‑6)
+
+**What triggers it:**  
+The resource does not include a `metadata_options` block. By default, this means `http_tokens` is set to `"optional"`, which allows Instance Metadata Service Version 1 (IMDSv1).
+
+**Why it matters:**  
+IMDSv1 is vulnerable to server‑side request forgery (SSRF) attacks because it does not require a token. The scanner flags any launch configuration that does not explicitly enforce IMDSv2.
+
+**Remediation:**  
+Add a `metadata_options` block inside the `aws_launch_configuration` resource and set `http_tokens = "required"`. This disables IMDSv1 and forces the use of IMDSv2.
+
+---
+
+### 2. CKV_AWS_8 on `aws_launch_configuration.fail` (lines 1‑6)
+
+**What triggers it:**  
+The resource does not define any `root_block_device` or `ebs_block_device` with `encrypted = true`. The default is unencrypted EBS volumes.
+
+**Why it matters:**  
+Without explicit encryption, data stored on the instance’s EBS volumes is not protected at rest. The check requires that all EBS volumes in the launch configuration are encrypted.
+
+**Remediation:**  
+Add a `root_block_device` block and set `encrypted = true`. If the launch configuration defines additional `ebs_block_device` blocks, each must also have `encrypted = true`. This ensures the root volume (and any other volumes) are encrypted.
+
+---
+
+### 3. CKV_AWS_315 on `aws_autoscaling_group.vulnerable_asg` (lines 8‑23)
+
+**What triggers it:**  
+Line 10 uses the `launch_configuration` argument to reference a launch configuration (`aws_launch_configuration.vulnerable_launch_config.name`). The scanner expects an EC2 launch template instead.
+
+**Why it matters:**  
+Launch configurations are deprecated and do not support newer EC2 features. The check enforces the use of launch templates for Auto Scaling groups.
+
+**Remediation:**  
+Replace the `launch_configuration` argument with a `launch_template` block. Inside that block, reference an `aws_launch_template` resource (which you will need to create) that contains the same instance configuration (AMI, instance type, etc.). The `launch_template` block should specify the template’s `id` or `name` and the `version`.
+
+---
+
+### 4. CKV_AWS_79 on `aws_launch_configuration.pass` (lines 29‑34)
+
+**What triggers it:**  
+Identical to finding #1: the resource lacks a `metadata_options` block, so IMDSv1 remains enabled by default.
+
+**Why it matters:**  
+Same risk as above – IMDSv1 is not disabled.
+
+**Remediation:**  
+Add a `metadata_options` block with `http_tokens = "required"` to this launch configuration.
+
+---
+
+### 5. CKV_AWS_8 on `aws_launch_configuration.pass` (lines 29‑34)
+
+**What triggers it:**  
+Identical to finding #2: no `root_block_device` or `ebs_block_device` with encryption is defined.
+
+**Why it matters:**  
+EBS volumes will be unencrypted by default.
+
+**Remediation:**  
+Add a `root_block_device` block with `encrypted = true`. If other volumes are defined, encrypt them as well.
+
+---
+
+### 6. CKV_AWS_315 on `aws_autoscaling_group.safe_asg` (lines 36‑52)
+
+**What triggers it:**  
+Line 38 uses the `launch_configuration` argument, referencing a launch configuration. The check requires a launch template.
+
+**Why it matters:**  
+Same as finding #3 – launch configurations are deprecated.
+
+**Remediation:**  
+Replace the `launch_configuration` argument with a `launch_template` block that points to an `aws_launch_template` resource containing the desired instance settings.
+
+---
+
+**Note:** The launch configuration references in the Auto Scaling groups (`vulnerable_launch_config` and `safe_launch_config`) do not match the actual launch configuration resource names (`fail` and `pass`). While not part of the scanner findings, this mismatch will cause a runtime error and should be corrected when you refactor the configuration.

@@ -1,0 +1,207 @@
+The scanner flagged several security misconfigurations in your API Gateway stage resources. Below I explain each finding, why it matters, and how to fix it in Terraform.
+
+---
+
+### 1. CKV_AWS_73 – Ensure API Gateway has X-Ray Tracing enabled
+**Applies to:** both `aws_api_gateway_stage.pass` and `aws_api_gateway_stage.fail`
+
+**Problem:**  
+X-Ray tracing is not enabled. Without it, you lose end‑to‑end visibility into requests flowing through your API, making it harder to debug latency issues, identify bottlenecks, and trace errors.
+
+**Fix:**  
+Set `xray_tracing_enabled = true` in the stage resource.
+
+```hcl
+resource "aws_api_gateway_stage" "pass" {
+  name                = "example"
+  cache_cluster_enabled = true
+  xray_tracing_enabled  = true
+}
+```
+
+---
+
+### 2. CKV_AWS_76 – Ensure API Gateway has Access Logging enabled
+**Applies to:** both resources
+
+**Problem:**  
+Access logging is not configured. Without it, you have no record of who accessed your API, what requests were made, or the responses returned. This hampers security auditing, troubleshooting, and compliance.
+
+**Fix:**  
+Add an `access_log_settings` block pointing to a CloudWatch log group and define a log format. First create a log group, then reference it.
+
+```hcl
+resource "aws_cloudwatch_log_group" "api_gw" {
+  name              = "/aws/api-gateway/my-api"
+  retention_in_days = 14
+}
+
+resource "aws_api_gateway_stage" "pass" {
+  name                = "example"
+  cache_cluster_enabled = true
+  xray_tracing_enabled  = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      caller         = "$context.identity.caller"
+      user           = "$context.identity.user"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
+  }
+}
+```
+
+---
+
+### 3. CKV_AWS_120 – Ensure API Gateway caching is enabled
+**Applies to:** `aws_api_gateway_stage.fail` only (the `pass` resource already has `cache_cluster_enabled = true`)
+
+**Problem:**  
+Caching reduces the number of calls made to your backend, improving latency and reducing load. The `fail` stage has no cache cluster enabled.
+
+**Fix:**  
+Set `cache_cluster_enabled = true` and optionally define a `cache_cluster_size` (defaults to `0.5` GB if omitted, but it’s good practice to specify it explicitly).
+
+```hcl
+resource "aws_api_gateway_stage" "fail" {
+  name                  = "example"
+  cache_cluster_enabled = true
+  cache_cluster_size    = "0.5"   # optional, but recommended
+}
+```
+
+---
+
+### 4. CKV2_AWS_51 – Ensure API Gateway endpoints use client certificate authentication
+**Applies to:** both resources
+
+**Problem:**  
+Mutual TLS (mTLS) is not enforced. Without a client certificate, the API Gateway accepts requests from any client that can reach the endpoint, increasing the risk of unauthorized access.
+
+**Fix:**  
+Generate a client certificate and reference its ID in the stage. You can create the certificate with `aws_api_gateway_client_certificate`.
+
+```hcl
+resource "aws_api_gateway_client_certificate" "mtls" {
+  description = "Client certificate for mutual TLS"
+}
+
+resource "aws_api_gateway_stage" "pass" {
+  name                  = "example"
+  cache_cluster_enabled  = true
+  xray_tracing_enabled   = true
+  client_certificate_id  = aws_api_gateway_client_certificate.mtls.id
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format         = jsonencode({ ... })
+  }
+}
+```
+
+---
+
+### 5. CKV2_AWS_4 – Ensure API Gateway stage has appropriate logging level defined
+**Applies to:** both resources
+
+**Problem:**  
+The stage does not have a logging level set for API execution logs. This means you may miss detailed error information (e.g., full request/response data for 4xx/5xx errors) that is critical for debugging and security monitoring.
+
+**Fix:**  
+Use an `aws_api_gateway_method_settings` resource to set the `logging_level` for the stage. The stage resource itself does not have a `logging_level` argument. Typically you set it to `ERROR` or `INFO` and enable `data_trace_enabled` for detailed troubleshooting.
+
+```hcl
+resource "aws_api_gateway_method_settings" "stage_settings" {
+  rest_api_id = aws_api_gateway_rest_api.my_api.id   # replace with your API ID
+  stage_name  = aws_api_gateway_stage.pass.stage_name
+  method_path = "*/*"
+
+  settings {
+    logging_level   = "ERROR"
+    data_trace_enabled = true
+  }
+}
+```
+
+> **Note:** The scanner flagged the stage resource itself, but the logging level is actually configured via `aws_api_gateway_method_settings`. Ensure this resource is present and associated with the stage.
+
+---
+
+### 6. CKV2_AWS_29 – Ensure public API Gateway is protected by WAF
+**Applies to:** both resources
+
+**Problem:**  
+The API Gateway stage is not associated with a WAF (Web Application Firewall). Without WAF, your API is exposed to common web exploits like SQL injection, cross‑site scripting, and bot traffic.
+
+**Fix:**  
+Create a WAFv2 Web ACL and associate it with the stage’s ARN using `aws_wafv2_web_acl_association`.
+
+```hcl
+resource "aws_wafv2_web_acl" "api_acl" {
+  name        = "api-gateway-acl"
+  description = "WAF for API Gateway"
+  scope       = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name              = "AWSManagedRulesCommonRuleSet"
+      sampled_requests_enabled = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "api-gateway-waf"
+    sampled_requests_enabled   = true
+  }
+}
+
+resource "aws_wafv2_web_acl_association" "api_association" {
+  resource_arn = aws_api_gateway_stage.pass.arn
+  web_acl_arn  = aws_wafv2_web_acl.api_acl.arn
+}
+```
+
+Repeat the association for the `fail` stage as well.
+
+---
+
+### Summary of required changes
+
+| Check          | Resource(s) | Terraform attribute / resource needed |
+|----------------|-------------|----------------------------------------|
+| CKV_AWS_73     | both        | `xray_tracing_enabled = true` |
+| CKV_AWS_76     | both        | `access_log_settings` block with log group ARN |
+| CKV_AWS_120    | `fail` only | `cache_cluster_enabled = true` |
+| CKV2_AWS_51    | both        | `client_certificate_id` referencing a client certificate |
+| CKV2_AWS_4     | both        | `aws_api_gateway_method_settings` with `logging_level` set |
+| CKV2_AWS_29    | both        | `aws_wafv2_web_acl_association` linking a WAF Web ACL to the stage ARN |
+
+Apply these changes to both stage resources (with the caching fix only needed for `fail`) to resolve all scanner findings.

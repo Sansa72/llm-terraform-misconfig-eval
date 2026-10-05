@@ -1,0 +1,86 @@
+The S3 bucket `module-bucket` is defined with only a name and no security or data-management features. This leaves the bucket in a state that violates multiple best-practice controls. The following configurations are missing and must be added to bring the bucket into compliance:
+
+- **Lifecycle configuration** – No rules exist to transition or expire objects, which can lead to uncontrolled storage growth and cost.
+- **Access logging** – Server access logs are not enabled, so you have no record of requests made to the bucket for security auditing or forensics.
+- **Event notifications** – No event notifications are configured, meaning you cannot trigger automated workflows (e.g., Lambda, SQS, SNS) when objects are created or modified.
+- **Public access block** – The bucket does not enforce the account-level or bucket-level block of public ACLs and policies, risking unintended public exposure.
+- **Default encryption with KMS** – The bucket does not enforce server-side encryption using AWS KMS (SSE-KMS); objects may be stored unencrypted or with only SSE-S3, which may not meet compliance requirements.
+- **Cross-region replication** – No replication rules exist, so data is not automatically copied to another region for disaster recovery or compliance.
+- **Versioning** – Versioning is not enabled, meaning object overwrites and deletions are permanent and cannot be recovered.
+
+**Fix**  
+Add the following Terraform resources (or inline blocks, depending on your provider version) to the configuration:
+
+```hcl
+resource "aws_s3_bucket" "bucket" {
+  bucket = "module-bucket"
+}
+
+resource "aws_s3_bucket_versioning" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "your-kms-key-arn"   # replace with actual KMS key ARN
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_logging" "bucket" {
+  bucket        = aws_s3_bucket.bucket.id
+  target_bucket = "your-log-bucket"   # replace with a dedicated log bucket
+  target_prefix = "log/"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  rule {
+    id     = "expire-old-objects"
+    status = "Enabled"
+    expiration {
+      days = 90   # adjust to your retention policy
+    }
+    # Optionally add transitions to cheaper storage classes
+  }
+}
+
+resource "aws_s3_bucket_notification" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  # Example: send events to an SQS queue
+  queue {
+    queue_arn = "arn:aws:sqs:region:account:queue-name"
+    events    = ["s3:ObjectCreated:*"]
+  }
+}
+
+resource "aws_s3_bucket_replication_configuration" "bucket" {
+  bucket = aws_s3_bucket.bucket.id
+  role   = "arn:aws:iam::account:role/replication-role"   # IAM role for replication
+
+  rule {
+    id     = "replicate-to-dr"
+    status = "Enabled"
+    destination {
+      bucket = "arn:aws:s3:::your-dr-bucket"   # bucket in another region
+    }
+    # If versioning is enabled, you may need to include delete marker replication
+  }
+}
+```
+
+Adjust the placeholder values (KMS key, log bucket, notification targets, replication role, destination bucket) to match your environment and policies. After applying these changes, the bucket will satisfy all the flagged controls.

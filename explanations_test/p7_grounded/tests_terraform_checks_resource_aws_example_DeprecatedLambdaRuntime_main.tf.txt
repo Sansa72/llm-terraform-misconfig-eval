@@ -1,0 +1,62 @@
+The scanner ran a set of policy checks against the Terraform file. It flagged three Lambda resources for missing security and operational controls. The findings are:
+
+- **aws_lambda_function.pass** (lines 1–11)  
+- **aws_lambda_function.fail** (lines 13–23)  
+- **aws_lambda_function.fail2** (lines 25–35)  
+
+All three resources are missing the same five configurations. Additionally, `fail` and `fail2` use deprecated runtimes. Below is the evidence for each check.
+
+---
+
+### 1. CKV_AWS_50 – X-Ray tracing is not enabled
+**Check:** “X-ray tracing is enabled for Lambda”  
+**Resources:** `aws_lambda_function.pass` (lines 1–11), `aws_lambda_function.fail` (lines 13–23), `aws_lambda_function.fail2` (lines 25–35)  
+**Evidence:** None of the three resource blocks contain a `tracing_config` block. The scanner expects a block like:
+```
+tracing_config {
+  mode = "Active"
+}
+```
+Without it, X-Ray tracing is not active, so the check fails.
+
+---
+
+### 2. CKV_AWS_117 – Lambda not inside a VPC
+**Check:** “Ensure that AWS Lambda function is configured inside a VPC”  
+**Resources:** All three (lines 1–11, 13–23, 25–35)  
+**Evidence:** No `vpc_config` block is present in any of the resource definitions. The function will run with default networking (no VPC), which the check flags as a misconfiguration.
+
+---
+
+### 3. CKV_AWS_116 – No Dead Letter Queue configured
+**Check:** “Ensure that AWS Lambda function is configured for a Dead Letter Queue(DLQ)”  
+**Resources:** All three (lines 1–11, 13–23, 25–35)  
+**Evidence:** There is no `dead_letter_config` block in any of the resources. The scanner expects a DLQ (SNS or SQS) to capture failed invocation events.
+
+---
+
+### 4. CKV_AWS_272 – Code signing not configured
+**Check:** “Ensure AWS Lambda function is configured to validate code-signing”  
+**Resources:** All three (lines 1–11, 13–23, 25–35)  
+**Evidence:** No `code_signing_config_arn` argument is set. The scanner requires a code-signing configuration ARN to enforce integrity checks on the deployment package.
+
+---
+
+### 5. CKV_AWS_115 – No function-level concurrent execution limit
+**Check:** “Ensure that AWS Lambda function is configured for function-level concurrent execution limit”  
+**Resources:** All three (lines 1–11, 13–23, 25–35)  
+**Evidence:** The attribute `reserved_concurrent_executions` is not set. Without it, the function shares the account’s unreserved concurrency pool, which can lead to one function starving others.
+
+---
+
+### 6. CKV_AWS_363 – Deprecated Lambda runtime (only `fail` and `fail2`)
+**Check:** “Ensure Lambda Runtime is not deprecated”  
+**Resources:** `aws_lambda_function.fail` (line 18: `runtime = "python3.6"`) and `aws_lambda_function.fail2` (line 30: `runtime = "dotnetcore3.1"`)  
+**Evidence:**  
+- Line 18: `runtime = "python3.6"` – Python 3.6 is deprecated by AWS.  
+- Line 30: `runtime = "dotnetcore3.1"` – .NET Core 3.1 is deprecated.  
+The `pass` resource uses `nodejs18.x` (line 7), which is not deprecated, so CKV_AWS_363 is not raised against it.
+
+---
+
+**Note:** The resource named `pass` still fails checks CKV_AWS_50, 117, 116, 272, and 115. The name does not reflect the actual compliance state; it is missing the same controls as the other two resources.

@@ -1,0 +1,14 @@
+The scanner flagged check **CKV_AWS_217** against two resources: `aws_api_gateway_deployment.fail` and `aws_api_gateway_deployment.fail2`. This check requires that API Gateway deployments use a `create_before_destroy` lifecycle policy to prevent downtime during updates.
+
+Here is what the file shows:
+
+- **`aws_api_gateway_deployment.fail` (lines 13–22)**  
+  The resource explicitly sets `create_before_destroy = false` in its `lifecycle` block (lines 16–18). This directly violates the check, which expects `create_before_destroy = true`.
+
+- **`aws_api_gateway_deployment.fail2` (lines 24–31)**  
+  The resource has no `lifecycle` block at all. Because the default behavior is to destroy the existing deployment before creating a replacement, the absence of a `create_before_destroy = true` statement also fails the check.
+
+For comparison, the resource `aws_api_gateway_deployment.pass` (lines 1–11) satisfies the check by including `lifecycle { create_before_destroy = true }`.
+
+**What to fix:**  
+In both failing resources, ensure a `lifecycle` block is present and contains `create_before_destroy = true`. For `fail`, change `false` to `true`. For `fail2`, add the entire `lifecycle` block as shown in the `pass` resource.

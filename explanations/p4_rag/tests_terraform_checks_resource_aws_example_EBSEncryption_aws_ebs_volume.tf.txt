@@ -1,0 +1,65 @@
+The scanner flagged two related issues on your EBS volumes: **CKV_AWS_3** (encryption required) and **CKV_AWS_189** (encryption must use a customer-managed KMS key, not the default AWS-managed key). Here’s what that means for each volume in your file and how to fix it.
+
+---
+
+### What’s wrong in this configuration
+
+| Resource | Lines | `encrypted` | KMS key | Failing checks | Why |
+|----------|-------|-------------|---------|----------------|-----|
+| `aws_ebs_volume.enabled` | 3–8 | `True` | *none* | CKV_AWS_189 | Volume is encrypted, but with the **AWS-managed EBS key** (alias `aws/ebs`). The policy demands a **customer-managed key (CMK)**. |
+| `aws_ebs_volume.default` | 12–15 | *not set* → defaults to `false` | *none* | CKV_AWS_3, CKV_AWS_189 | No encryption at all. |
+| `aws_ebs_volume.disabled` | 17–22 | `False` | *none* | CKV_AWS_3, CKV_AWS_189 | Explicitly disabled encryption. |
+
+So the “enabled” volume is partially compliant (it’s encrypted) but still fails the stricter CMK requirement. The other two volumes are completely unencrypted.
+
+---
+
+### Why this matters (grounded in the policies)
+
+- **CKV_AWS_3** is the baseline: *all* EBS volumes must be encrypted at rest. Unencrypted volumes expose data if a snapshot or physical disk is compromised.  
+- **CKV_AWS_189** goes further: encryption alone isn’t enough; you must use a **customer-managed KMS key (CMK)**. With a CMK you control key rotation, key policies, and access auditing. The default AWS-managed key (`aws/ebs`) doesn’t give you that control, and many compliance frameworks (PCI-DSS, HIPAA, etc.) explicitly require CMKs.
+
+In your file, the `enabled` volume uses the AWS-managed key because you set `encrypted = True` but didn’t specify a `kms_key_id`. The other two volumes aren’t encrypted at all.
+
+---
+
+### How to fix it
+
+You need to:
+1. Ensure every `aws_ebs_volume` has `encrypted = true`.
+2. Provide a `kms_key_id` pointing to a customer-managed KMS key.
+
+Example fix (assuming you have a CMK resource `aws_kms_key.ebs` or an existing key ARN):
+
+```hcl
+resource "aws_kms_key" "ebs" {
+  description             = "CMK for EBS volume encryption"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+}
+
+resource "aws_ebs_volume" "enabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true
+  kms_key_id        = aws_kms_key.ebs.arn   # <-- add this
+}
+
+resource "aws_ebs_volume" "default" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true                  # <-- add this
+  kms_key_id        = aws_kms_key.ebs.arn   # <-- add this
+}
+
+resource "aws_ebs_volume" "disabled" {
+  availability_zone = "us-west-2a"
+  size              = 20
+  encrypted         = true                  # <-- change to true
+  kms_key_id        = aws_kms_key.ebs.arn   # <-- add this
+}
+```
+
+If you already have a CMK in the account, reference its ARN directly (e.g., `"arn:aws:kms:us-west-2:123456789012:key/abcd1234-..."`). The key must exist in the same region as the volume.
+
+After applying, all three volumes will be encrypted with a key you own and manage, satisfying both CKV_AWS_3 and CKV_AWS_189.

@@ -1,0 +1,87 @@
+**Remediation Briefing: IAM Policy Document Misconfigurations**
+
+Below are the findings from the scanner, addressed in order. Each entry identifies the check, the resource, the exact lines that trigger it, the problem, and the required change.
+
+---
+
+### 1. CKV_AWS_111 on `aws_iam_policy_document.pass` (lines 3‑17)
+
+**Triggering lines:**  
+- Actions: `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable` (lines 8‑12)  
+- Resources: `["*"]` (lines 14‑16)
+
+**What is wrong:**  
+The policy grants write‑capable actions (`lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable`) on **all resources (`*`)** without any constraint. This violates the principle of least privilege because an entity with this policy could create or modify any Lambda function or DynamoDB table in the account.
+
+**Remediation:**  
+Replace the wildcard resource with the specific ARNs of the Lambda functions and DynamoDB tables that the policy should be allowed to create or modify. If the policy must apply to multiple resources, list each ARN explicitly. If the exact resources are not known at plan time, use condition keys (e.g., `aws:RequestedRegion`, `aws:ResourceTag`) to limit the scope of the write actions.
+
+---
+
+### 2. CKV_AWS_356 on `aws_iam_policy_document.pass` (lines 3‑17)
+
+**Triggering lines:**  
+- Resources: `["*"]` (lines 14‑16)  
+- Actions: `lambda:CreateFunction`, `lambda:CreateEventSourceMapping`, `dynamodb:CreateTable` (lines 8‑12)
+
+**What is wrong:**  
+The policy uses a wildcard (`*`) as the resource for actions that support resource‑level permissions. This allows the actions to be performed on any resource, which is overly permissive.
+
+**Remediation:**  
+Specify the exact ARNs of the Lambda functions, event source mappings, and DynamoDB tables that the policy should affect. If the policy must apply to multiple resources, enumerate them individually rather than using `*`.
+
+---
+
+### 3. CKV_AWS_108 on `aws_iam_policy_document.fail` (lines 21‑41)
+
+**Triggering lines:**  
+- Actions: `s3:GetObject` (line 28), `ssm:GetParameter` (line 27), `ssm:GetParameters` (line 29), `ssm:GetParametersByPath` (line 30), `secretsmanager:GetSecretValue` (line 31)  
+- Resources: `["*"]` (lines 38‑40)
+
+**What is wrong:**  
+The policy grants read access to data stores (S3, SSM Parameter Store, Secrets Manager) on **all resources (`*`)**. This could allow an entity to exfiltrate sensitive data from any bucket, parameter, or secret in the account.
+
+**Remediation:**  
+Restrict the resource field to the specific ARNs of the S3 objects, SSM parameters, and secrets that the policy should access. If the policy must apply to multiple resources, list them individually. Use conditions (e.g., `s3:prefix`, `ssm:ResourceTag`) to further limit access if exact ARNs are not feasible.
+
+---
+
+### 4. CKV_AWS_111 on `aws_iam_policy_document.fail` (lines 21‑41)
+
+**Triggering lines:**  
+- Write actions: `s3:PutObject` (line 33), `ec2:CreateTags` (line 34)  
+- Resources: `["*"]` (lines 38‑40)
+
+**What is wrong:**  
+The policy allows write actions (`s3:PutObject`, `ec2:CreateTags`) on **all resources (`*`)** without constraints. This could permit an entity to modify or tag any S3 object or EC2 resource in the account.
+
+**Remediation:**  
+Restrict the resource field to the specific S3 bucket/object ARNs and EC2 resource ARNs that the policy should be allowed to write to or tag. If the policy must apply to multiple resources, enumerate them explicitly. Add conditions if dynamic restriction is needed.
+
+---
+
+### 5. CKV_AWS_356 on `aws_iam_policy_document.fail` (lines 21‑41)
+
+**Triggering lines:**  
+- Resources: `["*"]` (lines 38‑40)  
+- Actions: all listed actions (lines 25‑34), all of which are resource‑level permissions.
+
+**What is wrong:**  
+The policy uses a wildcard resource for actions that can be restricted to specific resources. This violates the principle of least privilege.
+
+**Remediation:**  
+Replace `"*"` with the exact ARNs of the resources that each action should be allowed to access. If different actions require different resources, split the policy into multiple statements, each with its own resource list.
+
+---
+
+### 6. CKV_AWS_109 on `aws_iam_policy_document.fail` (lines 21‑41)
+
+**Triggering lines:**  
+- Action: `iam:PassRole` (line 25)  
+- Resources: `["*"]` (lines 38‑40)
+
+**What is wrong:**  
+The policy grants `iam:PassRole` on **all resources (`*`)** without constraints. This allows an entity to pass any IAM role to a service, which can lead to privilege escalation or unintended resource exposure.
+
+**Remediation:**  
+Restrict the `iam:PassRole` action to specific role ARNs that the entity is authorized to pass. If the policy must allow passing multiple roles, list each role ARN explicitly. Consider using a separate statement for `iam:PassRole` with a tightly scoped resource list and, if necessary, conditions such as `iam:PassedToService` to limit which services can receive the role.

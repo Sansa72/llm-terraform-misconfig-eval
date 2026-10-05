@@ -1,0 +1,49 @@
+**Explanation for the engineer**
+
+The scanner flagged three security misconfigurations across two ECS task definitions (`fail` and `fail2`). Below are the details, the exact configuration excerpts that triggered each rule, and the required changes.
+
+---
+
+### 1. CKV_AWS_336 on `aws_ecs_task_definition.fail` (lines 45–87)
+**Rule:** Ensure ECS containers are limited to read-only access to root filesystems.
+
+**What triggered it:**  
+The task definition contains two containers. The first container (lines 49–58) has `readonlyRootFilesystem = true`, but the second container (lines 59–68) does **not** set `readonlyRootFilesystem`. When omitted, the default is `false`, meaning the second container’s root filesystem is writable.
+
+**Fix:**  
+In the second container definition (around line 59), add `readonlyRootFilesystem = true` so that both containers enforce a read-only root filesystem.
+
+---
+
+### 2. CKV_AWS_336 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Rule:** Ensure ECS containers are limited to read-only access to root filesystems.
+
+**What triggered it:**  
+Both container definitions explicitly set `readonlyRootFilesystem = false`:
+- First container: line 99
+- Second container: line 110
+
+**Fix:**  
+Change `readonlyRootFilesystem = false` to `readonlyRootFilesystem = true` in both container definitions (lines 99 and 110).
+
+---
+
+### 3. CKV_AWS_334 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Rule:** Ensure ECS containers should run as non-privileged.
+
+**What triggered it:**  
+The second container definition (lines 106–117) includes `privilege = true` (line 109). This grants the container elevated privileges on the host.
+
+**Fix:**  
+Remove `privilege = true` from the second container definition (line 109), or change it to `privilege = false`. The default is `false`, so removal is sufficient.
+
+---
+
+### 4. CKV_AWS_335 on `aws_ecs_task_definition.fail2` (lines 89–133)
+**Rule:** Ensure ECS task definitions should not share the host's process namespace.
+
+**What triggered it:**  
+The second container definition (lines 106–117) contains `pidMode = "host"` (line 110). This setting causes the container to share the host’s process namespace.
+
+**Fix:**  
+Remove `pidMode = "host"` from the second container definition (line 110). The default behaviour is to isolate the process namespace, which satisfies the rule.

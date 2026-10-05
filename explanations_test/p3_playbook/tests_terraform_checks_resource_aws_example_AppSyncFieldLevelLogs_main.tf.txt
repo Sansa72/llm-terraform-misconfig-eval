@@ -1,0 +1,35 @@
+**Remediation Briefing**
+
+Below are the failing checks in the order they appear in the scanner output, with the required changes to resolve each one.
+
+---
+
+### 1. CKV_AWS_194 on `aws_appsync_graphql_api.none` (lines 25–33)
+**What is wrong:** The `field_log_level` is set to `NONE`, which disables field-level logging entirely.  
+**Why it matters:** Without field-level logs, you lose visibility into GraphQL query execution details, making it harder to detect abuse, debug errors, or perform security investigations.  
+**Change needed:** In the `log_config` block of this resource, change the value of `field_log_level` from `"NONE"` to at least `"ERROR"` (or `"ALL"` for maximum detail). This will enable logging of field-level events and satisfy the check.
+
+---
+
+### 2. CKV2_AWS_33 on `aws_appsync_graphql_api.all` (lines 3–11)
+**What is wrong:** The AppSync API is not associated with an AWS WAF Web ACL.  
+**Why it matters:** Without a WAF, the API is exposed to common web threats such as SQL injection, cross‑site scripting, and volumetric attacks. A WAF provides a layer of protection at the application layer.  
+**Change needed:** Create an `aws_wafregional_web_acl` resource (or use an existing one) and then create an `aws_wafregional_web_acl_association` that links the Web ACL to this AppSync API’s ARN. The association resource must reference the API’s `arn` attribute.
+
+---
+
+### 3. CKV2_AWS_33 on `aws_appsync_graphql_api.error` (lines 13–21)
+**What is wrong:** Same issue as above – this AppSync API is not protected by a WAF.  
+**Why it matters:** Identical risk to the previous finding; each API needs its own WAF association (or can share a Web ACL) to filter malicious traffic.  
+**Change needed:** Apply the same remediation as for the `all` resource: create a WAF Web ACL (or reuse an existing one) and associate it with this API’s ARN using an `aws_wafregional_web_acl_association`.
+
+---
+
+### 4. CKV2_AWS_33 on `aws_appsync_graphql_api.none` (lines 25–33)
+**What is wrong:** This AppSync API also lacks WAF protection.  
+**Why it matters:** The same security exposure exists for this API as for the others.  
+**Change needed:** As with the previous two resources, associate a WAF Web ACL with this API’s ARN. You may use the same Web ACL across all three APIs if they share the same security requirements, or create separate ones if their risk profiles differ.
+
+---
+
+**Note on interactions:** The field‑level logging fix for the `none` resource and the WAF association fixes for all three resources are independent; changing one does not affect the other. You can implement them in any order.

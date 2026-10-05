@@ -1,0 +1,24 @@
+**Finding:** `CKV_AWS_184` on `aws_efs_file_system.fail` – *Ensure resource is encrypted by KMS using a customer managed Key (CMK)*
+
+**Step‑back (general principle)**  
+Encryption at rest protects data on disk, but the *type* of key used determines who controls access and lifecycle. An AWS‑managed key (the default when no key is specified) is owned and rotated by AWS; the customer cannot apply granular key policies, disable it, or revoke access independently of the service. Requiring a Customer Managed Key (CMK) enforces the principle of **customer‑controlled encryption**, giving the data owner full authority over key permissions, rotation, and auditing, and ensuring that no AWS service can access the data without explicit, auditable consent.
+
+**Apply (this specific resource)**  
+The `aws_efs_file_system.fail` resource enables encryption (`encrypted = true`) but does not provide a `kms_key_id`. As a result, EFS will use the AWS‑managed key `aws/elasticfilesystem` to encrypt the file system. This violates the check because the key is not a customer‑managed CMK. The data owner loses the ability to:
+
+- Define or restrict which IAM principals can use the key via a key policy.
+- Schedule or perform manual key rotation.
+- Disable the key to cryptographically revoke access in an emergency.
+- Audit all usage through dedicated CloudTrail entries tied to a specific CMK.
+
+**Remediation**  
+Supply the ARN of a customer‑managed KMS key in the `kms_key_id` argument, exactly as done in the passing resource:
+
+```terraform
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.test.arn
+}
+```
+
+This change brings the configuration into compliance by ensuring the file system is encrypted under a key that the customer controls, not an AWS‑managed default.

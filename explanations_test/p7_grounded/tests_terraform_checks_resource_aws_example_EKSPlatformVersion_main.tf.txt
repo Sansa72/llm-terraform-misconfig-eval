@@ -1,0 +1,95 @@
+The scanner flagged multiple security misconfigurations across four EKS cluster resources. Below, I break down each check ID, what it requires, which resources are affected, and exactly where in the file the missing configuration should be added.
+
+---
+
+### CKV_AWS_39 – Ensure Amazon EKS public endpoint disabled
+
+**What it checks:**  
+The EKS cluster’s public endpoint should be explicitly disabled (`endpoint_public_access = false`). If not set, the default is `true`, leaving the endpoint accessible from the internet.
+
+**Affected resources:**  
+All four resources are flagged:
+- `aws_eks_cluster.pass` (lines 1–15)
+- `aws_eks_cluster.pass2` (lines 17–32)
+- `aws_eks_cluster.fail` (lines 34–50)
+- `aws_eks_cluster.fail2` (lines 52–68)
+
+**Evidence in the file:**  
+None of the `vpc_config` blocks contain `endpoint_public_access`. For example, in `aws_eks_cluster.pass` (lines 5–7):
+```terraform
+  vpc_config {
+    subnet_ids = [aws_subnet.example1.id, aws_subnet.example2.id]
+  }
+```
+The same pattern repeats in the other three resources (lines 22–24, 39–41, 56–58). The absence of `endpoint_public_access = false` means the public endpoint remains enabled.
+
+---
+
+### CKV_AWS_58 – Ensure EKS Cluster has Secrets Encryption Enabled
+
+**What it checks:**  
+The cluster should have envelope encryption configured for Kubernetes secrets using a KMS key. This requires an `encryption_config` block with a `provider` key ARN.
+
+**Affected resources:**  
+All four resources are flagged.
+
+**Evidence in the file:**  
+No resource contains an `encryption_config` block. For instance, `aws_eks_cluster.pass` (lines 1–15) has no such block. The same applies to `pass2` (17–32), `fail` (34–50), and `fail2` (52–68).
+
+---
+
+### CKV_AWS_38 – Ensure Amazon EKS public endpoint is not accessible to 0.0.0.0/0
+
+**What it checks:**  
+If the public endpoint is enabled, its access should be restricted to specific CIDR blocks, not left open to the world (`0.0.0.0/0`). The `public_access_cidrs` argument inside `vpc_config` controls this; the default is `["0.0.0.0/0"]`.
+
+**Affected resources:**  
+All four resources are flagged.
+
+**Evidence in the file:**  
+None of the `vpc_config` blocks set `public_access_cidrs`. For example, in `aws_eks_cluster.pass` (lines 5–7) and `aws_eks_cluster.pass2` (lines 22–24), only `subnet_ids` is defined. The same applies to `fail` (lines 39–41) and `fail2` (lines 56–58). Because the public endpoint is not disabled (see CKV_AWS_39), the default CIDR `0.0.0.0/0` applies.
+
+---
+
+### CKV_AWS_37 – Ensure Amazon EKS control plane logging enabled for all log types
+
+**What it checks:**  
+The cluster should have all available control plane log types enabled via `enabled_cluster_log_types`. The required types are: `api`, `audit`, `authenticator`, `controllerManager`, `scheduler`.
+
+**Affected resources:**  
+All four resources are flagged.
+
+**Evidence in the file:**  
+No resource defines `enabled_cluster_log_types`. For example, `aws_eks_cluster.pass` (lines 1–15) has no logging configuration. The same is true for the other three resources.
+
+---
+
+### CKV_AWS_339 – Ensure EKS clusters run on a supported Kubernetes version
+
+**What it checks:**  
+The cluster’s Kubernetes version must be a version currently supported by AWS EKS. Unsupported or deprecated versions are flagged.
+
+**Affected resources:**  
+Only two resources are flagged:
+- `aws_eks_cluster.pass2` (lines 17–32)
+- `aws_eks_cluster.fail` (lines 34–50)
+
+**Evidence in the file:**  
+- `aws_eks_cluster.pass2` sets `version = "1.35"` on line 29. This is not a valid EKS version.
+- `aws_eks_cluster.fail` sets `version = "1.21"` on line 46. This version is deprecated and no longer supported.
+
+The other two resources are not flagged for this check: `pass` has no `version` argument (so it uses the default, which the scanner apparently considers acceptable), and `fail2` uses `version = "1.25"` (line 63), which the scanner did not flag.
+
+---
+
+### Summary of required fixes
+
+For each resource, you need to:
+
+1. **Disable the public endpoint** or restrict it: add `endpoint_public_access = false` inside `vpc_config`, or set `public_access_cidrs` to a restricted list if the endpoint must remain public.
+2. **Enable secrets encryption**: add an `encryption_config` block referencing a valid KMS key ARN.
+3. **Restrict public endpoint CIDR** (if not disabled): set `public_access_cidrs` to specific IP ranges, not `0.0.0.0/0`.
+4. **Enable all control plane log types**: add `enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]` to the resource.
+5. **Use a supported Kubernetes version**: for `pass2`, correct the version to a valid, supported release (e.g., `"1.27"` or later). For `fail`, upgrade from `1.21` to a supported version. (The scanner did not flag `fail2`’s `1.25`, but you should verify whether that version is still supported in your environment.)
+
+All changes should be applied to the specific resource blocks identified by the line ranges in the findings.

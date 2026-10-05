@@ -1,0 +1,32 @@
+The flagged resource is the `data "aws_iam_policy_document" "fail"` block defined at **lines 19–31**. The statement inside it (lines 22–29) grants `Allow` for `iam:*` on `"*"`. This single statement triggers all five findings. Here is what each check means in the context of this policy.
+
+---
+
+### CKV_AWS_107 – Credentials exposure
+**Lines 25–28:** `actions = ["iam:*"]` and `resources = ["*"]`
+
+The policy allows **all IAM actions**, which includes actions that read, list, or return long-term credentials (e.g., `iam:GetAccessKey`, `iam:ListAccessKeys`, `iam:CreateAccessKey`, `iam:GetLoginProfile`). Because the resource is `"*"`, these actions are permitted against any IAM user in the account. The scanner flags this as a risk of exposing credentials.
+
+### CKV_AWS_356 – Wildcard resource for restrictable actions
+**Line 28:** `resources = ["*"]`
+
+The policy uses `"*"` as the resource for IAM actions. IAM actions are “restrictable” – they should be scoped to specific resources (e.g., a particular user or role ARN) rather than all resources. A wildcard resource here grants the allowed actions across every IAM principal, policy, and role in the account.
+
+### CKV_AWS_109 – Permissions management / resource exposure without constraints
+**Lines 25–28:** `actions = ["iam:*"]` combined with `resources = ["*"]`
+
+The policy grants full IAM permissions management (actions like `iam:CreatePolicy`, `iam:AttachRolePolicy`, `iam:PutUserPolicy`, `iam:UpdateAssumeRolePolicy`, etc.) on **any** IAM resource. There are no conditions or resource constraints to limit which principals or policies can be modified, which is what the check identifies as unconstrained permissions management.
+
+### CKV_AWS_110 – Privilege escalation
+**Lines 25–28:** `actions = ["iam:*"]` and `resources = ["*"]`
+
+`iam:*` includes actions that can be used to escalate privileges (e.g., `iam:PassRole`, `iam:CreateLoginProfile`, `iam:UpdateAssumeRolePolicy`, `iam:AttachRolePolicy`, `iam:PutUserPolicy`). Because the resource is `"*"`, an identity with this policy could escalate its own privileges or those of another identity. The scanner flags the policy as allowing privilege escalation paths.
+
+### CKV2_AWS_40 – Full IAM privileges
+**Lines 25–28:** `actions = ["iam:*"]` and `resources = ["*"]`
+
+The policy grants `Allow` on **all IAM actions** against **all IAM resources**. This is effectively full administrative access to the IAM service. The check requires that no policy document grants such unrestricted IAM access.
+
+---
+
+**Summary:** The single statement on lines 22–29 is the root cause of all five findings. To fix them, restrict the actions to only those required and scope the resources to specific ARNs (e.g., `arn:aws:iam::123456789012:role/specific-role`) instead of `"*"`.

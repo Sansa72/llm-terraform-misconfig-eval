@@ -1,0 +1,94 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_9",
+      "resource": "aws_iam_account_password_policy.password-policy",
+      "evidence": [
+        "resource \"aws_iam_account_password_policy\" \"password-policy\" {\n  minimum_password_length        = 15\n  require_lowercase_characters   = true\n  require_numbers                = true\n  require_uppercase_characters   = true\n  require_symbols                = true\n  allow_users_to_change_password = true\n}"
+      ],
+      "risk": "Passwords never expire, increasing the window of opportunity for attackers to compromise credentials.",
+      "remediation": "Add a `max_password_age` attribute set to 90 or less to enforce password expiration.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_13",
+      "resource": "aws_iam_account_password_policy.password-policy",
+      "evidence": [
+        "resource \"aws_iam_account_password_policy\" \"password-policy\" {\n  minimum_password_length        = 15\n  require_lowercase_characters   = true\n  require_numbers                = true\n  require_uppercase_characters   = true\n  require_symbols                = true\n  allow_users_to_change_password = true\n}"
+      ],
+      "risk": "Without password reuse prevention, users can cycle through a small set of passwords, weakening security.",
+      "remediation": "Add a `password_reuse_prevention` attribute set to a value of at least 1 (e.g., 24) to prevent reuse of recent passwords.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_61",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without a lifecycle configuration, objects may accumulate indefinitely, increasing storage costs and retaining data longer than necessary.",
+      "remediation": "Add a `lifecycle_rule` block to the bucket resource to transition or expire objects.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_18",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without access logging, there is no record of requests made to the bucket, hindering security investigations and compliance.",
+      "remediation": "Add a `logging` block to the bucket resource to enable server access logging to a target bucket.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_62",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without event notifications, automated workflows or alerts on object changes cannot be triggered, reducing operational responsiveness.",
+      "remediation": "Add an `event_notification` block (or `notification_configuration` for newer provider versions) to the bucket resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_6",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without a public access block, the bucket may be inadvertently exposed to the public internet.",
+      "remediation": "Add a `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` configuration (or use a separate `aws_s3_bucket_public_access_block` resource) to restrict public access.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_145",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Default SSE-S3 encryption may not meet organizational key management requirements; KMS provides more control and auditability.",
+      "remediation": "Add a `server_side_encryption_configuration` block with a KMS key to the bucket resource.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_144",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without cross-region replication, data is not automatically replicated to another region, increasing risk of data loss in a regional disaster.",
+      "remediation": "Add a `replication_configuration` block to the bucket resource to enable cross-region replication.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_21",
+      "resource": "aws_s3_bucket.template_bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"template_bucket\" {\n  region        = var.region\n  bucket        = local.bucket_name\n  acl           = var.acl\n  force_destroy = true\n}"
+      ],
+      "risk": "Without versioning, object modifications or deletions are permanent, increasing risk of data loss.",
+      "remediation": "Add a `versioning` block with `enabled = true` to the bucket resource.",
+      "confidence": "high"
+    }
+  ]
+}

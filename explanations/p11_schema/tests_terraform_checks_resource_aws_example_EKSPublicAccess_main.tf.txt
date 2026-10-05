@@ -1,0 +1,104 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_58",
+      "resource": "aws_eks_cluster.disabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"disabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = False\n  }\n}"
+      ],
+      "risk": "Kubernetes secrets are stored in etcd without encryption, potentially exposing sensitive data if etcd is compromised.",
+      "remediation": "Add an encryption_config block with a KMS key and set resources = [\"secrets\"] to enable envelope encryption of secrets.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_37",
+      "resource": "aws_eks_cluster.disabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"disabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = False\n  }\n}"
+      ],
+      "risk": "Without control plane logging enabled for all log types, you lose visibility into API server, audit, authenticator, controller manager, and scheduler logs, hindering security monitoring and incident response.",
+      "remediation": "Add a logging block with enabled_cluster_log_types set to include all log types: [\"api\", \"audit\", \"authenticator\", \"controllerManager\", \"scheduler\"].",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_39",
+      "resource": "aws_eks_cluster.default",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"default\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n  }\n}"
+      ],
+      "risk": "No endpoint_public_access is set, so it defaults to true, exposing the EKS API server to the internet and increasing the attack surface.",
+      "remediation": "Add endpoint_public_access = false inside the vpc_config block to disable the public endpoint.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_58",
+      "resource": "aws_eks_cluster.default",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"default\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n  }\n}"
+      ],
+      "risk": "Kubernetes secrets are stored in etcd without encryption, potentially exposing sensitive data if etcd is compromised.",
+      "remediation": "Add an encryption_config block with a KMS key and set resources = [\"secrets\"] to enable envelope encryption of secrets.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_38",
+      "resource": "aws_eks_cluster.default",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"default\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n  }\n}"
+      ],
+      "risk": "The public endpoint is accessible from any IP address (0.0.0.0/0) because public_access_cidrs is not restricted, increasing the risk of unauthorized access.",
+      "remediation": "Set public_access_cidrs to a restricted list of CIDR blocks, or disable the public endpoint entirely by setting endpoint_public_access = false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_37",
+      "resource": "aws_eks_cluster.default",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"default\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n  }\n}"
+      ],
+      "risk": "Without control plane logging enabled for all log types, you lose visibility into API server, audit, authenticator, controller manager, and scheduler logs, hindering security monitoring and incident response.",
+      "remediation": "Add a logging block with enabled_cluster_log_types set to include all log types: [\"api\", \"audit\", \"authenticator\", \"controllerManager\", \"scheduler\"].",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_39",
+      "resource": "aws_eks_cluster.enabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"enabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = True\n  }\n}"
+      ],
+      "risk": "The value True is not a valid Terraform boolean; it may be interpreted as a string, but effectively enables public access, exposing the EKS API server to the internet.",
+      "remediation": "Change endpoint_public_access = True to endpoint_public_access = false to disable the public endpoint.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_58",
+      "resource": "aws_eks_cluster.enabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"enabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = True\n  }\n}"
+      ],
+      "risk": "Kubernetes secrets are stored in etcd without encryption, potentially exposing sensitive data if etcd is compromised.",
+      "remediation": "Add an encryption_config block with a KMS key and set resources = [\"secrets\"] to enable envelope encryption of secrets.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_38",
+      "resource": "aws_eks_cluster.enabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"enabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = True\n  }\n}"
+      ],
+      "risk": "The public endpoint is accessible from any IP address (0.0.0.0/0) because public_access_cidrs is not restricted, increasing the risk of unauthorized access.",
+      "remediation": "Set public_access_cidrs to a restricted list of CIDR blocks, or disable the public endpoint entirely by setting endpoint_public_access = false.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_37",
+      "resource": "aws_eks_cluster.enabled",
+      "evidence": [
+        "resource \"aws_eks_cluster\" \"enabled\" {\n  name     = \"example\"\n  role_arn = \"aws_iam_role.arn\"\n\n  vpc_config {\n    subnet_ids = [\"subnet-12345\"]\n\n    endpoint_public_access = True\n  }\n}"
+      ],
+      "risk": "Without control plane logging enabled for all log types, you lose visibility into API server, audit, authenticator, controller manager, and scheduler logs, hindering security monitoring and incident response.",
+      "remediation": "Add a logging block with enabled_cluster_log_types set to include all log types: [\"api\", \"audit\", \"authenticator\", \"controllerManager\", \"scheduler\"].",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+The scanner flagged two categories of issues across your ECR resources: missing repository-level security controls, and overly permissive repository policies. Here’s what each finding means in the context of your configuration, and how to fix it.
+
+---
+
+### 1. Repository-level misconfigurations (CKV_AWS_163, CKV_AWS_136, CKV_AWS_51)
+
+These three checks fire on **every** `aws_ecr_repository` you defined: `public`, `private`, `empty`, `conditional_ok`, and `conditional_bad`. All of them are missing the same three security settings.
+
+**CKV_AWS_163 – Image scanning on push**  
+Your repositories don’t have an `image_scanning_configuration` block. Without it, images pushed to the repo are not automatically scanned for known vulnerabilities. The fix is to add:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+```
+
+This enables Amazon Inspector’s basic scanning (or enhanced scanning if you later configure it) every time an image is pushed, giving you immediate visibility into CVEs in your container images.
+
+**CKV_AWS_136 – Encryption using KMS**  
+By default, ECR encrypts images at rest using AES-256 with an AWS-managed key. That’s encryption, but the check requires you to use a **customer-managed KMS key** (`encryption_type = "KMS"`). This gives you control over key rotation, access policies, and audit trails. Add:
+
+```hcl
+encryption_configuration {
+  encryption_type = "KMS"
+  # optionally specify a KMS key ARN:
+  # kms_key = aws_kms_key.ecr.arn
+}
+```
+
+If you omit `kms_key`, ECR will use the default AWS-managed KMS key for ECR, which still satisfies the “KMS” requirement but offers less control. For full compliance, provide a customer-managed key.
+
+**CKV_AWS_51 – Immutable image tags**  
+All your repositories use the default `image_tag_mutability = "MUTABLE"`. This allows overwriting a tag (e.g., `latest`) with a different image, which can lead to unpredictable deployments and supply-chain risks. Set:
+
+```hcl
+image_tag_mutability = "IMMUTABLE"
+```
+
+This forces every push to use a unique tag, ensuring that a given tag always points to the same image digest.
+
+---
+
+### 2. Public repository policies (CKV_AWS_32)
+
+This check fires on two policies: `aws_ecr_repository_policy.fail` and `aws_ecr_repository_policy.fail_conditional`. Both make the repository effectively public.
+
+**`fail` (lines 9–38)**  
+The policy has `"Principal": "*"` with **no condition**. This grants the listed actions (including `PutImage`, `DeleteRepository`, etc.) to anyone on the internet. That’s a direct violation of the principle of least privilege and exposes your repository to anonymous write/delete access.
+
+**`fail_conditional` (lines 131–165)**  
+This policy also uses `"Principal": "*"`, but attempts to restrict access with a condition on `aws:username`. The condition key `aws:username` is **not** a globally unique identifier; it’s just the friendly name of an IAM user within an account. An attacker in any AWS account could create a user named `pull-user-1` and satisfy the condition, making the policy effectively public. The scanner correctly treats this as a public policy because the condition does not tie access to a specific AWS account, organization, or other trusted boundary.
+
+**What makes a policy “not public”?**  
+The reference policies that passed (`pass_conditional`, `cond_any_pass`, `cond_equals_pass`, `pass_without_principal`) all restrict access to known principals or use conditions that are scoped to your organization/account:
+
+- `pass_conditional` uses `aws:PrincipalOrgID` with `ForAllValues:StringEquals`.
+- `cond_any_pass` uses `aws:PrincipalOrgID` with `ForAnyValue:StringEquals`.
+- `cond_equals_pass` uses `StringEquals` on `aws:PrincipalOrgID`.
+- `pass_without_principal` omits the `Principal` field entirely, which defaults to the owning AWS account.
+
+To fix your failing policies, either:
+- Replace `"Principal": "*"` with specific IAM principals (e.g., `"AWS": "arn:aws:iam::123456789012:root"`), or
+- Keep `"Principal": "*"` but add a condition that scopes access to your organization or account, such as:
+  ```json
+  "Condition": {
+    "StringEquals": {
+      "aws:PrincipalOrgID": "o-xxxxxxxxxxx"
+    }
+  }
+  ```
+  (Use `aws:PrincipalAccount` for a single account.)
+
+The `empty` policy (line 78) is not flagged because an empty policy string is not “public” – it effectively denies all access. However, the associated repository `empty` still needs the three repository-level fixes.
+
+---
+
+### Summary of required changes
+
+For every `aws_ecr_repository` in the file, add:
+
+```hcl
+image_scanning_configuration {
+  scan_on_push = true
+}
+
+encryption_configuration {
+  encryption_type = "KMS"
+}
+
+image_tag_mutability = "IMMUTABLE"
+```
+
+For `aws_ecr_repository_policy.fail` and `aws_ecr_repository_policy.fail_conditional`, rewrite the policy to either list specific trusted principals or use a condition that binds access to your AWS organization/account. The `pass_conditional` example in the file shows the correct pattern.

@@ -1,0 +1,75 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported by the scanner. For each, the required change is described in prose; no complete Terraform blocks are provided. Where a single resource triggers multiple checks, the fixes can be applied together—this is noted at the end.
+
+---
+
+### 1. CKV_AWS_39 on `aws_eks_cluster.fully_enabled` (lines 3‑14)
+**What is wrong:** The cluster does not have a `vpc_config` block that disables the public endpoint.  
+**Why it matters:** An EKS cluster with a public endpoint is accessible from the internet, increasing the attack surface and the risk of unauthorised access to the Kubernetes API.  
+**Change needed:** Add a `vpc_config` block to the resource. Inside it, set `endpoint_public_access = false` to disable the public endpoint. You must also specify the subnets and security groups that the cluster will use for private access (e.g., `subnet_ids` and optionally `security_group_ids`). Ensure that `endpoint_private_access` is set to `true` so that the control plane remains reachable from within the VPC.
+
+---
+
+### 2. CKV_AWS_58 on `aws_eks_cluster.fully_enabled` (lines 3‑14)
+**What is wrong:** The cluster has no `encryption_config` block, so Kubernetes secrets are stored in etcd without envelope encryption.  
+**Why it matters:** Without encryption, secrets at rest in etcd are only protected by the underlying EBS volume encryption (if enabled). Envelope encryption with a KMS key provides an additional layer of defence and helps meet compliance requirements.  
+**Change needed:** Add an `encryption_config` block. Within it, define a `provider` block that references a KMS key ARN (e.g., `key_arn = aws_kms_key.eks.arn`) and set `resources = ["secrets"]`. This enables envelope encryption of Kubernetes secrets using the specified KMS key.
+
+---
+
+### 3. CKV_AWS_39 on `aws_eks_cluster.fully_enabled_with_dynamic_block` (lines 16‑38)
+**What is wrong:** The cluster lacks a `vpc_config` block that disables the public endpoint.  
+**Why it matters:** Same as item 1—public endpoint exposure increases the risk of internet‑based attacks on the Kubernetes API.  
+**Change needed:** Add a `vpc_config` block with `endpoint_public_access = false`, `endpoint_private_access = true`, and the required VPC subnet/security group configuration. This resource already has an `encryption_config` block, so only the endpoint access settings need to be added.
+
+---
+
+### 4. CKV_AWS_39 on `aws_eks_cluster.partially_enabled` (lines 42‑50)
+**What is wrong:** The cluster does not have a `vpc_config` block that disables the public endpoint.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add a `vpc_config` block with `endpoint_public_access = false`, `endpoint_private_access = true`, and the necessary VPC identifiers. This resource will also need the changes for items 5 and 6; all three can be introduced in the same `vpc_config` and additional blocks.
+
+---
+
+### 5. CKV_AWS_58 on `aws_eks_cluster.partially_enabled` (lines 42‑50)
+**What is wrong:** The cluster has no `encryption_config` block, so secrets are not encrypted with a KMS key.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add an `encryption_config` block with a `provider` referencing a KMS key ARN and `resources = ["secrets"]`. This can be added alongside the `vpc_config` block required for CKV_AWS_39.
+
+---
+
+### 6. CKV_AWS_37 on `aws_eks_cluster.partially_enabled` (lines 42‑50)
+**What is wrong:** The `enabled_cluster_log_types` list only contains `"api"` and `"audit"`; the `"authenticator"`, `"controllerManager"`, and `"scheduler"` log types are missing.  
+**Why it matters:** Incomplete control plane logging reduces visibility into cluster operations, making it harder to detect malicious activity, troubleshoot issues, or meet security monitoring requirements.  
+**Change needed:** Extend the `enabled_cluster_log_types` list to include all five log types: `"api"`, `"audit"`, `"authenticator"`, `"controllerManager"`, and `"scheduler"`. This change is independent of the other fixes but can be applied in the same edit.
+
+---
+
+### 7. CKV_AWS_39 on `aws_eks_cluster.not_configured` (lines 52‑55)
+**What is wrong:** The cluster has no `vpc_config` block, so the public endpoint is enabled by default.  
+**Why it matters:** Same as item 1.  
+**Change needed:** Add a `vpc_config` block with `endpoint_public_access = false`, `endpoint_private_access = true`, and the required VPC details. This resource will also need the changes for items 8 and 9; all can be introduced together.
+
+---
+
+### 8. CKV_AWS_58 on `aws_eks_cluster.not_configured` (lines 52‑55)
+**What is wrong:** The cluster has no `encryption_config` block, leaving secrets unencrypted.  
+**Why it matters:** Same as item 2.  
+**Change needed:** Add an `encryption_config` block with a KMS key ARN and `resources = ["secrets"]`. This can be added alongside the `vpc_config` and logging changes.
+
+---
+
+### 9. CKV_AWS_37 on `aws_eks_cluster.not_configured` (lines 52‑55)
+**What is wrong:** The `enabled_cluster_log_types` argument is completely absent, so no control plane logs are enabled.  
+**Why it matters:** Without any logging, there is no audit trail for the control plane, severely limiting security monitoring and incident response capabilities.  
+**Change needed:** Add the `enabled_cluster_log_types` argument with all five log types: `"api"`, `"audit"`, `"authenticator"`, `"controllerManager"`, and `"scheduler"`. This can be done in the same edit as the other missing blocks.
+
+---
+
+### Interactions between fixes
+- For `aws_eks_cluster.fully_enabled`, the two missing features (private endpoint and secrets encryption) are independent; both can be added in a single update.
+- For `aws_eks_cluster.fully_enabled_with_dynamic_block`, only the `vpc_config` block is missing; no other changes are needed.
+- For `aws_eks_cluster.partially_enabled`, all three fixes (private endpoint, secrets encryption, full logging) can be applied simultaneously.
+- For `aws_eks_cluster.not_configured`, all three fixes (private endpoint, secrets encryption, full logging) can be applied simultaneously.
+- No cross‑resource dependencies are present in the supplied file, so each resource can be remediated independently.

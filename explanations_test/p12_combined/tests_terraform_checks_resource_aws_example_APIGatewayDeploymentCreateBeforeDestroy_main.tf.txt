@@ -1,0 +1,25 @@
+**Remediation briefing: CKV_AWS_217 – API Gateway deployment create-before-destroy**
+
+Below are the two failing checks, addressed in the order they appear in the scanner output.
+
+---
+
+### 1. CKV_AWS_217 on `aws_api_gateway_deployment.fail`
+
+- **Resource:** `aws_api_gateway_deployment.fail` (lines 13–22)  
+- **Trigger:** The `lifecycle` block at lines 17–19, specifically line 18: `create_before_destroy = false`.  
+- **What is wrong:** The deployment is explicitly set to destroy the existing resource before creating the replacement. This causes the API stage to be removed temporarily during an update, leading to downtime or broken client requests until the new deployment is live.  
+- **Required change:** In the `lifecycle` block of this resource, change the value of `create_before_destroy` from `false` to `true`. This instructs Terraform to create the new deployment (and attach it to the stage) before destroying the old one, eliminating the gap in service.
+
+---
+
+### 2. CKV_AWS_217 on `aws_api_gateway_deployment.fail2`
+
+- **Resource:** `aws_api_gateway_deployment.fail2` (lines 24–31)  
+- **Trigger:** The entire resource block (lines 24–31) contains no `lifecycle` block. The absence of `create_before_destroy = true` means Terraform uses the default behaviour, which is destroy-before-create.  
+- **What is wrong:** Without an explicit `create_before_destroy = true`, the deployment will be destroyed first on any replacement, causing the same risk of API unavailability as in the previous case.  
+- **Required change:** Add a `lifecycle` block inside the resource and set `create_before_destroy = true`. This overrides the default and ensures the safe creation pattern is applied.
+
+---
+
+Both fixes are independent and only require the `create_before_destroy` attribute to be set to `true` in the respective resource’s lifecycle configuration. No other parts of the Terraform file need to be altered for these checks to pass.

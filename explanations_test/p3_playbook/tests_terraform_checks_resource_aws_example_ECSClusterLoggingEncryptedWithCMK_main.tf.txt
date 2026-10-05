@@ -1,0 +1,90 @@
+**Remediation briefing: ECS cluster security misconfigurations**
+
+Below are the failing checks in the order reported by the scanner. For each, a one‑line summary of the problem, the risk it poses, and a prose description of the change required. Where a resource triggers multiple checks, the fixes can be applied together; interactions are noted.
+
+---
+
+### 1. CKV_AWS_65 on `aws_ecs_cluster.fail4` (lines 1‑9)
+**What is wrong:** Container Insights is not enabled on the cluster.  
+**Why it matters:** Without Container Insights you lose visibility into task and service performance, making it harder to detect anomalies, troubleshoot, and right‑size resources.  
+**Change needed:** Add a `setting` block inside the resource that sets `name = "containerInsights"` and `value = "enabled"`. This block is independent of the existing `configuration` block and can be placed at the top level of the resource.
+
+### 2. CKV_AWS_224 on `aws_ecs_cluster.fail4` (lines 1‑9)
+**What is wrong:** ECS Exec logging is not configured to use a customer‑managed key (CMK).  
+**Why it matters:** Without CMK‑encrypted logging, session audit logs may be stored under the default AWS‑managed key, reducing your control over key rotation, access policies, and compliance.  
+**Change needed:** Inside the existing `execute_command_configuration` block, add a `log_configuration` block. Choose either CloudWatch or S3 as the destination, set the corresponding encryption flag to `true`, and provide the log group name or bucket name. The `kms_key_id` already set for session encryption is separate; the log configuration must also reference a CMK‑encrypted destination (e.g., a CloudWatch log group encrypted with a CMK).  
+*Interaction:* This change can be made in the same `configuration` block alongside the Container Insights `setting` block.
+
+### 3. CKV_AWS_65 on `aws_ecs_cluster.unknown` (lines 11‑14)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk as above.  
+**Change needed:** Add a `setting` block with `name = "containerInsights"` and `value = "enabled"`. This resource currently has no `configuration` block, so the `setting` block is the only addition required.
+
+### 4. CKV_AWS_65 on `aws_ecs_cluster.unknown2` (lines 16‑34)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`. This can be done alongside the logging fixes below.
+
+### 5. CKV_AWS_223 on `aws_ecs_cluster.unknown2` (lines 16‑34)
+**What is wrong:** ECS Exec logging is explicitly disabled (`logging = "NONE"`).  
+**Why it matters:** Disabling Exec logging means no audit trail is captured for interactive container sessions, breaking security monitoring and incident investigation.  
+**Change needed:** Change the `logging` argument from `"NONE"` to `"DEFAULT"` (or `"OVERRIDE"` if you intend to supply a custom log configuration). If you use `"DEFAULT"`, the service will use the standard log destination; if you use `"OVERRIDE"`, you must also uncomment and complete the `log_configuration` block.  
+*Interaction:* The `log_configuration` block is already present but entirely commented out. If you switch to `"OVERRIDE"`, uncomment and fill in either the CloudWatch or S3 options, ensuring the encryption flag is set to `true` to also satisfy CKV_AWS_224 (though that check is not flagged here, it is good practice).
+
+### 6. CKV_AWS_65 on `aws_ecs_cluster.fail` (lines 36‑53)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`.
+
+### 7. CKV_AWS_224 on `aws_ecs_cluster.fail` (lines 36‑53)
+**What is wrong:** ECS Exec logging is not configured to use a CMK.  
+**Why it matters:** Same encryption control risk.  
+**Change needed:** Inside the `execute_command_configuration` block, uncomment the `log_configuration` block and provide a valid destination with encryption enabled. For CloudWatch, set `cloud_watch_encryption_enabled = true` and specify `cloud_watch_log_group_name`; for S3, set `s3_bucket_encryption_enabled = true` and `s3_bucket_name`. Also ensure the `kms_key_id` for session encryption is set to a CMK (currently commented out).  
+*Interaction:* Both the `setting` block and the log configuration can be added in the same resource edit.
+
+### 8. CKV_AWS_65 on `aws_ecs_cluster.fail2` (lines 57‑74)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`.
+
+### 9. CKV_AWS_224 on `aws_ecs_cluster.fail2` (lines 57‑74)
+**What is wrong:** ECS Exec logging is not configured to use a CMK.  
+**Why it matters:** Same encryption control risk.  
+**Change needed:** The `kms_key_id` is already set, but the `log_configuration` block is entirely commented out. Uncomment it and fill in a valid destination with encryption enabled (CloudWatch or S3).  
+*Interaction:* Apply together with the Container Insights setting.
+
+### 10. CKV_AWS_65 on `aws_ecs_cluster.fail3` (lines 76‑93)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`.
+
+### 11. CKV_AWS_224 on `aws_ecs_cluster.fail3` (lines 76‑93)
+**What is wrong:** ECS Exec logging is not using a CMK – `cloud_watch_encryption_enabled` is explicitly set to `false`.  
+**Why it matters:** Logs are stored unencrypted or with the default key, weakening data protection.  
+**Change needed:** Change `cloud_watch_encryption_enabled` from `false` to `true`, and uncomment and set `cloud_watch_log_group_name` to a valid log group (which should itself be encrypted with a CMK). Alternatively, switch to S3 logging with `s3_bucket_encryption_enabled = true` and a bucket name.  
+*Interaction:* Apply together with the Container Insights setting.
+
+### 12. CKV_AWS_65 on `aws_ecs_cluster.fail5` (lines 95‑105)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`.
+
+### 13. CKV_AWS_224 on `aws_ecs_cluster.fail5` (lines 95‑105)
+**What is wrong:** ECS Exec logging is not configured to use a CMK – the `log_configuration` is set to `[null]`, effectively disabling it.  
+**Why it matters:** No encrypted audit log is captured for Exec sessions.  
+**Change needed:** Replace `log_configuration = [null]` with a proper `log_configuration` block containing a valid destination and encryption enabled (CloudWatch or S3). The `kms_key_id` is already set, so only the log configuration needs to be completed.  
+*Interaction:* Apply together with the Container Insights setting.
+
+### 14. CKV_AWS_65 on `aws_ecs_cluster.pass` (lines 107‑124)
+**What is wrong:** Container Insights is not enabled, despite the resource name.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`. The existing log configuration already satisfies CKV_AWS_224, so only this setting is missing.
+
+### 15. CKV_AWS_65 on `aws_ecs_cluster.pass2` (lines 126‑143)
+**What is wrong:** Container Insights is not enabled.  
+**Why it matters:** Same visibility risk.  
+**Change needed:** Add a `setting` block for `containerInsights = enabled`. The S3 logging configuration is partially in place; ensure the `s3_bucket_name` is uncommented and set to a valid bucket to make the logging fully functional, though that is not required to pass this specific check.
+
+---
+
+**General note:** All `aws_ecs_cluster` resources in this file are missing the `setting` block for Container Insights. Adding it is a uniform, low‑risk change that can be applied across every resource. For the logging‑related checks, the required configuration lives inside the `execute_command_configuration` block and can be standardised using a consistent log destination (CloudWatch or S3) with encryption enabled.

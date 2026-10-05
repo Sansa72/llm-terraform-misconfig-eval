@@ -1,0 +1,32 @@
+**CKV_AWS_270 – Ensure Connect Instance S3 Storage Config uses CMK**  
+*Applies to both `aws_connect_instance_storage_config.pass` and `aws_connect_instance_storage_config.fail`*
+
+- **Current behaviour that fails the check**  
+  Both resources define a `storage_type` of `KINESIS_VIDEO_STREAM` and contain a `kinesis_video_stream_config` block. They do **not** define an S3 storage configuration at all. The check expects an S3 storage config that uses a customer-managed key (CMK), but the resources are not S3 storage configs.
+
+- **Configuration that would satisfy the check**  
+  A resource of the same type but with `storage_type = "S3"` and an `s3_config` block that includes `encryption_config` with `encryption_type = "KMS"` and a `key_id` pointing to a customer-managed KMS key (e.g., `aws_kms_key.test.arn`). For example, replacing the `kinesis_video_stream_config` with an `s3_config` that enforces CMK encryption.
+
+- **Precise difference and why it matters**  
+  The difference is the `storage_type` value and the presence of an `s3_config` block with a CMK reference instead of a `kinesis_video_stream_config` block. The check is specifically designed for S3 storage configurations; it fails on these resources because they are not S3 storage configs. If the intent is to use Kinesis Video Stream, this check is a false positive and can be suppressed. If S3 storage is actually required, the configuration must be changed to an S3 storage type with a customer-managed key to ensure that the organisation retains control over encryption key lifecycle, access policies, and auditing.
+
+---
+
+**CKV_AWS_269 – Ensure Connect Instance Kinesis Video Stream Storage Config uses CMK**  
+*Applies to `aws_connect_instance_storage_config.fail` only*
+
+- **Current behaviour that fails the check**  
+  The `fail` resource defines a Kinesis Video Stream storage config with `encryption_config` set to `encryption_type = "KMS"` but **omits the `key_id` attribute**. This causes Amazon Connect to use the **AWS managed KMS key** for the service, not a customer-managed key (CMK).
+
+- **Configuration that would satisfy the check**  
+  The `pass` resource already demonstrates the compliant pattern: inside the `encryption_config` block, specify `key_id = aws_kms_key.test.arn` (or any valid customer-managed KMS key ARN). This forces the Kinesis Video Stream to be encrypted with a key that the customer owns and controls.
+
+- **Precise difference and why it matters**  
+  The only difference is the presence of the `key_id` argument. Without it, encryption still occurs (using KMS), but the key is fully managed by AWS – you cannot rotate it on demand, apply granular key policies, or audit usage independently. With a CMK, you retain control over the encryption key, which is essential for meeting compliance requirements that mandate customer-controlled encryption for data at rest.
+
+---
+
+**What the engineer needs to change**
+
+- **For the Kinesis Video Stream resource (`fail`):** Add the missing `key_id` inside the `encryption_config` block, referencing a customer-managed KMS key (just like the `pass` resource does). This is the only change required to pass **CKV_AWS_269**.
+- **For CKV_AWS_270 on both resources:** These resources are not S3 storage configs; they are Kinesis Video Stream configs. The check is a false positive for this resource type. If the scanner allows, suppress CKV_AWS_270 for these specific resources. If an S3 storage config is actually needed, replace the `kinesis_video_stream_config` block with an `s3_config` block that includes CMK encryption, but that would change the storage backend entirely.

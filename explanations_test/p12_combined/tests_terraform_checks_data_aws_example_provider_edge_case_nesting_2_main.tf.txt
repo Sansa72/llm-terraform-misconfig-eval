@@ -1,0 +1,11 @@
+**Check: CKV_AWS_186**  
+**Resource: `aws_s3_bucket_object.this_file` (lines 2–5)**  
+
+**What’s wrong**  
+The object resource does not specify any server-side encryption. The scanner requires that the object be encrypted with a customer-managed KMS key (SSE-KMS using a CMK). The current definition only provides `bucket` and `key`; no `kms_key_id` or `server_side_encryption` is set, so the object will either inherit the bucket’s default encryption (which may not be KMS with a CMK) or remain unencrypted.
+
+**Why it matters**  
+Without explicit KMS encryption using a customer-managed key, you lose the ability to control and audit the encryption key lifecycle, and the object may not meet the policy requirement for CMK-based encryption at rest.
+
+**Remediation**  
+Add the `server_side_encryption` argument set to `"aws:kms"` and provide a `kms_key_id` that references a customer-managed KMS key (e.g., the ARN of an `aws_kms_key` resource). This ensures the object is encrypted with a key you own and manage. If no CMK exists yet, you will need to create one (or use a data source to look up an existing CMK) and reference it in the object resource.

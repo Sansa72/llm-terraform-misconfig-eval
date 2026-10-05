@@ -1,0 +1,21 @@
+The finding flags that the `aws_db_snapshot_copy.fail` resource does not specify a customer-managed KMS key (CMK) for encrypting the copied database snapshot. Although the check title references AppFlow, the underlying security principle is the same: **explicitly control the encryption key used for sensitive data at rest**.
+
+**General principle**  
+When you copy an encrypted RDS snapshot, AWS encrypts the target copy. If you do not provide a `kms_key_id`, the copy uses the same AWS-managed key as the source snapshot (or remains unencrypted if the source is unencrypted). AWS-managed keys do not allow you to set key policies, rotate keys on your own schedule, or audit usage with the same granularity as a customer-managed key (CMK). Requiring a CMK ensures that you retain full control over the key lifecycle, access permissions, and logging for the snapshot data.
+
+**Application to this file**  
+The `aws_db_snapshot_copy.fail` resource (lines 1–4) omits the `kms_key_id` argument entirely. This means the copy will be encrypted with an AWS-managed key (or remain unencrypted if the source is unencrypted), violating the principle of customer-controlled encryption. The `aws_db_snapshot_copy.pass` resource in the same file demonstrates the correct pattern by setting `kms_key_id = aws_kms_key.example.id`, ensuring the copy is protected with a customer-managed key.
+
+**Why it matters**  
+Without a customer-managed key, you lose the ability to define fine-grained access policies, rotate keys on your own schedule, or centrally audit key usage through CloudTrail. This can lead to compliance gaps and reduced visibility over who can decrypt the snapshot.
+
+**Remediation**  
+Add a `kms_key_id` argument to the `fail` resource, referencing a valid KMS key, just as the `pass` resource does. For example:
+
+```hcl
+resource "aws_db_snapshot_copy" "fail" {
+  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn
+  target_db_snapshot_identifier  = "testsnapshot1234-copy"
+  kms_key_id                    = aws_kms_key.example.id
+}
+```

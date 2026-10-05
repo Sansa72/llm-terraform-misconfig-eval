@@ -1,0 +1,15 @@
+The scanner flagged two resources for violating check **CKV_AWS_233**, which requires ACM certificates to be configured with `create_before_destroy = true` in their `lifecycle` block.
+
+**Evidence from the file:**
+
+- **`aws_acm_certificate.fail` (lines 14–25)**  
+  This resource explicitly sets `create_before_destroy = false` in its `lifecycle` block (lines 22–24). The check expects `true`; the explicit `false` directly contradicts the requirement.
+
+- **`aws_acm_certificate.fail2` (lines 27–34)**  
+  This resource has no `lifecycle` block at all. In Terraform, the default value for `create_before_destroy` is `false`. Because the required setting is absent, the resource defaults to the unsafe behavior, triggering the check.
+
+**Why it matters (as indicated by the check):**  
+When an ACM certificate must be replaced (for example, if the `domain_name` changes), Terraform normally destroys the existing certificate before creating the replacement. With `create_before_destroy = true`, the new certificate is created and validated first, and only then is the old one destroyed. This prevents a gap where no valid certificate exists, which could cause service interruptions for resources that depend on it. The check enforces this safer ordering.
+
+**What to fix:**  
+For both `fail` and `fail2`, add or modify the `lifecycle` block so that `create_before_destroy` is set to `true`, exactly as shown in the `pass` resource (lines 8–10).

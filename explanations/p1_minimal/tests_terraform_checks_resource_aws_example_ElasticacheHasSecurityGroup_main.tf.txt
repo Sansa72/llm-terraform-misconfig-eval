@@ -1,0 +1,90 @@
+The scanner flagged four issues in your Terraform code. Two are critical misconfigurations, and two are best-practice violations. Here’s what each means and how to fix them.
+
+---
+
+### 1. CKV_AWS_196: `aws_elasticache_security_group` resources must not exist
+
+**Problem**  
+`aws_elasticache_security_group` is a legacy resource type used only for **EC2-Classic** ElastiCache clusters. EC2-Classic is deprecated; modern AWS environments use VPC. In a VPC, you control network access with **VPC security groups** (like `aws_security_group.bar`) and attach them directly to the ElastiCache resource via `security_group_ids`. The old `aws_elasticache_security_group` resource has no effect in a VPC and should never be used.
+
+**Fix**  
+Remove the `aws_elasticache_security_group` resource entirely. Instead, attach your VPC security group directly to the ElastiCache cluster or replication group.
+
+```hcl
+# REMOVE this entire block
+# resource "aws_elasticache_security_group" "exists" {
+#   name                 = "elasticache-security-group"
+#   security_group_names = [aws_security_group.bar.name]
+# }
+
+# In your ElastiCache resource, reference the VPC security group by ID:
+resource "aws_elasticache_cluster" "example" {
+  # ... other configuration ...
+  security_group_ids = [aws_security_group.bar.id]
+}
+```
+
+---
+
+### 2. CKV_AWS_23: Every security group rule must have a description
+
+**Problem**  
+This check requires that every ingress and egress rule in a security group includes a `description` argument. Descriptions improve maintainability and help with auditing. The scanner flagged both `aws_elasticache_security_group.exists` and `aws_security_group.bar`.  
+
+- The `aws_elasticache_security_group` resource is being removed (see above), so its violation disappears.  
+- The `aws_security_group.bar` resource currently has **no rules defined**. Even though there are no rules to describe, the scanner still flags the resource because it expects that any rules you add will have descriptions. If you intend to keep the security group, you must add rules with descriptions.
+
+**Fix**  
+Add the necessary ingress/egress rules with a `description` for each. If the security group is meant to be empty (unlikely), you can suppress the check, but the better practice is to define the required rules.
+
+```hcl
+resource "aws_security_group" "bar" {
+  name        = "security-group"
+  description = "Security group for ElastiCache"  # optional but recommended
+
+  ingress {
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Allow Redis access from internal VPC"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
+  }
+}
+```
+
+---
+
+### 3. CKV2_AWS_5: Security groups must be attached to another resource
+
+**Problem**  
+The security group `aws_security_group.bar` is defined but not referenced by any other resource (EC2 instance, RDS, ElastiCache cluster, etc.). An unused security group is a misconfiguration—it clutters the environment and may indicate a missing attachment.
+
+**Fix**  
+Attach the security group to the resource it’s meant to protect. In the context of ElastiCache, you would reference it in the cluster or replication group:
+
+```hcl
+resource "aws_elasticache_cluster" "example" {
+  # ... other configuration ...
+  security_group_ids = [aws_security_group.bar.id]
+}
+```
+
+If the security group is not needed at all, remove it from the code.
+
+---
+
+### Summary of required changes
+
+1. **Delete** the `aws_elasticache_security_group` resource (lines 1–4).  
+2. **Add** `ingress`/`egress` rules with `description` to `aws_security_group.bar`.  
+3. **Attach** `aws_security_group.bar` to the ElastiCache resource (or whatever resource it’s intended for) using `security_group_ids` or `vpc_security_group_ids`.
+
+After these changes, all four findings will be resolved.

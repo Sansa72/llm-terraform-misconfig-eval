@@ -1,0 +1,45 @@
+**Remediation briefing for Elastic Beanstalk environment security misconfigurations**
+
+Below are the required fixes, presented in the order of the scanner findings. Each entry names the check and the affected resource, explains the problem, why it matters, and describes the exact change to make. No complete Terraform blocks are provided; only the necessary modifications are described.
+
+---
+
+### 1. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail` (lines 1-10)
+**What is wrong:** Managed platform updates are not enabled. The resource does not include a `setting` block for `ManagedActionsEnabled`, so it defaults to disabled.  
+**Why it matters:** Without managed platform updates, the environment will not automatically receive critical security patches, bug fixes, and platform improvements. This leaves the application exposed to known vulnerabilities that could be exploited.  
+**Change needed:** Add a `setting` block inside the resource with `namespace = "aws:elasticbeanstalk:managedactions"`, `name = "ManagedActionsEnabled"`, and `value = "true"`. This enables managed platform updates. You may also optionally define a maintenance window, but the check only requires the enablement flag.
+
+---
+
+### 2. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail` (lines 1-10)
+**What is wrong:** Enhanced health reporting is not enabled. The resource lacks the required `setting` block, so it uses basic health reporting.  
+**Why it matters:** Basic health reporting provides limited metrics and slower detection of environment issues. Enhanced health reporting gives detailed, real-time health data, enabling faster incident response and better operational security.  
+**Change needed:** Add a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`. This can be added alongside the managed updates setting; they are independent.
+
+---
+
+### 3. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail2` (lines 12-26)
+**What is wrong:** Managed platform updates are explicitly disabled. The existing `setting` block sets `ManagedActionsEnabled` to `"false"`.  
+**Why it matters:** Same as finding #1 – disabling managed updates prevents automatic application of security patches and platform fixes.  
+**Change needed:** Locate the existing `setting` block with `namespace = "aws:elasticbeanstalk:managedactions"` and change its `value` from `"false"` to `"true"`. No new block is required; simply correct the value.
+
+---
+
+### 4. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail2` (lines 12-26)
+**What is wrong:** Enhanced health reporting is not enabled. The resource has no `setting` for health reporting.  
+**Why it matters:** Same as finding #2 – basic health reporting is insufficient for timely detection of issues.  
+**Change needed:** Add a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`. This is independent of the managed actions fix; both settings can coexist.
+
+---
+
+### 5. CKV_AWS_312 on `aws_elastic_beanstalk_environment.pass` (lines 29-43)
+**What is wrong:** Enhanced health reporting is not enabled. Although managed platform updates are correctly enabled, the health reporting setting is missing.  
+**Why it matters:** Same as finding #2 – the environment still uses basic health reporting, missing out on detailed monitoring and faster issue detection.  
+**Change needed:** Add a `setting` block with `namespace = "aws:elasticbeanstalk:healthreporting:system"`, `name = "SystemType"`, and `value = "enhanced"`. This can be placed alongside the existing managed actions setting; no other changes are required.
+
+---
+
+**Interactions between fixes:**  
+- For `fail` and `fail2`, both checks (CKV_AWS_340 and CKV_AWS_312) must be addressed. The two settings are independent and can be added as separate `setting` blocks in any order.  
+- For `fail2`, the managed updates fix is a simple value change from `"false"` to `"true"`; the health reporting fix is an additional block.  
+- For `pass`, only the health reporting setting is missing; adding it does not affect the already correct managed updates setting.

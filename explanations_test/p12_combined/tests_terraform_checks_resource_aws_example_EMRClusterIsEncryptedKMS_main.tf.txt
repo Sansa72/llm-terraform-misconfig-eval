@@ -1,0 +1,61 @@
+## Remediation Briefing
+
+Below are the failing checks, in the order they appear in the scanner output, with the exact evidence from the file and the required change.
+
+---
+
+### 1. CKV_AWS_351 – aws_emr_security_configuration.fail (lines 1–19)
+
+**What is wrong**  
+The security configuration does not enable in-transit encryption. The JSON block (lines 3–17) contains no `EnableInTransitEncryption` field. Without this, data moving between EMR cluster nodes is not encrypted, which can expose sensitive information to interception.
+
+**Remediation**  
+Add `"EnableInTransitEncryption": true` inside the `EncryptionConfiguration` object. You will also need to supply the required in-transit encryption settings (e.g., TLS certificate provider details) as per the EMR API. The exact sub‑block depends on your certificate management approach, but the check will pass once the feature is explicitly enabled.
+
+---
+
+### 2. CKV_AWS_171 – aws_emr_security_configuration.fail (lines 1–19)
+
+**What is wrong**  
+The S3 encryption mode is set to `SSE-S3` (line 10). The check requires SSE-KMS for at‑rest encryption of data in S3. Using SSE-S3 means the encryption keys are managed by S3 rather than by a customer‑controlled KMS key, which may not meet your organisation’s key management requirements.
+
+**Remediation**  
+Change the `EncryptionMode` from `"SSE-S3"` to `"SSE-KMS"` and add an `AwsKmsKey` field specifying a valid KMS key ARN. For example:
+
+```json
+"S3EncryptionConfiguration": {
+  "EncryptionMode": "SSE-KMS",
+  "AwsKmsKey": "arn:aws:kms:region:account:key/your-key-id"
+}
+```
+
+---
+
+### 3. CKV_AWS_350 – aws_emr_security_configuration.fail (lines 1–19)
+
+**What is wrong**  
+The local disk encryption configuration uses `"EncryptionKeyProviderType": "AwsS3"` (line 14). This does not provide EBS volume encryption; the check expects a KMS‑based provider. Without a proper KMS key, local disks (EBS volumes) are not encrypted at rest.
+
+**Remediation**  
+Change the `EncryptionKeyProviderType` from `"AwsS3"` to `"AwsKms"` and supply a valid KMS key ARN in an `AwsKmsKey` field. For example:
+
+```json
+"LocalDiskEncryptionConfiguration": {
+  "EncryptionKeyProviderType": "AwsKms",
+  "AwsKmsKey": "arn:aws:kms:region:account:key/your-key-id"
+}
+```
+
+---
+
+### 4. CKV_AWS_350 – aws_emr_security_configuration.pass (lines 22–43)
+
+**What is wrong**  
+The scanner reports that this resource does not satisfy the EBS encryption requirement, even though the configuration appears to include local disk encryption with a KMS key (lines 37–40). The exact reason is not evident from the file alone, but possible causes include:
+
+- The KMS key reference (`module.encryption_module.kms_key_alias`) may not resolve to a valid KMS key ARN at plan time.
+- The key ARN format might be incorrect (e.g., using a key alias instead of a full ARN).
+- The check may require a specific key policy or that the key exists in the same region.
+
+**Remediation**  
+Verify that the module output `kms_key_alias` returns a full, valid KMS key ARN (e.g., `arn:aws:kms:us-east-1:123456789012:key/abcd-1234`). If it returns only an alias, replace it with the actual key ARN. Ensure the key exists and is in the same region as the EMR cluster. After confirming the key is correct, re‑run the scan. If the check still fails, review the EMR security configuration documentation to confirm that the `LocalDiskEncryptionConfiguration` block is structured exactly as required.

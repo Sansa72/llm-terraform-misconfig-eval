@@ -1,0 +1,55 @@
+Below is a remediation briefing for each failing check, in the order they appear in the scanner output.
+
+---
+
+### 1. CKV_AWS_158 on `aws_cloudwatch_log_group.pass_365` (lines 1–3)
+
+**What is wrong:** The log group is not configured with a KMS key for encryption at rest.
+
+**Why it matters:** Without a customer-managed KMS key, CloudWatch Logs data is encrypted using the default AWS-managed key. Using your own KMS key gives you control over key rotation, access policies, and audit trails, which is often required for compliance and data protection standards.
+
+**Change needed:** Add the `kms_key_id` argument to the `aws_cloudwatch_log_group.pass_365` resource, referencing the ARN of an existing KMS key (or a key created in the same Terraform configuration). The retention setting of 365 days already satisfies CKV_AWS_338, so no other modification is required for this resource.
+
+---
+
+### 2. CKV_AWS_158 on `aws_cloudwatch_log_group.pass_0` (lines 5–7)
+
+**What is wrong:** The log group lacks a KMS key for encryption at rest.
+
+**Why it matters:** Same as above – default encryption does not provide the same level of control and visibility as a customer-managed KMS key. Even though the retention is set to “never expire” (0), the logs still need proper encryption governance.
+
+**Change needed:** Add the `kms_key_id` argument to this resource, pointing to a valid KMS key ARN. The existing `retention_in_days = 0` is not flagged by the scanner, so it can remain as is.
+
+---
+
+### 3. CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (lines 9–11)
+
+**What is wrong:** The log group’s retention is set to 5 days, which is less than the required minimum of 365 days.
+
+**Why it matters:** Insufficient log retention can cause loss of critical security and operational data before it can be analysed, and violates common compliance frameworks (e.g., CIS AWS Foundations Benchmark) that mandate at least one year of log storage.
+
+**Change needed:** Increase `retention_in_days` to 365 or a higher value (e.g., 400, 545, 731, etc.). The scanner accepts 0 (never expire) as well, but explicitly setting 365 is the clearest way to meet the “at least 1 year” requirement. This change must be made alongside the encryption fix for the same resource (see next finding).
+
+---
+
+### 4. CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (lines 9–11)
+
+**What is wrong:** The log group is not encrypted with a KMS key.
+
+**Why it matters:** As with the other log groups, default encryption does not satisfy the requirement for customer-managed KMS encryption. This resource now has two issues: retention and encryption.
+
+**Change needed:** Add the `kms_key_id` argument referencing a KMS key ARN. This fix is independent of the retention change, but both must be applied to the same resource block. The order of changes does not matter; the final resource must have both `retention_in_days` set to 365 (or more) and a valid `kms_key_id`.
+
+---
+
+### 5. CKV_AWS_158 on `aws_cloudwatch_log_group.unknown` (lines 13–15)
+
+**What is wrong:** The log group is not encrypted with a KMS key.
+
+**Why it matters:** Same encryption control gap as the other resources. The retention period is set via a variable (`var.retention`), which may or may not be compliant, but the encryption check is the only one flagged here.
+
+**Change needed:** Add the `kms_key_id` argument to this resource, referencing a KMS key ARN. If the variable `var.retention` is not guaranteed to be ≥365, consider adding a validation condition on the variable itself (e.g., using a `validation` block) to prevent future misconfigurations, but that is not required to make this specific check pass.
+
+---
+
+**Note on interactions:** The `fail` resource requires both a retention increase and KMS encryption. These two changes are applied to the same resource but do not conflict; they can be made in any order. No other resource has overlapping flagged checks.

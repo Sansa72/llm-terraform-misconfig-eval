@@ -1,0 +1,42 @@
+## Remediation Briefing
+
+Below are the failing checks in the order reported, with a concise explanation and the required change for each. No complete Terraform blocks are provided; only prose guidance.
+
+---
+
+### 1. CKV_AWS_330 on `aws_efs_access_point.pass` (lines 1–6)
+**What is wrong:** The access point does not define a `posix_user` block, so it does not enforce a specific user identity.  
+**Why it matters:** Without a POSIX user, the access point defaults to the root user (UID 0). This grants unrestricted read/write access to any NFS client that mounts via this access point, violating the principle of least privilege and increasing the risk of accidental or malicious data exposure.  
+**Change needed:** Add a `posix_user` block inside the `aws_efs_access_point.pass` resource. Set a non-zero `uid` and `gid` (for example, `1000`) to ensure all file system operations through this access point are performed as that unprivileged user. Optionally, you may also specify `secondary_gids` if the application requires supplementary group memberships.
+
+---
+
+### 2. CKV_AWS_329 on `aws_efs_access_point.fail` (lines 13–18)
+**What is wrong:** The `root_directory` block is present but its `path` is set to `"/"`, the file system root.  
+**Why it matters:** Using the file system root as the access point’s root directory exposes the entire EFS file system to clients. This defeats the purpose of an access point, which is to restrict access to a specific subdirectory and enforce a security boundary.  
+**Change needed:** Modify the `path` argument inside the existing `root_directory` block from `"/"` to a dedicated subdirectory path, such as `"/data"` or a path that matches the intended application scope. This confines access to that subtree.
+
+---
+
+### 3. CKV_AWS_330 on `aws_efs_access_point.fail` (lines 13–18)
+**What is wrong:** The access point lacks a `posix_user` block, so no user identity is enforced.  
+**Why it matters:** Same root-cause and risk as item 1: the access point defaults to root, granting full file system privileges to any connecting client.  
+**Change needed:** Add a `posix_user` block to the `aws_efs_access_point.fail` resource, specifying a non-zero `uid` and `gid`. This change is independent of the root directory fix above; both must be applied.
+
+---
+
+### 4. CKV_AWS_329 on `aws_efs_access_point.fail2` (lines 21–23)
+**What is wrong:** The resource has no `root_directory` block at all.  
+**Why it matters:** When no `root_directory` is specified, the access point defaults to the file system root, exposing the entire EFS volume. This is the same exposure as using `path="/"` but even more implicit.  
+**Change needed:** Add a `root_directory` block to `aws_efs_access_point.fail2`. Inside it, set `path` to a specific subdirectory (e.g., `"/data"`). For stronger enforcement, you may also include a `creation_info` sub-block to define the owner UID, GID, and directory permissions, but the immediate requirement is a non-root path.
+
+---
+
+### 5. CKV_AWS_330 on `aws_efs_access_point.fail2` (lines 21–23)
+**What is wrong:** The access point does not define a `posix_user` block.  
+**Why it matters:** As with the other resources, the absence of a POSIX user means the access point operates as root, undermining access controls.  
+**Change needed:** Add a `posix_user` block to `aws_efs_access_point.fail2` with a non-zero `uid` and `gid`. This fix is required alongside the root directory addition; the two changes do not interfere with each other.
+
+---
+
+**Note on interactions:** All fixes are additive and independent. For `aws_efs_access_point.fail2`, both a `root_directory` block and a `posix_user` block must be introduced; neither depends on the other, and they can be added in any order. No other resource modifications are needed beyond those described.

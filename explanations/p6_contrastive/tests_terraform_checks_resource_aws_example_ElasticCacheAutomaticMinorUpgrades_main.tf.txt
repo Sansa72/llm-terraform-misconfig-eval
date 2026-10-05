@@ -1,0 +1,30 @@
+**CKV_AWS_323 – Default subnet group in use (all four resources)**
+
+- **Current behavior:** None of the `aws_elasticache_cluster` resources (`pass`, `pass2`, `fail`, `memcached`) include a `subnet_group_name` argument. When this argument is omitted, ElastiCache automatically places the cluster in the VPC’s *default* subnet group.
+- **Passing behavior:** A custom subnet group (created via `aws_elasticache_subnet_group`) is explicitly referenced, e.g., `subnet_group_name = aws_elasticache_subnet_group.custom.name`. This ensures the cluster is deployed into a purpose-built, controlled set of subnets.
+- **What differs:** Adding a `subnet_group_name` property that points to a non‑default subnet group. The rest of the resource configuration stays identical.
+- **Why it matters:** Default subnet groups are shared across all resources that don’t specify one, making it harder to enforce network segmentation and least‑privilege access. A dedicated subnet group allows you to isolate cache traffic and apply tailored network controls.
+
+**CKV_AWS_134 – Automatic backup not enabled (resources `pass2` and `fail`)**
+
+- **Current behavior:**  
+  - `pass2` omits `snapshot_retention_limit` entirely, which defaults to `0` (no automatic backups).  
+  - `fail` explicitly sets `snapshot_retention_limit = 0`, also disabling backups.  
+- **Passing behavior:** The `snapshot_retention_limit` is set to a positive integer (e.g., `5`), as already done in the `pass` resource. This enables automatic daily snapshots retained for the specified number of days.
+- **What differs:** The `snapshot_retention_limit` property must be set to a value greater than `0`. For `pass2`, you add the property; for `fail`, you change it from `0` to a positive number.
+- **Why it matters:** Without automatic backups, you risk permanent data loss from failures, corruption, or accidental deletions. A positive retention limit ensures point‑in‑time recovery capability.
+
+**CKV_AWS_322 – Auto minor version upgrade disabled (resource `fail`)**
+
+- **Current behavior:** The `fail` resource explicitly sets `auto_minor_version_upgrade = false`, preventing ElastiCache from automatically applying minor engine upgrades.
+- **Passing behavior:** The property is either omitted (defaults to `true`) or explicitly set to `true`, as in the `pass` resource. This allows the service to apply minor version patches automatically during the maintenance window.
+- **What differs:** The `auto_minor_version_upgrade` property must be `true` (or removed to rely on the default). No other changes are required.
+- **Why it matters:** Minor upgrades often include critical security fixes. Disabling automatic upgrades leaves the cluster vulnerable to known exploits that could be mitigated by simply allowing the service to keep the engine current.
+
+---
+
+**Engineer’s summary of required changes**
+
+1. **Add a custom subnet group to every cluster** – For all four resources, introduce a `subnet_group_name` argument referencing a dedicated ElastiCache subnet group. This removes reliance on the default VPC subnet group and improves network isolation.  
+2. **Enable Redis backups on `pass2` and `fail`** – Set `snapshot_retention_limit` to a value of `1` or higher (e.g., `5`). This turns on automatic daily snapshots and protects against data loss.  
+3. **Enable auto minor version upgrade on `fail`** – Change `auto_minor_version_upgrade` from `false` to `true` (or delete the line to accept the default). This ensures the cluster receives security patches without manual intervention.

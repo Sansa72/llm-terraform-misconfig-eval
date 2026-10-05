@@ -1,0 +1,7 @@
+**Remediation Briefing: CKV_AWS_166 – Backup Vault Encryption**
+
+**Check:** CKV_AWS_166  
+**Resource:** `aws_backup_vault.backup` (lines 2–4)  
+**What is wrong:** The backup vault is not configured to use a customer-managed KMS key (CMK) for encryption at rest.  
+**Why it matters:** Without a KMS CMK, the vault defaults to AWS-managed encryption, which limits your control over key rotation, access policies, and audit trails. Using a CMK ensures you can enforce granular permissions, meet compliance requirements, and maintain a clear separation of duties for sensitive backup data.  
+**How to fix it:** Add a `kms_key_arn` argument to the `aws_backup_vault` resource, referencing the ARN of an existing KMS key. For example, if you have a KMS key resource defined as `aws_kms_key.example`, set `kms_key_arn = aws_kms_key.example.arn`. Ensure the key policy grants the AWS Backup service permission to use the key for encryption and decryption. No other resources in the provided snippet are affected by this change, so there are no interactions to consider.

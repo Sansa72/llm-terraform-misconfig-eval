@@ -1,0 +1,63 @@
+**Remediation briefing for Terraform ECR resources**
+
+Below are the failing checks, grouped by resource and ordered as they appear in the scanner output. For each, the exact trigger lines are cited, the misconfiguration is stated, and the required change is described.
+
+---
+
+### 1. CKV_AWS_163 on `aws_ecr_repository.enabled` (lines 3–7)
+**What is wrong:** The resource does not define an `image_scanning_configuration` block, so scan-on-push is not enabled.  
+**Why it matters:** Without scan-on-push, images pushed to the repository are not automatically scanned for known vulnerabilities.  
+**Change needed:** Add an `image_scanning_configuration` block inside the resource, setting `scan_on_push = true`.
+
+---
+
+### 2. CKV_AWS_136 on `aws_ecr_repository.enabled` (lines 3–7)
+**What is wrong:** The resource has no `encryption_configuration` block, meaning it uses the default AES256 encryption instead of a KMS key.  
+**Why it matters:** The check requires encryption using a customer-managed or AWS-managed KMS key for greater control and auditability.  
+**Change needed:** Add an `encryption_configuration` block with `encryption_type = "KMS"`. You may optionally specify a `kms_key` ARN; if omitted, the default AWS-managed ECR KMS key is used.
+
+---
+
+### 3. CKV_AWS_163 on `aws_ecr_repository.default` (lines 11–13)
+**What is wrong:** No `image_scanning_configuration` block is present, so scan-on-push is not enabled.  
+**Why it matters:** Same as above – images are not automatically scanned for vulnerabilities on push.  
+**Change needed:** Add an `image_scanning_configuration` block with `scan_on_push = true`.
+
+---
+
+### 4. CKV_AWS_136 on `aws_ecr_repository.default` (lines 11–13)
+**What is wrong:** No `encryption_configuration` block is defined; the repository uses default AES256 encryption.  
+**Why it matters:** The check requires KMS-based encryption.  
+**Change needed:** Add an `encryption_configuration` block with `encryption_type = "KMS"`.
+
+---
+
+### 5. CKV_AWS_51 on `aws_ecr_repository.default` (lines 11–13)
+**What is wrong:** The resource does not set `image_tag_mutability`; the default is `MUTABLE`.  
+**Why it matters:** Mutable tags allow overwriting the same tag with a different image, which can lead to supply chain risks and non-deterministic deployments.  
+**Change needed:** Explicitly set `image_tag_mutability = "IMMUTABLE"`.
+
+---
+
+### 6. CKV_AWS_163 on `aws_ecr_repository.disabled` (lines 15–19)
+**What is wrong:** No `image_scanning_configuration` block is present; scan-on-push is not enabled.  
+**Why it matters:** Images are not automatically scanned for vulnerabilities.  
+**Change needed:** Add an `image_scanning_configuration` block with `scan_on_push = true`.
+
+---
+
+### 7. CKV_AWS_136 on `aws_ecr_repository.disabled` (lines 15–19)
+**What is wrong:** No `encryption_configuration` block is defined; the repository uses default AES256 encryption.  
+**Why it matters:** The check requires KMS-based encryption.  
+**Change needed:** Add an `encryption_configuration` block with `encryption_type = "KMS"`.
+
+---
+
+### 8. CKV_AWS_51 on `aws_ecr_repository.disabled` (lines 15–19)
+**What is wrong:** `image_tag_mutability` is explicitly set to `"MUTABLE"`.  
+**Why it matters:** Mutable tags allow tag overwriting, undermining image integrity and traceability.  
+**Change needed:** Change the value to `"IMMUTABLE"`.
+
+---
+
+All changes are additive or a single value modification; no resource replacement is required. Apply the same pattern to each resource to resolve all findings.

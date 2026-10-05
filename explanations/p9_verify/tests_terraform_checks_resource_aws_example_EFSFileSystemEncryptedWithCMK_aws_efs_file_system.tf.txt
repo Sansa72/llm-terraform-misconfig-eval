@@ -1,0 +1,12 @@
+The `aws_efs_file_system.fail` resource has encryption enabled (`encrypted = true`), but it does not specify a KMS key. As a result, the file system is encrypted using the default AWS-managed key (`aws/elasticfilesystem`), which does not meet the requirement to use a Customer Managed Key (CMK). Using a CMK provides greater control over key rotation, access policies, and auditing.
+
+To fix this, provide a `kms_key_id` argument referencing a customer-managed KMS key, as demonstrated in the `pass` resource. For example:
+
+```hcl
+resource "aws_efs_file_system" "fail" {
+  encrypted  = true
+  kms_key_id = aws_kms_key.my_key.arn
+}
+```
+
+Ensure the key policy grants the necessary permissions for EFS to use the key.

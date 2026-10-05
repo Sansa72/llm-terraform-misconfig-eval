@@ -1,0 +1,42 @@
+**Remediation Briefing: IAM Policy Document Misconfigurations**
+
+Below are the findings from the scanner, each addressed individually. The file contains two non‑compliant policy documents: `aws_iam_policy_document.fail` (lines 49‑61) and `aws_iam_policy_document.no_effect` (lines 63‑74). Both use `actions = ["*"]`, which triggers multiple checks. The fixes are independent; no interaction between the two resources exists.
+
+---
+
+### 1. CKV_AWS_49 on `aws_iam_policy_document.fail` (lines 49‑61)
+**What is wrong:** The policy’s statement uses `actions = ["*"]`, granting permission to perform any action on the specified S3 bucket.  
+**Why it matters:** A wildcard action violates the principle of least privilege. If this policy is attached to a principal, that principal could perform destructive or data‑exfiltration actions (e.g., `s3:DeleteBucket`, `s3:PutObject`) beyond what is intended.  
+**Change needed:** Replace the wildcard `"*"` with a list of only the specific S3 actions required for the workload (for example, `"s3:GetObject"`, `"s3:ListBucket"`). If the intent is read‑only access, use a set like `["s3:GetObject", "s3:ListBucket"]`. Avoid any wildcard that includes unrelated services or sensitive actions.
+
+---
+
+### 2. CKV_AWS_107 on `aws_iam_policy_document.fail` (lines 49‑61)
+**What is wrong:** The wildcard `actions = ["*"]` implicitly includes actions that can expose credentials, such as `iam:PassRole`, `sts:AssumeRole`, or `ec2:Describe*` (which can leak metadata).  
+**Why it matters:** Allowing credentials‑exposure actions enables privilege escalation or lateral movement. An attacker who compromises a principal with this policy could assume roles, pass roles to services, or retrieve temporary credentials.  
+**Change needed:** Restrict the actions to only those necessary for S3 object access. Explicitly exclude any IAM, STS, or EC2 actions. The same action list fix from CKV_AWS_49 will resolve this check, because a tightly scoped S3 action set does not contain credentials‑exposure operations.
+
+---
+
+### 3. CKV_AWS_49 on `aws_iam_policy_document.no_effect` (lines 63‑74)
+**What is wrong:** The statement uses `actions = ["*"]` and omits the `effect` field (which defaults to `"Allow"`), granting all actions on the bucket.  
+**Why it matters:** Same least‑privilege concern as above, compounded by the missing explicit `effect`. An implicit `Allow` with a wildcard action is dangerously permissive.  
+**Change needed:** Add `effect = "Allow"` (or `"Deny"` if that is the true intent) and replace `actions = ["*"]` with a minimal set of required S3 actions. If the policy is meant to deny all actions, change the effect to `"Deny"` and keep the wildcard only if a deny‑all is truly needed (but then the resource restriction would be pointless; review the design). In most cases, an explicit allow with specific actions is appropriate.
+
+---
+
+### 4. CKV_AWS_107 on `aws_iam_policy_document.no_effect` (lines 63‑74)
+**What is wrong:** The wildcard action, combined with the default `Allow` effect, permits credentials‑exposure actions.  
+**Why it matters:** As with the `fail` resource, this opens a path to privilege escalation and credential theft.  
+**Change needed:** The same action‑scoping fix applied for CKV_AWS_49 on this resource will eliminate the credentials‑exposure risk. Ensure the final action list contains no IAM, STS, or other non‑S3 actions.
+
+---
+
+### 5. CKV2_AWS_40 on `aws_iam_policy_document.fail` (lines 49‑61)
+**What is wrong:** The wildcard `actions = ["*"]` grants full IAM privileges (all actions across all services), which is a superset of full IAM administrative capabilities.  
+**Why it matters:** Full IAM privileges allow a principal to create, modify, or delete any IAM resource, effectively giving complete control over the AWS account. This is one of the most dangerous misconfigurations.  
+**Change needed:** Restrict the actions to only the S3 operations required. The same action list used to fix CKV_AWS_49 and CKV_AWS_107 will resolve this check, because a policy limited to S3 actions cannot grant full IAM privileges.
+
+---
+
+**Note on interactions:** All three checks on `aws_iam_policy_document.fail` are resolved by a single change—replacing `actions = ["*"]` with a specific, minimal set of S3 actions. Similarly, the two checks on `aws_iam_policy_document.no_effect` are resolved by adding an explicit `effect` and applying the same action‑scoping principle. The two resources are independent; fixing one does not affect the other.

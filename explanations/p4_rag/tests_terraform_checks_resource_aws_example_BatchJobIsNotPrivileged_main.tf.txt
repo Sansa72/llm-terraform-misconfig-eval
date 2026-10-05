@@ -1,0 +1,34 @@
+The scanner flagged `aws_batch_job_definition.fail` because its container definition explicitly enables privileged mode. The rule **CKV_AWS_210** requires that AWS Batch jobs *not* run as privileged containers. The finding message may be phrased awkwardly, but the violation is clear: your job definition sets `"privileged": true`.
+
+## What’s the risk?
+A privileged container has almost the same access to the underlying host as a process running as root on that host. It can:
+- Access all host devices.
+- Bypass cgroup restrictions.
+- Modify kernel parameters.
+- Mount host filesystems.
+
+This breaks the isolation model of containers and dramatically increases the blast radius if the container is compromised. In a batch processing context, there is rarely a legitimate need for this level of access. The policy (CKV_AWS_210) enforces the principle of least privilege by ensuring containers are not given unnecessary host-level permissions.
+
+## Where is the problem in your file?
+In the `aws_batch_job_definition` named `"fail"` (lines 8–46), the `container_properties` JSON includes:
+
+```json
+"privileged": true,
+```
+
+This single line is the root cause. The other definitions in the same file show the correct approach:
+- `"pass"` explicitly sets `"privileged": false`.
+- `"pass2"` and `"pass3"` omit the `privileged` field entirely, which defaults to `false`.
+
+## How to fix it
+Remove the `"privileged": true` line from the `container_properties` of the `fail` resource. If the job genuinely needs specific Linux capabilities (e.g., `SYS_TIME`, `NET_ADMIN`), add them individually via the `linuxParameters` block instead of granting full privileged access. For example:
+
+```json
+"linuxParameters": {
+    "capabilities": {
+        "add": ["SYS_TIME"]
+    }
+}
+```
+
+This grants only the required capability, keeping the container otherwise unprivileged. After making the change, the scanner will no longer flag this resource.

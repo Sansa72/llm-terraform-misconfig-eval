@@ -1,0 +1,26 @@
+### 1. What the misconfiguration is
+The Terraform resource `aws_ebs_encryption_by_default.disabled` explicitly sets `enabled = false`, which disables EBS encryption by default for the AWS account and region where it is applied.
+
+This is an account/region‑wide setting, not tied to a specific volume or instance.
+
+### 2. Why it matters
+With default encryption disabled:
+- New EBS volumes and snapshots created without an explicit encryption setting will be unencrypted.
+- Data at rest on those volumes is not protected by AWS KMS-managed encryption.
+- Unencrypted snapshots that are shared or exposed may be readable by unintended parties.
+- The setting may violate security policies or compliance requirements that mandate encryption at rest.
+
+The blast radius is all future EBS volumes and snapshots in the affected account/region that rely on the default setting.
+
+### 3. How to fix it safely
+Change the resource to enable encryption:
+
+```hcl
+resource "aws_ebs_encryption_by_default" "disabled" {
+  enabled = true
+}
+```
+
+Alternatively, remove the `enabled = false` resource entirely and keep a single resource that sets `enabled = true`.
+
+**Important:** Ensure only one `aws_ebs_encryption_by_default` resource exists in your configuration per account/region. Multiple definitions can conflict or cause unintended overwrites.

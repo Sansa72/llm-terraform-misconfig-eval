@@ -1,0 +1,12 @@
+The scanner flagged the following misconfigurations:
+
+1. **CKV_AWS_338 on `aws_cloudwatch_log_group.pass` (lines 1-4):** The `retention_in_days` is set to `1` (line 2), which is less than the required 365 days (1 year). This violates the rule that CloudWatch log groups must retain logs for at least 1 year.
+
+2. **CKV_AWS_338 on `aws_cloudwatch_log_group.fail` (lines 6-8):** The `retention_in_days` is set to `1` (line 7), also violating the 1-year retention requirement.
+
+3. **CKV_AWS_158 on `aws_cloudwatch_log_group.fail` (lines 6-8):** The resource does not include a `kms_key_id` argument, so it is not configured to use a KMS key for encryption, as required by the rule.
+
+To fix:
+
+- In `aws_cloudwatch_log_group.pass`, change `retention_in_days` from `1` to at least `365` (line 2).
+- In `aws_cloudwatch_log_group.fail`, change `retention_in_days` from `1` to at least `365` (line 7), and add a `kms_key_id` argument with a valid KMS key identifier (e.g., `kms_key_id = "your-key-id"`) inside the resource block.

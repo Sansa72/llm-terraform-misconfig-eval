@@ -1,0 +1,74 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV2_AWS_61",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without a lifecycle configuration, objects may accumulate indefinitely, increasing storage costs and potentially retaining data beyond its required retention period.",
+      "remediation": "Add a lifecycle configuration to the bucket to transition objects to cheaper storage classes or expire them after a defined period.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_18",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without access logging enabled, there is no record of requests made to the bucket, making it difficult to detect unauthorized access or perform security audits.",
+      "remediation": "Enable server access logging on the bucket by specifying a target bucket and optional prefix for log delivery.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_62",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without event notifications, the bucket cannot trigger automated workflows or alerts on object changes, delaying incident response or data processing.",
+      "remediation": "Configure event notifications on the bucket to send events to SNS, SQS, or Lambda when specific object actions occur.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV2_AWS_6",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without a public access block, the bucket may be inadvertently exposed to the public internet, leading to unauthorized data access or data leaks.",
+      "remediation": "Add an aws_s3_bucket_public_access_block resource to block public ACLs, public bucket policies, and cross-account public access.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_145",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without default encryption using KMS, objects may be stored unencrypted or with less secure encryption, potentially exposing sensitive data.",
+      "remediation": "Configure default encryption on the bucket using a KMS key (SSE-KMS) or at least SSE-S3.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_144",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without cross-region replication, data is not automatically replicated to another region, increasing the risk of data loss in the event of a regional outage or disaster.",
+      "remediation": "Enable cross-region replication on the bucket by specifying a destination bucket and an IAM role with the necessary permissions.",
+      "confidence": "high"
+    },
+    {
+      "check_id": "CKV_AWS_21",
+      "resource": "aws_s3_bucket.bucket",
+      "evidence": [
+        "resource \"aws_s3_bucket\" \"bucket\"{\n bucket = \"module-bucket\"\n}"
+      ],
+      "risk": "Without versioning enabled, objects can be accidentally overwritten or deleted without the ability to recover previous versions, leading to data loss.",
+      "remediation": "Enable versioning on the S3 bucket to keep multiple variants of an object in the same bucket.",
+      "confidence": "high"
+    }
+  ]
+}

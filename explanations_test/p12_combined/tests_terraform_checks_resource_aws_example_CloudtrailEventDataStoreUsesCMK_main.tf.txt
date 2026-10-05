@@ -1,0 +1,30 @@
+**Remediation briefing: CKV_AWS_294 – CloudTrail Event Data Store not using a CMK**
+
+The scanner flagged two resources in the provided Terraform file. Both fail the same check because neither is configured to use a customer-managed KMS key (CMK) for encryption.
+
+---
+
+### 1. CKV_AWS_294 on `aws_cloudtrail_event_data_store.fail`
+
+- **Triggering lines:** 6–8  
+  ```terraform
+  resource "aws_cloudtrail_event_data_store" "fail" {
+    name = "example-event-data-store"
+  }
+  ```
+- **What is wrong:** The resource does not include a `kms_key_id` argument, so it will use the default AWS-managed key for encryption. This means the organisation lacks control over key rotation, access policies, and auditability of the encryption key for this event data store.
+- **Remediation:** Add a `kms_key_id` argument to the resource block, referencing the ARN of a customer-managed KMS key (for example, the same key used in the `pass` resource). The value must be a valid KMS key ARN, not an empty string.
+
+---
+
+### 2. CKV_AWS_294 on `aws_cloudtrail_event_data_store.fail2`
+
+- **Triggering lines:** 9–12  
+  ```terraform
+  resource "aws_cloudtrail_event_data_store" "fail2" {
+    name = "example-event-data-store"
+    kms_key_id=""
+  }
+  ```
+- **What is wrong:** The `kms_key_id` argument is present but set to an empty string, which is equivalent to not specifying a CMK. The event data store will fall back to the default AWS-managed key, losing the benefits of customer-managed encryption.
+- **Remediation:** Replace the empty string with a valid KMS key ARN (e.g., `aws_kms_key.pike.arn` or another existing key). The argument must reference a real customer-managed KMS key to satisfy the check.

@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "check_id": "CKV_AWS_266",
+      "resource": "aws_db_snapshot_copy.fail",
+      "evidence": [
+        "resource \"aws_db_snapshot_copy\" \"fail\" {\n  source_db_snapshot_identifier = aws_db_snapshot.example.db_snapshot_arn\n  target_db_snapshot_identifier = \"testsnapshot1234-copy\"\n}"
+      ],
+      "risk": "The aws_db_snapshot_copy resource does not specify a kms_key_id, so the copied snapshot may be encrypted with the default AWS-managed key instead of a customer-managed CMK, potentially violating encryption key management requirements.",
+      "remediation": "Add the kms_key_id argument to the aws_db_snapshot_copy resource, referencing a customer-managed KMS key to ensure the snapshot copy is encrypted with a CMK.",
+      "confidence": "high"
+    }
+  ]
+}

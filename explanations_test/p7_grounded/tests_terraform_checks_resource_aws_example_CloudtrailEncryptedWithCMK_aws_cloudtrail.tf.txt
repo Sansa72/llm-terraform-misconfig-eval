@@ -1,0 +1,58 @@
+The scanner evaluated two `aws_cloudtrail` resources in your Terraform file and raised multiple findings. I’ll break down exactly what each check requires and how the current configuration falls short, based solely on the provided file and findings.
+
+---
+
+### Resource: `aws_cloudtrail.fail` (lines 1–5)
+```terraform
+resource "aws_cloudtrail" "fail" {
+  name                          = "TRAIL"
+  s3_bucket_name                = aws_s3_bucket.test.id
+  include_global_service_events = true
+}
+```
+
+**Findings against this resource:**
+
+| Check ID | Requirement | Evidence in file |
+|----------|-------------|------------------|
+| **CKV_AWS_252** | CloudTrail must define an SNS Topic | No `sns_topic_name` or `sns_topic_arn` argument is present. |
+| **CKV_AWS_36** | Log file validation must be enabled | The argument `enable_log_file_validation` is absent; it defaults to `false`. |
+| **CKV_AWS_67** | CloudTrail must be enabled in all Regions | The argument `is_multi_region_trail` is absent; it defaults to `false`. The presence of `include_global_service_events` alone does not satisfy this check. |
+| **CKV_AWS_35** | Logs must be encrypted at rest using KMS CMKs | No `kms_key_id` argument is provided. |
+| **CKV2_AWS_10** | Trail must be integrated with CloudWatch Logs | No `cloud_watch_logs_group_arn` or `cloud_watch_logs_role_arn` arguments are present. |
+
+---
+
+### Resource: `aws_cloudtrail.pass` (lines 7–12)
+```terraform
+resource "aws_cloudtrail" "pass" {
+  name                          = "TRAIL"
+  s3_bucket_name                = aws_s3_bucket.test.id
+  include_global_service_events = true
+  kms_key_id                    = aws_kms_key.test.arn
+}
+```
+
+**Findings against this resource:**
+
+| Check ID | Requirement | Evidence in file |
+|----------|-------------|------------------|
+| **CKV_AWS_252** | CloudTrail must define an SNS Topic | No SNS topic argument is present. |
+| **CKV_AWS_36** | Log file validation must be enabled | `enable_log_file_validation` is missing (defaults to `false`). |
+| **CKV_AWS_67** | CloudTrail must be enabled in all Regions | `is_multi_region_trail` is missing (defaults to `false`). |
+| **CKV2_AWS_10** | Trail must be integrated with CloudWatch Logs | No CloudWatch Logs arguments are present. |
+
+*Note:* `CKV_AWS_35` (KMS encryption) is **not** flagged on this resource because `kms_key_id` is set on line 11. That is the only check this resource passes.
+
+---
+
+### Summary of missing configuration items
+
+For both resources, the scanner indicates the following arguments are required to resolve the findings:
+
+- **SNS Topic** – `sns_topic_name` (or `sns_topic_arn`)  
+- **Log file validation** – `enable_log_file_validation = true`  
+- **Multi‑region trail** – `is_multi_region_trail = true`  
+- **CloudWatch Logs integration** – `cloud_watch_logs_group_arn` and `cloud_watch_logs_role_arn`  
+
+The `aws_cloudtrail.pass` resource only adds `kms_key_id` (addressing CKV_AWS_35) but remains non‑compliant for the other four checks. The `aws_cloudtrail.fail` resource is missing all five.

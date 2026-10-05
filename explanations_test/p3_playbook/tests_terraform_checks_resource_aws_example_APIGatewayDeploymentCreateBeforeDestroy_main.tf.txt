@@ -1,0 +1,34 @@
+**Remediation briefing: CKV_AWS_217 – API Gateway deployment create_before_destroy**
+
+Below are the two failing findings, the reason each is a problem, and the change required to resolve it.
+
+---
+
+### 1. CKV_AWS_217 on `aws_api_gateway_deployment.fail` (lines 13–22)
+
+**What is wrong**  
+The resource explicitly sets `create_before_destroy = false` inside its `lifecycle` block.
+
+**Why it matters**  
+When an API Gateway deployment is replaced (for example, because the stage name or a dependent configuration changes), Terraform will destroy the existing deployment before creating the new one. This removes the stage from the API Gateway, causing downtime and 5xx errors for any clients trying to reach that stage until the new deployment is created and the stage is re-associated. Setting `create_before_destroy = true` ensures the new deployment is created and attached to the stage first, and only then is the old deployment removed, avoiding a gap in service.
+
+**What to change**  
+In the `lifecycle` block of `aws_api_gateway_deployment.fail`, change `create_before_destroy = false` to `create_before_destroy = true`. No other modifications are needed in this resource.
+
+---
+
+### 2. CKV_AWS_217 on `aws_api_gateway_deployment.fail2` (lines 24–31)
+
+**What is wrong**  
+The resource has no `lifecycle` block at all. Terraform’s default behaviour for `create_before_destroy` is `false`, so the same destructive replacement sequence applies.
+
+**Why it matters**  
+The impact is identical to the first finding: a destroy-before-create replacement will cause a period where the API stage is unavailable, leading to errors for clients.
+
+**What to change**  
+Add a `lifecycle` block inside the `aws_api_gateway_deployment` resource `fail2` that contains `create_before_destroy = true`. The block should be placed at the same level as `rest_api_id`, `stage_name`, and `tags` (i.e., not nested inside another block). No other changes are required.
+
+---
+
+**Interaction note**  
+The two resources are independent; fixing one does not affect the other. Both can be corrected in the same change without any ordering constraints.

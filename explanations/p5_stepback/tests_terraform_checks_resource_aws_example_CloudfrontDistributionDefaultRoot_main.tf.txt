@@ -1,0 +1,185 @@
+Below is a resource-by-resource breakdown of each finding, the security principle behind it, how the current configuration violates that principle, and the specific change required.
+
+---
+
+### Findings on `aws_cloudfront_distribution.pass` (lines 1–101) and `aws_cloudfront_distribution.fail` (lines 103–202)
+
+Both distributions share the same violations for the following checks, because their configurations are identical in the relevant areas.
+
+#### CKV_AWS_34 – ViewerProtocolPolicy must be HTTPS
+**Principle:** All communication between viewers and CloudFront must be encrypted to prevent eavesdropping, man-in-the-middle attacks, and downgrade attacks. Allowing HTTP permits sensitive data (cookies, headers, content) to be transmitted in cleartext.
+
+**Violation:** In both distributions, the `default_cache_behavior` has `viewer_protocol_policy = "allow-all"` (lines 37 and 138). This allows viewers to use unencrypted HTTP. The ordered cache behaviors correctly use `redirect-to-https`, but the default behavior still accepts plain HTTP for any request not matching `/content/immutable/*` or `/content/*`.
+
+**Fix:** Change `viewer_protocol_policy` in the `default_cache_behavior` block of both resources to `"redirect-to-https"` or `"https-only"`. For example:
+```hcl
+viewer_protocol_policy = "redirect-to-https"
+```
+
+---
+
+#### CKV_AWS_174 – Viewer Certificate must use TLS v1.2
+**Principle:** Older TLS versions (1.0, 1.1) have known cryptographic weaknesses. Enforcing TLS v1.2 or higher ensures modern, secure cipher suites and protects against protocol-level attacks.
+
+**Violation:** Both distributions define a `viewer_certificate` block with `cloudfront_default_certificate = true` and no `minimum_protocol_version` specified (lines 97–99 and 198–200). The default minimum protocol version is TLSv1, which includes insecure legacy versions.
+
+**Fix:** Add `minimum_protocol_version = "TLSv1.2_2021"` (or a similarly secure policy) inside the `viewer_certificate` block of both resources. Example:
+```hcl
+viewer_certificate {
+  cloudfront_default_certificate = true
+  minimum_protocol_version    = "TLSv1.2_2021"
+}
+```
+*Note:* If you later switch to a custom SSL certificate (see CKV2_AWS_42), you must still set this field.
+
+---
+
+#### CKV_AWS_68 – CloudFront Distribution should have WAF enabled
+**Principle:** A Web Application Firewall (WAF) provides a layer of defence against common web exploits (SQL injection, XSS, etc.) and can filter malicious traffic before it reaches your origin.
+
+**Violation:** Neither distribution has a `web_acl_id` argument. No WAF (classic or v2) is associated with these distributions.
+
+**Fix:** Attach an existing WAF Web ACL by setting `web_acl_id` in the distribution resource. For a WAFv2 ACL, use the ARN. Example:
+```hcl
+resource "aws_cloudfront_distribution" "pass" {
+  # ...
+  web_acl_id = aws_wafv2_web_acl.example.arn
+  # ...
+}
+```
+(Do the same for the `fail` resource.) Ensure the WAF is created and configured appropriately.
+
+---
+
+#### CKV_AWS_310 – Origin failover must be configured
+**Principle:** High availability requires that if the primary origin becomes unavailable, CloudFront can automatically fail over to a secondary origin. Without an origin group, a single origin failure causes a complete outage.
+
+**Violation:** Both distributions define only a single `origin` block (lines 2–6 and 104–108). There is no `origin_group` block, so failover is impossible.
+
+**Fix:** Define an origin group that references at least two origins, and point the cache behaviors to the origin group’s ID. Example:
+```hcl
+origin {
+  domain_name = aws_s3_bucket.primary.bucket_regional_domain_name
+  origin_id   = "primary"
+  # ...
+}
+origin {
+  domain_name = aws_s3_bucket.secondary.bucket_regional_domain_name
+  origin_id   = "secondary"
+  # ...
+}
+origin_group {
+  origin_id = "s3-failover"
+  failover_criteria {
+    status_codes = [500, 502, 503, 504]
+  }
+  member {
+    origin_id = "primary"
+  }
+  member {
+    origin_id = "secondary"
+  }
+}
+```
+Then update `target_origin_id` in all cache behaviors to `"s3-failover"`.
+
+---
+
+#### CKV2_AWS_42 – Use a custom SSL certificate
+**Principle:** The default CloudFront certificate (`*.cloudfront.net`) is not valid for custom domain names. Using it with an alias causes certificate mismatch errors and prevents HTTPS from working correctly for your custom domains.
+
+**Violation:** Both distributions declare `aliases = ["mysite.example.com", "yoursite.example.com"]` (lines 20 and 121) but use `cloudfront_default_certificate = true` (lines 98 and 199). This is an invalid combination; CloudFront will not serve traffic for those aliases over HTTPS.
+
+**Fix:** Request or import a certificate in AWS Certificate Manager (ACM) in the `us-east-1` region that covers the alias domains, and reference it in the `viewer_certificate` block. Remove `cloudfront_default_certificate`. Example:
+```hcl
+viewer_certificate {
+  acm_certificate_arn      = aws_acm_certificate.example.arn
+  ssl_support_method       = "sni-only"
+  minimum_protocol_version = "TLSv1.2_2021"
+}
+```
+
+---
+
+#### CKV2_AWS_32 – Attach a response headers policy
+**Principle:** Security headers (e.g., `Strict-Transport-Security`, `X-Content-Type-Options`, `Content-Security-Policy`) instruct browsers to enforce additional security controls, mitigating risks like clickjacking, MIME sniffing, and downgrade attacks.
+
+**Violation:** Neither distribution specifies a `response_headers_policy_id` in any cache behavior (default or ordered). No security headers are added to responses.
+
+**Fix:** Create an `aws_cloudfront_response_headers_policy` (or use an AWS-managed one) and attach it to each cache behavior via `response_headers_policy_id`. Example:
+```hcl
+resource "aws_cloudfront_response_headers_policy" "security_headers" {
+  name = "security-headers"
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    # ... other headers
+  }
+}
+```
+Then in each cache behavior:
+```hcl
+response_headers_policy_id = aws_cloudfront_response_headers_policy.security_headers.id
+```
+
+---
+
+#### CKV2_AWS_47 – WAFv2 WebACL must have AMR for Log4j
+**Principle:** The Log4j vulnerability (Log4Shell) allows remote code execution. AWS Managed Rules (AMR) for WAFv2 include a rule group specifically designed to block Log4j exploit attempts. Enabling it protects applications from this critical vulnerability.
+
+**Violation:** Neither distribution has a WAFv2 Web ACL attached (see CKV_AWS_68). Even if a WAFv2 were attached, the check requires that the associated Web ACL includes the AWS Managed Rules rule group `AWSManagedRulesKnownBadInputsRuleSet` (which contains the Log4j rule) or the specific `AWSManagedRulesLog4jRuleSet`. Currently, no WAF is present, so the protection is absent.
+
+**Fix:** After attaching a WAFv2 Web ACL (as described in CKV_AWS_68), ensure that Web ACL includes the Log4j managed rule group. Example:
+```hcl
+resource "aws_wafv2_web_acl" "example" {
+  # ...
+  rule {
+    name     = "AWSManagedRulesLog4jRuleSet"
+    priority = 1
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesLog4jRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "AWSManagedRulesLog4jRuleSet"
+      sampled_requests_enabled   = true
+    }
+  }
+  # ...
+}
+```
+
+---
+
+### Additional finding on `aws_cloudfront_distribution.fail` only
+
+#### CKV_AWS_305 – Default root object must be configured
+**Principle:** A default root object defines the object CloudFront serves when a viewer requests the root URL (e.g., `https://example.com/`). Without it, requests to the root may return an error or expose directory listings, degrading user experience and potentially leaking information.
+
+**Violation:** The `fail` distribution does not include the `default_root_object` argument (compare with the `pass` distribution, which has `default_root_object = "index.html"` on line 10). The `fail` resource (lines 103–202) omits this entirely.
+
+**Fix:** Add `default_root_object = "index.html"` (or the appropriate object key) to the `aws_cloudfront_distribution.fail` resource block. Example:
+```hcl
+resource "aws_cloudfront_distribution" "fail" {
+  # ...
+  default_root_object = "index.html"
+  # ...
+}
+```
+
+---
+
+Apply these changes to both distributions to resolve all flagged findings.

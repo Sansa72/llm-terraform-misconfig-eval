@@ -1,0 +1,111 @@
+## Remediation Briefing: Elastic Beanstalk Security Misconfigurations
+
+The scanner identified five failing checks across three `aws_elastic_beanstalk_environment` resources. Below is the remediation guidance for each, in the order they appear in the findings.
+
+---
+
+### 1. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+
+**What is wrong**  
+The resource does not include any `setting` block to enable managed platform updates. The scanner interprets this as the feature being disabled.
+
+**Why it matters**  
+Without managed platform updates enabled, the environment will not automatically receive minor and patch version updates to the underlying platform stack. This can leave the environment running on outdated, potentially vulnerable components.
+
+**Evidence**  
+Lines 1–10 contain no `setting` block for the `aws:elasticbeanstalk:managedactions` namespace. The absence of an explicit enablement is flagged by the check.
+
+**Remediation**  
+Add a `setting` block inside the `aws_elastic_beanstalk_environment` resource with:
+- `namespace = "aws:elasticbeanstalk:managedactions"`
+- `name      = "ManagedActionsEnabled"`
+- `value     = "true"`
+
+This will explicitly enable managed platform updates.
+
+---
+
+### 2. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail` (lines 1–10)
+
+**What is wrong**  
+The resource does not contain a `setting` block to configure enhanced health reporting. The environment will therefore use the default basic health reporting.
+
+**Why it matters**  
+Basic health reporting provides limited visibility into instance and environment health. Enhanced health reporting gives access to additional metrics and more granular health statuses, which are critical for faster troubleshooting and maintaining availability.
+
+**Evidence**  
+Lines 1–10 show no `setting` block for the `aws:elasticbeanstalk:healthreporting:system` namespace. The scanner flags the absence of the enhanced health configuration.
+
+**Remediation**  
+Add a `setting` block with:
+- `namespace = "aws:elasticbeanstalk:healthreporting:system"`
+- `name      = "SystemType"`
+- `value     = "enhanced"`
+
+This will switch the environment to enhanced health reporting.
+
+---
+
+### 3. CKV_AWS_340 on `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+
+**What is wrong**  
+The resource explicitly sets `ManagedActionsEnabled` to `"false"` (line 22), disabling managed platform updates.
+
+**Why it matters**  
+Disabling managed platform updates prevents the environment from automatically receiving important platform patches and version upgrades, increasing the risk of running on an unpatched stack.
+
+**Evidence**  
+Lines 19–22 contain:
+```hcl
+setting {
+  namespace = "aws:elasticbeanstalk:managedactions"
+  name      = "ManagedActionsEnabled"
+  value     = "false"
+}
+```
+The scanner correctly identifies this as a violation.
+
+**Remediation**  
+Change the `value` of that existing `setting` block from `"false"` to `"true"`. No new block is needed; simply correct the value.
+
+---
+
+### 4. CKV_AWS_312 on `aws_elastic_beanstalk_environment.fail2` (lines 12–26)
+
+**What is wrong**  
+The resource does not include a `setting` block to enable enhanced health reporting. It will default to basic health reporting.
+
+**Why it matters**  
+Without enhanced health reporting, the environment lacks detailed health metrics and status information, making it harder to detect and diagnose issues promptly.
+
+**Evidence**  
+Lines 12–26 contain no `setting` block for the `aws:elasticbeanstalk:healthreporting:system` namespace. The scanner flags this omission.
+
+**Remediation**  
+Add a `setting` block with:
+- `namespace = "aws:elasticbeanstalk:healthreporting:system"`
+- `name      = "SystemType"`
+- `value     = "enhanced"`
+
+This will enable enhanced health reporting for the environment.
+
+---
+
+### 5. CKV_AWS_312 on `aws_elastic_beanstalk_environment.pass` (lines 29–43)
+
+**What is wrong**  
+The resource correctly enables managed platform updates (line 38–41) but does not include a `setting` block for enhanced health reporting. The environment will use basic health reporting.
+
+**Why it matters**  
+Even with managed updates enabled, basic health reporting limits visibility into the environment’s operational state. Enhanced health reporting provides richer data for monitoring and incident response.
+
+**Evidence**  
+Lines 29–43 contain a `setting` block for managed actions (value `"true"`) but no block for the health reporting namespace. The scanner flags only the missing enhanced health configuration.
+
+**Remediation**  
+Add a `setting` block with:
+- `namespace = "aws:elasticbeanstalk:healthreporting:system"`
+- `name      = "SystemType"`
+- `value     = "enhanced"`
+
+This will enable enhanced health reporting without affecting the already‑correct managed platform updates setting.

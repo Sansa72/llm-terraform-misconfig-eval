@@ -1,0 +1,17 @@
+**Remediation Briefing: EBS Snapshot Copy Encryption**
+
+---
+
+### Finding 1: CKV_AWS_183 on `aws_ebs_snapshot_copy.fail` (lines 12–20)
+
+**What is wrong**  
+The snapshot copy is encrypted, but no customer-managed KMS key (CMK) is specified, so it falls back to the default AWS-managed key.
+
+**Why it matters**  
+Customer-managed keys give you full control over key rotation, access policies, and usage auditing. AWS-managed keys do not allow custom key policies or lifecycle management, which can violate compliance requirements that mandate the use of CMKs for data at rest.
+
+**Change needed**  
+Add the `kms_key_id` argument to the `aws_ebs_snapshot_copy.fail` resource, pointing to the ARN of a customer-managed KMS key. The existing `pass` resource already demonstrates the correct pattern: `kms_key_id = aws_kms_key.test.arn`. Use the same key reference (or another valid CMK ARN) in the `fail` resource. No other changes are required—`encrypted` is already set to `true`. Ensure the KMS key’s policy grants the necessary `kms:Encrypt` and `kms:Decrypt` permissions to the principal performing the copy.
+
+**Interactions with other fixes**  
+None. This is the only failing check in the provided file.

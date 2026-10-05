@@ -1,0 +1,32 @@
+The findings identify two separate issues: insufficient log retention and missing encryption. Here’s what each means and how to fix it.
+
+---
+
+### CKV_AWS_338 – CloudWatch log group retention less than 365 days
+
+**Principle**  
+Security investigations, compliance audits, and operational troubleshooting often require access to historical logs. A minimum retention period of one year (365 days) ensures that logs are available long enough to support these activities and meet common regulatory requirements.
+
+**Application**  
+Both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail` set `retention_in_days = 1`. This discards logs after a single day, making it impossible to investigate incidents that are discovered later or to satisfy retention mandates. The fix is to set `retention_in_days` to at least `365` on both resources.
+
+---
+
+### CKV_AWS_158 – CloudWatch Log Group not encrypted with KMS
+
+**Principle**  
+Encrypting log data at rest using a customer-managed KMS key ensures that only authorised entities can read the logs, provides an audit trail of access via CloudTrail, and helps meet data protection requirements. Relying on the default service-managed encryption does not offer the same level of control or visibility.
+
+**Application**  
+The `aws_cloudwatch_log_group.fail` resource does not specify a `kms_key_id`. This means the log group will use the default CloudWatch Logs encryption, which is not customer-managed. The finding indicates that a KMS key must be explicitly assigned. The fix is to add a `kms_key_id` argument pointing to a valid KMS key ARN or alias, just as the `pass` resource already does. (Note: the `pass` resource is named for its KMS configuration, but it still fails the retention check above.)
+
+---
+
+### Required changes
+
+1. **For both `aws_cloudwatch_log_group.pass` and `aws_cloudwatch_log_group.fail`:**  
+   Change `retention_in_days = 1` to `retention_in_days = 365` (or a higher value if your policy requires longer retention).
+
+2. **For `aws_cloudwatch_log_group.fail`:**  
+   Add a `kms_key_id` argument with the ARN or alias of a KMS key, e.g.  
+   `kms_key_id = aws_kms_key.log_key.arn` or `kms_key_id = "arn:aws:kms:..."`.

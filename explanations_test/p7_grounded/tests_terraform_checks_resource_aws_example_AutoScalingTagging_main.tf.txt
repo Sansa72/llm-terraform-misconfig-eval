@@ -1,0 +1,54 @@
+The scanner findings point to two distinct issues in the provided Terraform file. Here is what the evidence shows.
+
+---
+
+### 1. CKV_AWS_315 – “Ensure EC2 Auto Scaling groups use EC2 launch templates”
+
+**Flagged resources:**
+- `aws_autoscaling_group.passtag` (lines 1–24)
+- `aws_autoscaling_group.passtags` (lines 27–49)
+- `aws_autoscaling_group.fail` (lines 52–58)
+
+**What the file shows:**
+All three resources define their instance configuration using the `launch_configuration` argument:
+
+- Line 9: `launch_configuration = aws_launch_configuration.foobar.name`
+- Line 31: `launch_configuration = aws_launch_configuration.foobar.name`
+- Line 56: `launch_configuration = aws_launch_configuration.foobar.name`
+
+**Why it’s flagged:**
+Check CKV_AWS_315 requires that Auto Scaling groups use an EC2 launch template (the `launch_template` block) instead of a launch configuration. The file uses the older `launch_configuration` approach on all three ASGs, which directly triggers this check.
+
+**What to fix:**
+Replace the `launch_configuration` references with a `launch_template` block that points to an `aws_launch_template` resource. The existing `aws_launch_configuration.foobar` (not shown in this snippet) would need to be migrated to a launch template as well.
+
+---
+
+### 2. CKV_AWS_153 – “Autoscaling groups should supply tags to launch configurations”
+
+**Flagged resource:**
+- `aws_autoscaling_group.fail` (lines 52–58)
+
+**What the file shows:**
+The `fail` resource (lines 52–58) contains no tag definitions at all – no `tag` blocks and no `tags` attribute. Compare this with the other two resources:
+
+- `passtag` (lines 12–22) has two `tag` blocks.
+- `passtags` (lines 34–48) has a `tags` attribute with multiple tags.
+
+**Why it’s flagged:**
+The check CKV_AWS_153 expects that an Auto Scaling group supplies tags (either via `tag` blocks or the `tags` attribute) so that those tags are propagated to the launch configuration and the instances it creates. The `fail` resource supplies none, which is why it alone is flagged for this check.
+
+**What to fix:**
+Add at least one tag to the `fail` resource, using either the `tag` block syntax (as in `passtag`) or the `tags` attribute (as in `passtags`). For example:
+
+```hcl
+tag {
+  key                 = "Name"
+  value               = "foobar3-terraform-test"
+  propagate_at_launch = true
+}
+```
+
+---
+
+No other issues are evidenced by the given findings and file content.

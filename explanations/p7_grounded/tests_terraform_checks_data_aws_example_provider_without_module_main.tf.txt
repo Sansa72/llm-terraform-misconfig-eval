@@ -1,0 +1,58 @@
+The scanner flagged multiple missing security configurations on both S3 buckets defined in your Terraform file. Below is a breakdown of each finding, the exact resource and lines it references, and what the file currently provides (or fails to provide).
+
+---
+
+### Resources in the file
+
+- **`aws_s3_bucket.bucket`** (lines 10–13):
+  ```hcl
+  resource "aws_s3_bucket" "bucket"{
+    bucket = "bucket"
+    provider = aws.usw1
+  }
+  ```
+- **`aws_s3_bucket.bucket_2`** (lines 15–17):
+  ```hcl
+  resource "aws_s3_bucket" "bucket_2" {
+    bucket = "bucket-2"
+  }
+  ```
+
+Both resources only specify the bucket name and, for the first, a provider alias. No other configuration is present.
+
+---
+
+### Findings and what is missing
+
+| Check ID | Resource | Lines | Requirement | Evidence in file |
+|----------|----------|-------|-------------|------------------|
+| **CKV2_AWS_61** | `aws_s3_bucket.bucket` | 10–13 | S3 bucket must have a lifecycle configuration | No `lifecycle_rule` block or separate `aws_s3_bucket_lifecycle_configuration` resource is defined. |
+| **CKV2_AWS_61** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV_AWS_18** | `aws_s3_bucket.bucket` | 10–13 | Access logging must be enabled | No `logging` block or `aws_s3_bucket_logging` resource is present. |
+| **CKV_AWS_18** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV2_AWS_62** | `aws_s3_bucket.bucket` | 10–13 | Event notifications must be enabled | No `event_notification` configuration or `aws_s3_bucket_notification` resource is defined. |
+| **CKV2_AWS_62** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV2_AWS_6** | `aws_s3_bucket.bucket` | 10–13 | Public Access Block must be configured | No `aws_s3_bucket_public_access_block` resource is attached. |
+| **CKV2_AWS_6** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV_AWS_145** | `aws_s3_bucket.bucket` | 10–13 | Default encryption must use KMS (not just AES256) | No `server_side_encryption_configuration` block with `aws:kms` is present. |
+| **CKV_AWS_145** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV_AWS_144** | `aws_s3_bucket.bucket` | 10–13 | Cross-region replication must be enabled | No `replication_configuration` or `aws_s3_bucket_replication_configuration` resource is defined. |
+| **CKV_AWS_144** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+| **CKV_AWS_21** | `aws_s3_bucket.bucket` | 10–13 | Versioning must be enabled | No `versioning` block with `enabled = true` is present. |
+| **CKV_AWS_21** | `aws_s3_bucket.bucket_2` | 15–17 | Same as above | Same absence. |
+
+---
+
+### What the engineer needs to do
+
+The file as shown only creates the buckets with their names. To resolve the findings, you must add the corresponding Terraform configurations for each required feature. For example:
+
+- **Versioning**: Add a `versioning` block inside each `aws_s3_bucket` (or use the standalone `aws_s3_bucket_versioning` resource, depending on your provider version).
+- **Encryption**: Add a `server_side_encryption_configuration` block specifying `aws:kms` and a KMS key ARN (or set `sse_algorithm = "aws:kms"` and optionally `kms_master_key_id`).
+- **Public Access Block**: Attach an `aws_s3_bucket_public_access_block` resource to each bucket, setting `block_public_acls`, `block_public_policy`, `ignore_public_acls`, and `restrict_public_buckets` to `true`.
+- **Logging**: Define a logging configuration (e.g., `aws_s3_bucket_logging` resource) pointing to a target bucket for access logs.
+- **Lifecycle**: Add a lifecycle rule (e.g., `aws_s3_bucket_lifecycle_configuration`) to manage object expiration or transitions.
+- **Event Notifications**: Configure `aws_s3_bucket_notification` to send events to a Lambda, SQS, or SNS destination.
+- **Cross-region replication**: Set up `aws_s3_bucket_replication_configuration` with a destination bucket in a different region and appropriate IAM roles.
+
+The scanner findings do not prescribe *how* these features should be implemented (e.g., which KMS key, which log bucket, which replication destination), only that they must exist. The current file provides none of them, hence every check fails.

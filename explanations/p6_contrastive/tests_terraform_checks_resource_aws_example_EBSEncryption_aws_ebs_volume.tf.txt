@@ -1,0 +1,78 @@
+**Analysis of each failing check**
+
+---
+
+### 1. `aws_ebs_volume.enabled` – CKV_AWS_189
+
+- **What the current configuration does**  
+  The volume is set to `encrypted = True`, so data at rest is encrypted. However, no `kms_key_id` is specified, so the volume uses the **default AWS-managed EBS key** (alias `aws/ebs`). The check `CKV_AWS_189` requires encryption with a **customer-managed CMK** (a key you create and control in AWS KMS), not the AWS-managed default key.
+
+- **What a compliant configuration would do**  
+  It would still have `encrypted = True`, but would also include a `kms_key_id` attribute pointing to a customer-managed KMS key (e.g., `kms_key_id = aws_kms_key.my_key.arn`). This ensures the volume is encrypted under a key that you own, can rotate, and can audit access to.
+
+- **The precise difference**  
+  The only missing property is `kms_key_id`. Adding it changes the encryption from an AWS-managed key (no key visibility, no access control, no rotation control) to a customer-managed CMK (full control over key policy, rotation, and CloudTrail auditing). That control is what matters for security: you can enforce least-privilege access, revoke the key to cryptographically shred data, and meet compliance requirements that mandate customer-managed keys.
+
+---
+
+### 2. `aws_ebs_volume.default` – CKV_AWS_3
+
+- **What the current configuration does**  
+  The volume has no `encrypted` attribute, so it defaults to `false`. The volume is **not encrypted at all**. `CKV_AWS_3` requires that all data stored in the EBS volume be securely encrypted.
+
+- **What a compliant configuration would do**  
+  It would set `encrypted = True`. This alone satisfies the check, because the volume would then be encrypted (even with the default AWS-managed key).
+
+- **The precise difference**  
+  Adding `encrypted = True` (or removing the default-false omission) enables encryption. Without it, data at rest is stored in plaintext, exposing it to unauthorised access if the physical media is compromised. Encryption is the baseline control.
+
+---
+
+### 3. `aws_ebs_volume.default` – CKV_AWS_189
+
+- **What the current configuration does**  
+  Same as above: no `encrypted` attribute, so the volume is unencrypted. `CKV_AWS_189` requires both encryption and a customer-managed CMK.
+
+- **What a compliant configuration would do**  
+  It would set `encrypted = True` **and** provide a `kms_key_id` pointing to a customer-managed CMK.
+
+- **The precise difference**  
+  Two properties must be added: `encrypted = True` and `kms_key_id = <cmk-arn>`. The combination ensures the volume is encrypted under a key you control, satisfying both the encryption requirement and the CMK requirement.
+
+---
+
+### 4. `aws_ebs_volume.disabled` – CKV_AWS_3
+
+- **What the current configuration does**  
+  The volume explicitly sets `encrypted = False`, so it is **not encrypted**. This fails `CKV_AWS_3`.
+
+- **What a compliant configuration would do**  
+  It would change `encrypted` to `True`. That alone would pass `CKV_AWS_3`.
+
+- **The precise difference**  
+  Changing `encrypted` from `False` to `True` enables encryption. The explicit `False` is the direct cause of the failure; the fix is to set it to `True`.
+
+---
+
+### 5. `aws_ebs_volume.disabled` – CKV_AWS_189
+
+- **What the current configuration does**  
+  The volume is explicitly unencrypted (`encrypted = False`). `CKV_AWS_189` requires encryption with a customer-managed CMK.
+
+- **What a compliant configuration would do**  
+  It would set `encrypted = True` **and** add a `kms_key_id` for a customer-managed CMK.
+
+- **The precise difference**  
+  Two changes: `encrypted` must become `True`, and a `kms_key_id` must be supplied. The explicit `False` must be replaced, and the CMK must be specified to meet the higher bar of the check.
+
+---
+
+### Summary for the engineer
+
+All three EBS volumes need to be encrypted with a **customer-managed KMS key**. The required changes, per resource, are:
+
+- **`aws_ebs_volume.enabled`** – Already has `encrypted = True`. **Add** `kms_key_id = <arn of a customer-managed CMK>`.
+- **`aws_ebs_volume.default`** – **Add** `encrypted = True` **and** `kms_key_id = <arn of a customer-managed CMK>`.
+- **`aws_ebs_volume.disabled`** – **Change** `encrypted` from `False` to `True` **and add** `kms_key_id = <arn of a customer-managed CMK>`.
+
+The `kms_key_id` must reference a key you created in KMS (not the default `aws/ebs` alias). This gives you control over the key’s access policy, rotation, and auditing, and it satisfies both the baseline encryption check (`CKV_AWS_3`) and the CMK check (`CKV_AWS_189`).

@@ -1,0 +1,13 @@
+The scanner flagged two `aws_api_gateway_rest_api` resources for violating CKV_AWS_237, which requires that API Gateway REST APIs be configured with `create_before_destroy = true` to prevent downtime during replacement.
+
+**Resource `aws_api_gateway_rest_api.fail` (lines 1–7)**  
+The `lifecycle` block is commented out (lines 4–6). Because no `create_before_destroy` setting is active, Terraform uses the default `false`. If this resource is recreated, the existing API will be destroyed before the new one is created, potentially causing an outage.
+
+**Resource `aws_api_gateway_rest_api.fail2` (lines 9–15)**  
+The `lifecycle` block explicitly sets `create_before_destroy = false` (line 13), producing the same risk as above.
+
+**Remediation**  
+- For `fail`: uncomment the `lifecycle` block (lines 4–6) and set `create_before_destroy = true`.  
+- For `fail2`: change line 13 from `create_before_destroy = false` to `create_before_destroy = true`.  
+
+The resource `aws_api_gateway_rest_api.pass` (lines 17–23) already shows the correct configuration.

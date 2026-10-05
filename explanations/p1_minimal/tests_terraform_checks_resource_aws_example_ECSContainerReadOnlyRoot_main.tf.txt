@@ -1,0 +1,135 @@
+The scanner flagged several security misconfigurations in your ECS task definitions. These checks are based on AWS best practices to reduce the attack surface of your containers. Below is a breakdown of each finding, why it matters, and how to fix it.
+
+---
+
+### 1. `aws_ecs_task_definition.fail` – CKV_AWS_336 (Read-only root filesystem)
+
+**What’s wrong:**  
+The task definition `fail` contains two containers. The first container correctly sets `readonlyRootFilesystem = true`, but the **second container is missing this setting entirely**. When `readonlyRootFilesystem` is not set, it defaults to `false`, meaning the container’s root filesystem is writable.
+
+**Why it’s a risk:**  
+A writable root filesystem allows a compromised process inside the container to modify system binaries, drop malware, or tamper with configuration files. Making the root filesystem read-only enforces immutability and aligns with the principle of least privilege.
+
+**Fix:**  
+Add `readonlyRootFilesystem = true` to the second container definition in the `fail` resource.
+
+```hcl
+resource "aws_ecs_task_definition" "fail" {
+  # ... other configuration ...
+  container_definitions = jsonencode([
+    {
+      name      = "first"
+      # ... existing settings ...
+      readonlyRootFilesystem = true
+    },
+    {
+      name      = "second"
+      image     = "service-second"
+      cpu       = 10
+      memory    = 256
+      essential = true
+      readonlyRootFilesystem = true   # <-- Add this line
+      portMappings = [
+        {
+          containerPort = 443
+          hostPort      = 443
+        }
+      ]
+    }
+  ])
+  # ...
+}
+```
+
+---
+
+### 2. `aws_ecs_task_definition.fail2` – CKV_AWS_336 (Read-only root filesystem)
+
+**What’s wrong:**  
+Both containers in `fail2` explicitly set `readonlyRootFilesystem = false`, disabling the read-only root filesystem protection.
+
+**Why it’s a risk:**  
+Same as above – a writable root filesystem increases the risk of persistent compromise and makes the container mutable.
+
+**Fix:**  
+Change `readonlyRootFilesystem` to `true` for both containers.
+
+---
+
+### 3. `aws_ecs_task_definition.fail2` – CKV_AWS_334 (Privileged container)
+
+**What’s wrong:**  
+The second container definition includes `privilege = true`. This runs the container with elevated privileges, effectively giving it almost all the capabilities of the host machine (including access to devices, kernel modules, and more).
+
+**Why it’s a risk:**  
+A privileged container can escape the container isolation more easily, access host resources, and potentially compromise the entire EC2 instance. It should only be used when absolutely necessary and with extreme caution.
+
+**Fix:**  
+Remove the `privilege = true` line (or set it to `false`). The default is `false`.
+
+---
+
+### 4. `aws_ecs_task_definition.fail2` – CKV_AWS_335 (Sharing host process namespace)
+
+**What’s wrong:**  
+The second container definition includes `pidMode = "host"`. This setting is actually a **task-level** parameter, not a container-level one, but its presence here indicates an attempt to share the host’s process namespace. When `pidMode` is set to `"host"` at the task level, containers in the task can see and interact with all processes running on the host.
+
+**Why it’s a risk:**  
+Sharing the host’s process namespace breaks container isolation. A compromised container could inspect or signal host processes, potentially leading to privilege escalation or information disclosure.
+
+**Fix:**  
+Remove the `pidMode = "host"` line from the container definition. If you intended to set the task-level `pidMode`, you should use the Terraform argument `pid_mode` in the `aws_ecs_task_definition` resource, but the secure default is `"task"` (each task gets its own process namespace). Unless you have a specific, well-understood requirement, do not set `pid_mode = "host"`.
+
+---
+
+### Corrected `fail2` container definitions
+
+```hcl
+resource "aws_ecs_task_definition" "fail2" {
+  family = "service"
+  container_definitions = jsonencode([
+    {
+      name      = "first"
+      image     = "service-first"
+      cpu       = 10
+      memory    = 512
+      essential = true
+      readonlyRootFilesystem = true   # changed from false
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+        }
+      ]
+    },
+    {
+      name      = "second"
+      image     = "service-second"
+      cpu       = 10
+      memory    = 256
+      essential = true
+      readonlyRootFilesystem = true   # changed from false
+      # privilege = true               # removed
+      # pidMode = "host"               # removed
+      portMappings = [
+        {
+          containerPort = 443
+          hostPort      = 443
+        }
+      ]
+    }
+  ])
+
+  volume {
+    name      = "service-storage"
+    host_path = "/ecs/service-storage"
+  }
+
+  placement_constraints {
+    type       = "memberOf"
+    expression = "attribute:ecs.availability-zone in [us-west-2a, us-west-2b]"
+  }
+}
+```
+
+After applying these changes, all four security checks will pass. The `pass` resource already follows best practices and needs no modification.
